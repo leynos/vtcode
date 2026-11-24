@@ -59,11 +59,22 @@ async fn opposing_concurrent_attachments_publish_exactly_once() {
     }
 
     // The opposite attachment runs while the first is parked. It publishes
-    // right -> left, so left -> right would close the cycle.
-    right
-        .attach_child_controller("left", Arc::clone(&left))
-        .await
-        .expect("the first of the two opposing attachments must publish");
+    // right -> left, so left -> right would close the cycle. Bound it: a
+    // broken lock order would otherwise wait on the session lock this test
+    // still holds and hang instead of failing.
+    let opposite =
+        tokio::time::timeout(Duration::from_secs(5), right.attach_child_controller("left", Arc::clone(&left))).await;
+    let opposite = match opposite {
+        Ok(outcome) => outcome,
+        Err(_) => {
+            drop(session_guard);
+            panic!(
+                "the opposite attachment must publish while the first is parked on the session lock; \
+                 it timed out, so the attachment path waits on the held lock instead"
+            );
+        }
+    };
+    opposite.expect("the first of the two opposing attachments must publish");
 
     drop(session_guard);
     let rejection = first_future

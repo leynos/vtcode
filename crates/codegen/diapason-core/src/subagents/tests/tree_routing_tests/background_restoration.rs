@@ -121,9 +121,12 @@ async fn cancelling_a_settled_background_record_keeps_it_out_of_restore() {
     let workspace_root = temp.path().to_path_buf();
     let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.subagents.background.auto_restore = true;
-    let controller = SubagentController::new(test_controller_config(workspace_root.clone(), vt_cfg.clone()))
-        .await
-        .expect("controller");
+    let controller = SubagentController::new_with_background_owner(
+        test_controller_config(workspace_root.clone(), vt_cfg.clone()),
+        Some("parent-session"),
+    )
+    .await
+    .expect("controller");
 
     let record_id = background_record_id_for_owner("watcher", Some("parent-session"));
     let mut settled = settled_background_record(
@@ -148,9 +151,12 @@ async fn cancelling_a_settled_background_record_keeps_it_out_of_restore() {
     assert!(!entry.desired_enabled, "cancel must clear the restore flag");
     controller.signal_shutdown().await;
 
-    let restored = SubagentController::new(test_controller_config(workspace_root, vt_cfg))
-        .await
-        .expect("restoring controller");
+    let restored = SubagentController::new_with_background_owner(
+        test_controller_config(workspace_root, vt_cfg),
+        Some("parent-session"),
+    )
+    .await
+    .expect("restoring controller");
     let entries = restored
         .restore_background_subagents()
         .await

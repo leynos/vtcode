@@ -4,6 +4,9 @@
 //! record, so two rows under one id with an empty exec session cannot be told
 //! apart; the load must not resolve them by cancellation precedence. It reuses
 //! the record builders from `merge_oracle_tests.rs`.
+use std::collections::{BTreeMap, BTreeSet};
+
+use super::super::merge::merge_background_records;
 use super::super::*;
 use super::merge_oracle_tests::{merge_launch_record, merge_state};
 
@@ -47,4 +50,34 @@ fn a_single_empty_launch_row_still_loads() {
 
     assert_eq!(merged.len(), 1, "one row is unambiguous");
     assert_eq!(merge_state(merged.values().next().expect("the record")).0, "only-row");
+}
+
+/// A live snapshot record survives ambiguous persisted rows under its id.
+///
+/// The ledger holds two rows that share a canonical id and carry no launch
+/// identity, so they cannot be told apart and stay excluded. A snapshot copy
+/// that names its own exec session is a launch this controller is running; it
+/// must not be removed with them, or the merged ledger omits an active task.
+#[test]
+fn a_live_snapshot_record_survives_ambiguous_persisted_rows() {
+    // Shape 0 is `worker` owned by `session-a`; the persisted rows share its
+    // canonical id and differ only in intent and freshness.
+    let stopped = merge_launch_record(0, 2, false, "", "stopped");
+    let desired = merge_launch_record(0, 1, true, "", "desired");
+    let live = merge_launch_record(0, 3, true, "exec-live", "live");
+
+    let merged =
+        merge_background_records(vec![stopped, desired], vec![live], None, &BTreeSet::new(), &BTreeMap::new(), &[]);
+
+    assert_eq!(merged.len(), 1, "the snapshot launch keeps the canonical id");
+    let record = merged.first().expect("the surviving launch");
+    assert_eq!(
+        record.exec_session_id, "exec-live",
+        "a live snapshot record must not be dropped with ambiguous persisted rows"
+    );
+    assert_eq!(
+        merge_state(record),
+        ("live".to_owned(), true, "running".to_owned()),
+        "the surviving copy is the snapshot's launch"
+    );
 }

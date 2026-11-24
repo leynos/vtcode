@@ -194,6 +194,10 @@ impl SubagentController {
             if record.status == SubagentStatus::Closed || record.closed {
                 bail!("Subagent {} is closed", request.target);
             }
+            // Refuse before queuing input that would restart the child: the
+            // restart below must not run an isolated task in the parent
+            // workspace.
+            ensure_resume_worktree(record, &request.target)?;
 
             record.updated_at = Utc::now();
             record.last_prompt = Some(prompt.clone());
@@ -418,7 +422,7 @@ impl SubagentController {
         // made, even if it has not been polled yet: construction captures the
         // notification counter, and polling compares against it. Creating the
         // futures first is therefore what makes a status change between the
-        // recheck and the select observable; enable() is only an optimisation
+        // recheck and the select observable; enable() is only an optimization
         // for directed notifications and is not what provides this guarantee.
         let wait_any = select_all(register_notify_waiters(&notifies));
         tokio::pin!(wait_any);
@@ -507,6 +511,7 @@ impl SubagentController {
                 .children
                 .get_mut(target)
                 .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
+            ensure_resume_worktree(record, target)?;
             if matches!(record.status, SubagentStatus::Running | SubagentStatus::Queued) {
                 return Ok(false);
             }
@@ -692,7 +697,7 @@ impl SubagentController {
         // instead would let a second writer start from the same stale ledger
         // while this write was still in flight.
         tokio::spawn(async move {
-            // The in-process mutex cannot serialise another Diapason process
+            // The in-process mutex cannot serialize another Diapason process
             // that shares this workspace, so the ledger's inter-process lock is
             // taken first and held across the reload, merge and write. Taking
             // the persistence mutex first would hold it while this save waits
@@ -1158,6 +1163,9 @@ impl SubagentController {
                 .children
                 .get_mut(target)
                 .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
+            // `send_input` restarts a settled record without passing through
+            // `reopen_single`, so the isolation check must be repeated here.
+            ensure_resume_worktree(record, target)?;
             if record.queued_prompts.is_empty()
                 && let Some(prompt) = record.last_prompt.clone()
             {
@@ -1172,6 +1180,25 @@ impl SubagentController {
     }
 }
 
+/// Refuses to resume a child whose isolation worktree has disappeared.
+///
+/// A child whose spec requests `IsolationMode::Worktree` runs inside the
+/// checkout created for it, and the runner falls back to the
+/// parent workspace when the record carries no path. The checkout can disappear
+/// while the record is settled: a launch refused after insertion reclaims it,
+/// and an operator may remove it. Resuming without it would run the task
+/// outside the isolation its spec demands and outside the scope its archive was
+/// recorded in, so the resume fails closed instead.
+fn ensure_resume_worktree(record: &ChildRecord, target: &str) -> Result<()> {
+    if record.spec.isolation == Some(diapason_config::IsolationMode::Worktree) && record.worktree_path.is_none() {
+        bail!(
+            "Subagent {target} requests isolation=worktree, but its isolation worktree is gone; \
+             refusing to resume it in the parent workspace"
+        );
+    }
+    Ok(())
+}
+
 fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync::futures::Notified<'_>>>> {
     let mut waiters = notifies.iter().map(|notify| Box::pin(notify.notified())).collect::<Vec<_>>();
     for waiter in &mut waiters {
@@ -1181,290 +1208,7 @@ fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync:
 }
 
 #[cfg(test)]
-mod spawn_run_regression_tests {
-    //! Pins close publication and the exec-session identity a stale stop save
-    //! carries into the ledger merge.
-
-    use std::path::PathBuf;
-
-    use tempfile::TempDir;
-
-    use crate::tools::registry::PtySessionManager;
-
-    use super::*;
-
-    fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
-        let vt_cfg = DiapasonConfig::default();
-        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
-        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
-        SubagentControllerConfig {
-            workspace_root,
-            parent_session_id: "parent-session".to_string(),
-            parent_model: "gpt-5.6-sol".to_string(),
-            parent_provider: "openai".to_string(),
-            parent_reasoning_effort: ReasoningEffortLevel::Medium,
-            api_key: "test-key".to_string(),
-            vt_cfg,
-            openai_chatgpt_auth: None,
-            depth: 0,
-            workspace_gated: false,
-            exec_sessions,
-            output_reader: None,
-            pty_manager: pty_sessions.manager().clone(),
-            managed_background_runtime: false,
-            lock_scope: None,
-        }
-    }
-
-    fn test_spec() -> SubagentSpec {
-        diapason_config::builtin_subagents()
-            .into_iter()
-            .find(|spec| spec.name == "explorer")
-            .expect("the builtin explorer spec")
-    }
-
-    fn child_record(id: &str, status: SubagentStatus) -> ChildRecord {
-        let spec = test_spec();
-        ChildRecord {
-            id: id.to_string(),
-            session_id: format!("parent-session-{id}"),
-            parent_thread_id: "parent-session".to_string(),
-            display_label: subagent_display_label(&spec),
-            spec,
-            status,
-            background: false,
-            depth: 1,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            completed_at: status.is_terminal().then_some(Utc::now()),
-            summary: None,
-            error: None,
-            archive_metadata: None,
-            archive_path: None,
-            transcript_path: None,
-            effective_config: Some(DiapasonConfig::default()),
-            stored_messages: Vec::new(),
-            last_prompt: Some(format!("prompt-{id}")),
-            queued_prompts: VecDeque::new(),
-            max_turns: None,
-            model_override: None,
-            reasoning_override: None,
-            thread_handle: None,
-            handle: None,
-            notify: Arc::new(Notify::new()),
-            worktree_path: None,
-            child_controller: None,
-            closed: false,
-        }
-    }
-
-    /// Builds a background record in `status` with the supplied launch identity.
-    fn background_record(
-        id: &str,
-        agent_name: &str,
-        exec_session_id: &str,
-        status: BackgroundSubprocessStatus,
-        desired_enabled: bool,
-    ) -> BackgroundRecord {
-        BackgroundRecord {
-            id: id.to_string(),
-            owner_session_id: None,
-            agent_name: agent_name.to_string(),
-            display_label: agent_name.to_string(),
-            description: agent_name.to_string(),
-            source: "builtin".to_string(),
-            colour: None,
-            session_id: format!("session-{id}"),
-            parent_session_id: "parent-session".to_string(),
-            exec_session_id: exec_session_id.to_string(),
-            desired_enabled,
-            status,
-            created_at: "2026-08-28T00:00:00Z".parse().expect("created_at"),
-            updated_at: "2026-08-28T00:00:00Z".parse().expect("updated_at"),
-            started_at: None,
-            ended_at: None,
-            pid: None,
-            prompt: "work".to_string(),
-            summary: None,
-            error: None,
-            archive_path: None,
-            transcript_path: None,
-            max_turns: None,
-            model_override: None,
-            reasoning_override: None,
-            restart_attempts: 0,
-        }
-    }
-
-    /// Builds one ownerless ledger row for `exec_session_id`.
-    fn persisted_background_record(
-        id: &str,
-        agent_name: &str,
-        exec_session_id: &str,
-        desired_enabled: bool,
-    ) -> PersistedBackgroundRecord {
-        serde_json::from_value(serde_json::json!({
-            "id": id,
-            "owner_session_id": null,
-            "agent_name": agent_name,
-            "display_label": agent_name,
-            "description": agent_name,
-            "source": "builtin",
-            "color": null,
-            "session_id": format!("session-{id}"),
-            "exec_session_id": exec_session_id,
-            "desired_enabled": desired_enabled,
-            "status": "running",
-            "created_at": "2026-08-28T00:00:00Z",
-            "updated_at": "2026-08-28T00:00:00Z",
-            "started_at": null,
-            "ended_at": null,
-            "pid": null,
-            "prompt": "work",
-            "summary": null,
-            "error": null,
-            "archive_path": null,
-            "transcript_path": null,
-            "max_turns": null,
-            "model_override": null,
-            "reasoning_override": null,
-            "restart_attempts": 0
-        }))
-        .expect("persisted background record")
-    }
-
-    /// Records the child snapshots one controller publishes.
-    #[derive(Default)]
-    struct ChildStatusObserver {
-        entries: Mutex<Vec<SubagentStatusEntry>>,
-    }
-
-    impl SubagentProgressObserver for ChildStatusObserver {
-        fn subagent_status_changed(&self, entry: SubagentStatusEntry) {
-            self.entries
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push(entry);
-        }
-
-        fn background_status_changed(&self, _entry: BackgroundSubprocessEntry) {}
-    }
-
-    /// Closing a settled child must publish the outcome its abort interrupted.
-    ///
-    /// The child loop records `Completed` and wakes its waiters before it
-    /// awaits the publication of that outcome. A close that lands in that
-    /// window takes the still-live handle and aborts the only publisher, so
-    /// without publishing here observers keep reporting a running task the
-    /// caller was already told had finished.
-    #[tokio::test]
-    async fn close_publishes_a_terminal_outcome_its_abort_interrupted() {
-        let workspace = TempDir::new().expect("tempdir");
-        let controller = SubagentController::new(test_config(workspace.path().to_path_buf()))
-            .await
-            .expect("controller");
-        let mut record = child_record("agent-worker", SubagentStatus::Running);
-        // A pending task gives the close a live handle to abort; it can never
-        // finish on its own and race the close.
-        record.handle = Some(tokio::spawn(std::future::pending::<()>()));
-        let id = controller
-            .insert_child_with_candidate_id("agent-worker", record)
-            .await
-            .expect("insert child");
-
-        let observer = Arc::new(ChildStatusObserver::default());
-        let registration = controller.register_progress_observer("parent-session", observer.clone());
-        controller.publish_child_status(&id).await;
-
-        // The status is terminal while the handle is still live: the exact
-        // window in which the child has recorded its outcome but not published
-        // it.
-        {
-            let mut state = controller.state.write().await;
-            let record = state.children.get_mut(&id).expect("child record");
-            record.status = SubagentStatus::Completed;
-            record.completed_at = Some(Utc::now());
-        }
-
-        let closed = controller
-            .close(TaskOwner::Workspace, &id)
-            .await
-            .expect("close the settled child");
-        assert_eq!(closed.status, SubagentStatus::Completed, "a settled outcome survives the close");
-
-        let published = observer
-            .entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        assert_eq!(
-            published.first().map(|entry| entry.status),
-            Some(SubagentStatus::Running),
-            "the observer first sees the running task"
-        );
-        assert_eq!(
-            published.last().map(|entry| entry.status),
-            Some(SubagentStatus::Completed),
-            "the close must publish the terminal outcome its abort interrupted: {published:?}"
-        );
-
-        drop(registration);
-    }
-
-    /// A stale stop's save must keep a replacement launch another controller
-    /// wrote.
-    ///
-    /// The ledger row names `exec-replacement`, while this controller still
-    /// holds a stopped copy of `exec-stopped` with the newer `updated_at`. The
-    /// save must carry the stopped launch's exec session into the merge, so
-    /// stop precedence applies only to the launch it names instead of
-    /// overwriting the replacement row.
-    #[tokio::test]
-    async fn a_stale_stop_save_keeps_a_replacement_launch_in_the_ledger() {
-        let workspace = TempDir::new().expect("tempdir");
-        let controller = SubagentController::new(test_config(workspace.path().to_path_buf()))
-            .await
-            .expect("controller");
-        persist_background_state(
-            workspace.path(),
-            vec![persisted_background_record(
-                "background-worker",
-                "worker",
-                "exec-replacement",
-                true,
-            )],
-        )
-        .await
-        .expect("seed the replacement launch");
-
-        let mut record = background_record(
-            "background-worker",
-            "worker",
-            "exec-stopped",
-            BackgroundSubprocessStatus::Stopped,
-            false,
-        );
-        // The stale stop must outrank the persisted row by timestamp, or the
-        // merge would keep the replacement for the wrong reason.
-        record.updated_at = "2030-01-01T00:00:00Z".parse().expect("stale stop timestamp");
-        {
-            let mut state = controller.state.write().await;
-            state.background_children.insert(record.id.clone(), record);
-        }
-
-        controller.save_background_state().await.expect("save the stale stop");
-
-        let ledger = load_background_state(workspace.path()).await.expect("read the ledger");
-        assert_eq!(ledger.records.len(), 1, "the merge keeps one row per canonical id");
-        assert_eq!(
-            ledger.records[0].exec_session_id, "exec-replacement",
-            "the stale stop must not replace a launch it does not name"
-        );
-        let persisted = serde_json::to_value(&ledger.records[0]).expect("render the persisted row");
-        assert_eq!(persisted["desired_enabled"], serde_json::json!(true), "the replacement launch stays wanted");
-    }
-}
-
+mod regression_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

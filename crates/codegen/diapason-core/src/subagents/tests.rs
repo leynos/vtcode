@@ -13,6 +13,7 @@ use diapason_config::{
     HookCommandConfig, HookGroupConfig, HooksConfig, IsolationMode, SubagentMcpServer, SubagentMemoryScope,
     SubagentSource, SubagentSpec,
 };
+use rstest::fixture;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -239,6 +240,83 @@ async fn wait_for_effective_model(controller: &SubagentController, target: &str)
     }
 
     Err(anyhow!("Subagent {target} did not capture an effective runtime configuration in time"))
+}
+
+/// Two sibling children, each owning a child-scoped controller with a running
+/// grandchild, registered on one parent controller.
+///
+/// Shared by the sibling-isolation cases so the close and resume paths cannot
+/// arrange the tree differently and prove different things.
+struct SiblingControllers {
+    _temp: TempDir,
+    parent: SubagentController,
+    controller_a: Arc<SubagentController>,
+    controller_b: Arc<SubagentController>,
+}
+
+/// Builds a child-scoped controller holding one running grandchild.
+async fn sibling_grandchild_controller(
+    workspace: &std::path::Path,
+    spec: &SubagentSpec,
+    sibling: &str,
+) -> SubagentController {
+    let controller =
+        SubagentController::new(test_controller_config(workspace.to_path_buf(), DiapasonConfig::default()))
+            .await
+            .expect("child controller");
+    let session_id = format!("session-{sibling}");
+    let grandchild_id = format!("{sibling}-grandchild");
+    let grandchild_session_id = format!("session-{sibling}-grandchild");
+    controller.state.write().await.children.insert(
+        grandchild_id.clone(),
+        test_child_record(&grandchild_id, &grandchild_session_id, &session_id, spec, SubagentStatus::Running, 2, None),
+    );
+    controller
+}
+
+/// A parent controller with two sibling children, each holding a grandchild.
+#[fixture]
+async fn sibling_controllers() -> SiblingControllers {
+    let temp = TempDir::new().expect("tempdir");
+    let parent = SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
+        .await
+        .expect("parent controller");
+    let spec = diapason_config::builtin_subagents()
+        .into_iter()
+        .find(|spec| spec.name == "explorer")
+        .expect("explorer");
+
+    let controller_a = Arc::new(sibling_grandchild_controller(temp.path(), &spec, "a").await);
+    let controller_b = Arc::new(sibling_grandchild_controller(temp.path(), &spec, "b").await);
+    {
+        let mut state = parent.state.write().await;
+        state.children.insert(
+            "a".to_string(),
+            test_child_record(
+                "a",
+                "session-a",
+                "parent-session",
+                &spec,
+                SubagentStatus::Running,
+                1,
+                Some(controller_a.clone()),
+            ),
+        );
+        state.children.insert(
+            "b".to_string(),
+            test_child_record(
+                "b",
+                "session-b",
+                "parent-session",
+                &spec,
+                SubagentStatus::Running,
+                1,
+                Some(controller_b.clone()),
+            ),
+        );
+    }
+
+    SiblingControllers { _temp: temp, parent, controller_a, controller_b }
 }
 
 fn read_only_test_spec(name: &str) -> SubagentSpec {

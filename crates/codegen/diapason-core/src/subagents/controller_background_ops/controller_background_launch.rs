@@ -118,7 +118,39 @@ impl SubagentController {
         &self,
         launch: &PreparedBackgroundSubprocess,
     ) -> Result<Option<BackgroundSubprocessEntry>> {
+        // An explicit request can finish `refresh_background_processes` just
+        // before a matching launch commits `Running`. Answering from memory then
+        // reports a record whose ledger write is still owed, so a failure of
+        // that write would never be visible to this caller. The marker is
+        // checked under the same lock that selects the record; when it is
+        // raised, the lock is released, the write is retried, and the record is
+        // selected again once the write it owed has succeeded.
         let state = self.state.read().await;
+        if pending_background_ledger_write_generation(&self.state).is_none() {
+            return Self::reusable_background_from_state(launch, &state);
+        }
+        drop(state);
+        self.retry_owed_background_ledger_write().await?;
+        let state = self.state.read().await;
+        if pending_background_ledger_write_generation(&self.state).is_some() {
+            // Another write failed while the retry ran. Reporting the record now
+            // would still answer for one the ledger may never hold.
+            bail!(
+                "Background subprocess '{}' still owes its ledger write; retry once it has been persisted",
+                launch.agent_name
+            );
+        }
+        Self::reusable_background_from_state(launch, &state)
+    }
+
+    /// Selects the reusable record for `launch` from the state it read.
+    ///
+    /// The caller holds the state lock and has checked that no ledger write is
+    /// owed, so a matching record it reports is one the ledger already holds.
+    fn reusable_background_from_state(
+        launch: &PreparedBackgroundSubprocess,
+        state: &ControllerState,
+    ) -> Result<Option<BackgroundSubprocessEntry>> {
         let Some(record) = state.background_children.get(&launch.record_id) else {
             return Ok(None);
         };
@@ -179,7 +211,8 @@ impl SubagentController {
 
 #[cfg(test)]
 mod effective_reuse_tests {
-    //! Pins the effective-settings rule the reuse check compares.
+    //! Pins the effective-settings rule the reuse check compares and the
+    //! ledger obligation reuse waits for before answering.
 
     use std::path::PathBuf;
 
@@ -187,9 +220,13 @@ mod effective_reuse_tests {
 
     use crate::config::DiapasonConfig;
     use crate::config::types::ReasoningEffortLevel;
+    use crate::subagents::background::{background_state_lock_path_for_tests, load_background_state};
     use crate::tools::exec_session::ExecSessionManager;
     use crate::tools::registry::PtySessionManager;
 
+    use super::super::controller_background_settlement::{
+        mark_background_ledger_write_pending, pending_background_ledger_write_generation,
+    };
     use super::*;
 
     fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
@@ -313,6 +350,59 @@ mod effective_reuse_tests {
             .expect_err("a request for different work must not reuse the active record");
 
         assert!(error.to_string().contains("different model"), "the conflict names the model: {error:#}");
+
+        controller.signal_shutdown().await;
+    }
+
+    /// Reuse must not answer from memory while the record's write is owed.
+    ///
+    /// An explicit request can finish `refresh_background_processes` just
+    /// before a matching launch commits `Running`. This lookup would then
+    /// report that record as durable although its ledger write may still fail.
+    /// The selection checks the pending-write marker under its own lock, retries
+    /// the write, and answers only once the record is durable.
+    #[tokio::test]
+    async fn a_reuse_waits_for_the_active_records_owed_ledger_write() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = active_record_controller(&temp, Some("model-x")).await;
+        let generation = mark_background_ledger_write_pending(&controller.state);
+
+        // An unacquirable ledger lock makes the retry fail, so reuse must report
+        // that fault rather than answering from the in-memory record.
+        let lock_path = background_state_lock_path_for_tests(temp.path());
+        std::fs::create_dir_all(&lock_path).expect("the lock path blocks the write");
+        let error = controller
+            .reusable_background_subprocess(&prepared_launch(None, Some("model-x")))
+            .await
+            .expect_err("reuse must retry the owed write before answering");
+        assert!(
+            format!("{error:#}").contains("background_subagents.lock"),
+            "the reuse fault names the ledger lock: {error:#}"
+        );
+        assert_eq!(
+            pending_background_ledger_write_generation(&controller.state),
+            Some(generation),
+            "a failed retry leaves the obligation owed"
+        );
+        std::fs::remove_dir(&lock_path).expect("the lock path is writable again");
+
+        let reused = controller
+            .reusable_background_subprocess(&prepared_launch(None, Some("model-x")))
+            .await
+            .expect("reuse waits for the owed write");
+        let entry = reused.expect("the active launch satisfies the request");
+        assert_eq!(entry.exec_session_id, "exec-live");
+        assert!(
+            pending_background_ledger_write_generation(&controller.state).is_none(),
+            "a successful write discharges the obligation"
+        );
+        let persisted = load_background_state(temp.path()).await.expect("reload the ledger");
+        let stored = persisted
+            .records
+            .iter()
+            .find(|record| record.id == "background-worker")
+            .expect("the record reuse reported is durable");
+        assert_eq!(stored.exec_session_id, "exec-live", "the reused record reached the ledger");
 
         controller.signal_shutdown().await;
     }

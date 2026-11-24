@@ -7,7 +7,8 @@
 use super::super::super::{BackgroundOutput, BackgroundOutputSource};
 use super::super::ExecSessionOutputReader;
 use crate::config::PtyConfig;
-use crate::tools::exec_session::{ExecSessionManager, controller_exec_session_id};
+use crate::subagents::controller_exec_session_id;
+use crate::tools::exec_session::ExecSessionManager;
 #[cfg(feature = "tui")]
 use crate::tools::pty::PtySize;
 use crate::tools::registry::PtySessionManager;

@@ -39,24 +39,35 @@ fn test_config(workspace_root: PathBuf, vt_cfg: DiapasonConfig) -> SubagentContr
 }
 
 /// Initialises a throwaway git repository so a worktree can be created in it.
+///
+/// Every command runs with an explicit identity and with signing and hooks
+/// disabled, so a developer's global or system Git configuration cannot change
+/// or block the seed commit.
 fn init_repository(root: &std::path::Path) {
+    let hooks = TempDir::new().expect("isolated hooks directory");
+    let hooks_path = hooks.path().to_path_buf();
     let run = |args: &[&str]| {
-        let output = Command::new("git").args(args).current_dir(root).output().expect("spawn git");
+        let output = Command::new("git")
+            .arg("-c")
+            .arg("user.name=diapason-test")
+            .arg("-c")
+            .arg("user.email=test@diapason.dev")
+            .arg("-c")
+            .arg("commit.gpgsign=false")
+            .arg("-c")
+            .arg("tag.gpgsign=false")
+            .arg("-c")
+            .arg(format!("core.hooksPath={}", hooks_path.display()))
+            .args(args)
+            .current_dir(root)
+            .output()
+            .expect("spawn git");
         assert!(output.status.success(), "git {args:?} failed: {}", String::from_utf8_lossy(&output.stderr));
     };
     run(&["init", "-q"]);
-    run(&["config", "user.email", "test@diapason.dev"]);
-    run(&["config", "user.name", "diapason-test"]);
     std::fs::write(root.join("README.md"), "seed\n").expect("write seed file");
     run(&["add", "."]);
     run(&["commit", "-q", "-m", "seed"]);
-}
-
-/// Returns how many worktree checkouts this workspace still holds.
-fn worktree_count(root: &std::path::Path) -> usize {
-    std::fs::read_dir(root.join(diapason_commons::workspace_dir_name()).join("worktrees"))
-        .map(|entries| entries.count())
-        .unwrap_or(0)
 }
 
 /// A close that lands between insertion and launch reclaims the checkout.
@@ -94,15 +105,19 @@ async fn a_launch_refused_after_insertion_reclaims_its_worktree() {
         ..SpawnAgentRequest::default()
     });
     tokio::pin!(spawn);
-    let child_id = tokio::select! {
+    let (child_id, checkout) = tokio::select! {
         result = &mut spawn => panic!("the gated spawn launched before the close landed: {result:?}"),
         () = entered.notified() => {
             let state = controller.state.read().await;
             let (id, record) = state.children.iter().next().expect("the inserted child");
             assert_eq!(record.status, SubagentStatus::Queued, "the launch published the queued state");
-            assert!(record.worktree_path.is_some(), "the spawn created the isolation worktree");
-            assert_eq!(worktree_count(workspace.path()), 1, "the checkout exists before the close lands");
-            id.clone()
+            let checkout = record.worktree_path.clone().expect("the spawn created the isolation worktree");
+            assert!(
+                checkout.is_dir(),
+                "the checkout at {} exists before the close lands",
+                checkout.display()
+            );
+            (id.clone(), checkout)
         }
     };
 
@@ -122,10 +137,14 @@ async fn a_launch_refused_after_insertion_reclaims_its_worktree() {
         "the caller keeps the refusal that caused the reclaim: {error:#}"
     );
 
-    assert_eq!(
-        worktree_count(workspace.path()),
-        0,
-        "a launch refused before it started must not leak its worktree checkout"
+    // Inspect the exact checkout captured at the checkpoint, and fail on any
+    // error other than its absence: a permission or I/O fault must not read as
+    // a successful cleanup.
+    let inspection = std::fs::metadata(&checkout);
+    assert!(
+        matches!(&inspection, Err(error) if error.kind() == std::io::ErrorKind::NotFound),
+        "a launch refused before it started must remove the checkout at {}: {inspection:?}",
+        checkout.display()
     );
     let state = controller.state.read().await;
     let record = state.children.get(&child_id).expect("the record survives the refused launch");

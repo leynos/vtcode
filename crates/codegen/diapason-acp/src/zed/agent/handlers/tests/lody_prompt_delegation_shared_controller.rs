@@ -122,11 +122,23 @@ async fn prompt_driven_agent_tool_fails_closed_when_only_the_workspace_has_a_con
                 "the client must receive the fail-closed message: {}",
                 tool_update_text(&update)
             );
-            let entries = controller.background_status_entries(TaskOwner::Workspace).await;
-            assert!(entries.is_empty(), "fail-closed delegation must not record a shared background task: {entries:?}");
+            // A fail-closed delegation must leave both scopes empty. A child
+            // process can only appear through a recorded background entry
+            // holding its pid, so asserting the record set is empty (rather
+            // than checking each recorded entry for a pid) is the assertion
+            // that can fail; a per-entry pid check over an empty set would be
+            // vacuously true.
+            let workspace_entries = controller.background_status_entries(TaskOwner::Workspace).await;
             assert!(
-                entries.iter().all(|entry| entry.pid.is_none()),
-                "fail-closed delegation must not start a child process"
+                workspace_entries.is_empty(),
+                "fail-closed delegation must not record a shared background task: {workspace_entries:?}"
+            );
+            let session_entries = controller
+                .background_status_entries(TaskOwner::Session(session.session_id.0.as_ref()))
+                .await;
+            assert!(
+                session_entries.is_empty(),
+                "fail-closed delegation must not attribute a background task to the session: {session_entries:?}"
             );
             assert!(!ledger_path.exists(), "fail-closed delegation must not persist a background ledger");
             close_session(&cx, session.session_id).await?;

@@ -4,8 +4,10 @@ use super::*;
 #[test]
 fn resolve_subagent_model_maps_aliases() {
     let cfg = DiapasonConfig::default();
+    // The parent differs from the alias target, so a resolver that fell back
+    // to the parent instead of mapping "haiku" would fail this assertion.
     let resolved =
-        resolve_subagent_model(&cfg, models::anthropic::CLAUDE_SONNET_5, "anthropic", Some("haiku"), "explorer")
+        resolve_subagent_model(&cfg, models::anthropic::CLAUDE_OPUS_5, "anthropic", Some("haiku"), "explorer")
             .expect("resolve model");
     assert_eq!(resolved.as_str(), models::anthropic::CLAUDE_SONNET_5);
 }

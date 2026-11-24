@@ -49,6 +49,7 @@ pub use background_ledger::{PersistedBackgroundRecord, PersistedBackgroundState}
 pub use background_output::{
     BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundTaskRef, ExecSessionOutputReader,
 };
+pub(crate) use background_output::{controller_exec_session_id, controller_exec_session_task_id};
 pub use call_action::{agent_call_action, agent_call_targets};
 pub use config::{
     ResolvedAgentRuntimeView, build_child_config, compose_subagent_instructions, filter_child_tools,
@@ -66,6 +67,7 @@ pub use prompt::{
     contains_explicit_delegation_request, contains_explicit_model_request, delegated_task_requires_clarification,
     extract_explicit_agent_mentions, normalize_requested_model_override, request_prompt, sanitize_subagent_input_items,
 };
+pub(crate) use types::HookPayload;
 pub use types::{
     BackgroundLiveness, BackgroundLivenessEntry, BackgroundRecord, BackgroundSubprocessEntry,
     BackgroundSubprocessSnapshot, BackgroundSubprocessStatus, ChildRecord, ChildRunResult, ControllerState,

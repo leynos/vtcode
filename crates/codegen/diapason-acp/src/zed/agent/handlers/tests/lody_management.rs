@@ -1,16 +1,25 @@
 //! Exercises the Lody subagent-management extensions over the official ACP duplex.
+//!
+//! The lifecycle publication and list projections live in
+//! `lody_management_projection`, the read-boundary probes in
+//! `lody_management_reads`, and the registry and metrics assertions in
+//! `lody_management_assertions`, so this module keeps only the protocol flow
+//! that sequences them.
 
+use super::lody_management_assertions::{assert_management_requests_are_accounted, exercise_detached_session_registry};
+use super::lody_management_projection::{assert_active_task_projection, publish_forwarder_snapshot_on_attach};
+use super::lody_management_reads::{
+    read_exited_output_is_inert, read_live_output_until_recorded, read_stale_record_output_is_inert,
+    spawn_stale_background_record,
+};
 use super::lody_support::{
-    LODY_BACKGROUND_SCRIPT, LODY_EXITING_BACKGROUND_SCRIPT, RecordingBackgroundObserver, drain_notifications,
-    expected_epoch_seconds, lifecycle_task_id, lifecycle_task_meta, lody_cancel_with_reason, lody_ext, lody_list,
-    lody_output_error, lody_output_tail, observable_background_snapshot, runtime_active_sessions,
-    write_lody_background_fixture, write_lody_background_script,
+    LODY_BACKGROUND_SCRIPT, expected_epoch_seconds, lifecycle_task_id, lody_cancel_with_reason, lody_ext, lody_list,
+    lody_output_error, lody_output_tail, runtime_active_sessions, write_lody_background_fixture,
+    write_lody_background_script,
 };
 use super::*;
 use agent_client_protocol::schema::v1::{CloseSessionRequest, InitializeRequest, NewSessionRequest};
-use diapason_core::subagents::{
-    BackgroundSubprocessStatus, SpawnBackgroundSubprocessRequest, TaskOwner, background_record_id,
-};
+use diapason_core::subagents::{SpawnBackgroundSubprocessRequest, TaskOwner, background_record_id};
 use std::time::Duration;
 
 #[tokio::test]
@@ -104,141 +113,29 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 );
             }
 
-            // Attaching the lifecycle forwarder after the task is already
-            // running must publish its current snapshot; otherwise a resumed
-            // task that never transitions again stays invisible to the client.
-            inspected_agent
-                .ensure_task_lifecycle_forwarder(&owned_session)
-                .expect("start lifecycle forwarder for the attached session");
-            let initial_task = tokio::time::timeout(Duration::from_secs(2), async {
-                loop {
-                    let notification = notification_rx.recv().await.expect("lifecycle notification stream");
-                    if let Some(task) = lifecycle_task_meta(&notification) {
-                        break task;
-                    }
-                }
-            })
-            .await
-            .expect("initial lifecycle snapshot deadline");
-            assert_eq!(
-                initial_task["taskId"], background.id,
-                "a task that was already running must be published when the forwarder attaches"
-            );
-            assert_eq!(initial_task["kind"], "background");
-            let restored_status = initial_task["status"].as_str().expect("projected task status");
-            assert!(
-                matches!(restored_status, "pending" | "in_progress"),
-                "a restored task that is still running must be published as active, got {restored_status}"
-            );
+            publish_forwarder_snapshot_on_attach(
+                &inspected_agent,
+                &owned_session,
+                &background.id,
+                &mut notification_rx,
+            )
+            .await;
+            let active_started_at_epoch_seconds =
+                assert_active_task_projection(&cx, &controller, &session.session_id, &background.id).await;
 
-            // The background process records its start asynchronously, so wait
-            // until the controller observes it before asserting the projection.
-            let active_entry = tokio::time::timeout(Duration::from_secs(10), async {
-                loop {
-                    let entry = controller
-                        .refresh_then_background_snapshot(TaskOwner::Workspace, &background.id)
-                        .await
-                        .expect("read the owned background snapshot")
-                        .entry;
-                    if entry.started_at.is_some() {
-                        break entry;
-                    }
-                    tokio::time::sleep(Duration::from_millis(25)).await;
-                }
-            })
-            .await
-            .expect("the background task must record its start");
-
-            let response = lody_list(&cx, &session.session_id, false).await?;
-            assert_eq!(response["tasks"][0]["taskId"], background.id);
-            let expected_status = match active_entry.status {
-                BackgroundSubprocessStatus::Starting | BackgroundSubprocessStatus::Running => "running",
-                BackgroundSubprocessStatus::Stopped => "completed",
-                BackgroundSubprocessStatus::Error => "failed",
-            };
+            let output = read_live_output_until_recorded(
+                &cx,
+                &controller,
+                &session.session_id,
+                &background.id,
+                &workspace_path,
+                &mut notification_rx,
+            )
+            .await?;
             assert_eq!(
-                response["tasks"][0]["status"], expected_status,
-                "the listed status must project the controller record: {response}"
+                output["output"], "lody-output-two",
+                "the live output read must return the fixture's final line: {output}"
             );
-            assert_eq!(
-                response["tasks"][0]["startedAtEpochSeconds"],
-                expected_epoch_seconds(active_entry.started_at.unwrap_or(active_entry.created_at)),
-                "the listed start must project the controller record: {response}"
-            );
-            assert!(
-                response["tasks"][0]["endedAtEpochSeconds"].is_null(),
-                "an active task must not report an end instant: {response}"
-            );
-            let active_started_at_epoch_seconds = response["tasks"][0]["startedAtEpochSeconds"].clone();
-            let active_response = lody_list(&cx, &session.session_id, true).await?;
-            assert_eq!(
-                active_response["tasks"][0]["taskId"], background.id,
-                "activeOnly must still list a task that is running"
-            );
-            let active_status = active_response["tasks"][0]["status"].as_str().expect("projected task status");
-            assert!(
-                matches!(active_status, "pending" | "running"),
-                "an active task must be reported as active, got {active_status}"
-            );
-
-            let mut output = serde_json::Value::Null;
-            // The spawn published its run-started transition asynchronously.
-            // Settle that traffic before the probe window so the comparison
-            // below attributes every difference to the read under test. A
-            // quiet window is the goal, so either outcome is acceptable: a
-            // delivered notification restarts the window, and the outer
-            // timeout ends it.
-            drop(
-                tokio::time::timeout(Duration::from_secs(2), async {
-                    while tokio::time::timeout(Duration::from_millis(100), notification_rx.recv())
-                        .await
-                        .is_ok()
-                    {}
-                })
-                .await,
-            );
-            // The lifecycle forwarder delivers asynchronously, so draining the
-            // client channel after the response would race its delivery. The
-            // controller calls its progress observers synchronously from the
-            // publication site, so a recording observer proves the read
-            // published nothing without depending on delivery timing.
-            let observer = Arc::new(RecordingBackgroundObserver::default());
-            let _observer_registration = controller.register_progress_observer(
-                session.session_id.0.to_string(),
-                Arc::clone(&observer) as Arc<dyn diapason_core::subagents::SubagentProgressObserver>,
-            );
-            for _ in 0..20 {
-                let _ = observer.take();
-                let before = observable_background_snapshot(
-                    &controller,
-                    TaskOwner::Session(session.session_id.0.as_ref()),
-                    &workspace_path,
-                    0,
-                )
-                .await;
-                output = lody_output_tail(&cx, &session.session_id, &background.id, 1).await?;
-                let published = observer.take();
-                let after = observable_background_snapshot(
-                    &controller,
-                    TaskOwner::Session(session.session_id.0.as_ref()),
-                    &workspace_path,
-                    0,
-                )
-                .await;
-                assert_eq!(
-                    after, before,
-                    "an output read must not change records, timestamps, ledger bytes, or process state"
-                );
-                assert!(
-                    published.is_empty(),
-                    "an output read must not publish a background status update: {published:?}"
-                );
-                if output["output"] == "lody-output-two" {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(25)).await;
-            }
-            assert_eq!(output["output"], "lody-output-two");
 
             // A client may still hold the pre-owner-scoping id. The management
             // layer resolves it to the canonical record the session owns, so
@@ -375,64 +272,15 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 "activeOnly must exclude a terminal task"
             );
 
-            // A read of a task whose process has already exited must be as
-            // inert as a live read. The exec session is gone, so the reader
-            // falls back to the archive; the request must not settle, respawn,
-            // persist, or publish anything.
-            // Cancelling the task published its terminal transition
-            // asynchronously. Settle that traffic before the probe window so
-            // the comparison below attributes every difference to the read
-            // under test. A quiet window is the goal, so either outcome is
-            // acceptable: a delivered notification restarts the window, and
-            // the outer timeout ends it.
-            drop(
-                tokio::time::timeout(Duration::from_secs(2), async {
-                    while tokio::time::timeout(Duration::from_millis(100), notification_rx.recv())
-                        .await
-                        .is_ok()
-                    {}
-                })
-                .await,
-            );
-            // The lifecycle forwarder delivers asynchronously, so draining the
-            // client channel after the response would race its delivery. The
-            // controller calls its progress observers synchronously from the
-            // publication site, so a recording observer proves the read
-            // published nothing without depending on delivery timing.
-            let exited_observer = Arc::new(RecordingBackgroundObserver::default());
-            let _exited_observer_registration = controller.register_progress_observer(
-                session.session_id.0.to_string(),
-                Arc::clone(&exited_observer) as Arc<dyn diapason_core::subagents::SubagentProgressObserver>,
-            );
-            let _ = exited_observer.take();
-            let before = observable_background_snapshot(
+            let _exited_output = read_exited_output_is_inert(
+                &cx,
                 &controller,
-                TaskOwner::Session(session.session_id.0.as_ref()),
+                &session.session_id,
+                &background.id,
                 &workspace_path,
-                0,
+                &mut notification_rx,
             )
-            .await;
-            let exited_output = lody_output_tail(&cx, &session.session_id, &background.id, 20).await?;
-            let published = exited_observer.take();
-            let after = observable_background_snapshot(
-                &controller,
-                TaskOwner::Session(session.session_id.0.as_ref()),
-                &workspace_path,
-                0,
-            )
-            .await;
-            assert_eq!(
-                after, before,
-                "an output read of an exited task must not change records, timestamps, ledger bytes, or process state"
-            );
-            assert!(
-                published.is_empty(),
-                "an output read of an exited task must not publish a background status update: {published:?}"
-            );
-            assert!(
-                exited_output["output"].as_str().is_some(),
-                "an exited task must still answer with a bounded output string: {exited_output}"
-            );
+            .await?;
 
             // A record the controller still caches as active, whose child has
             // already exited, is the case an accidental refresh would settle.
@@ -440,138 +288,16 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             // anything. The missing-exec-session arm of the same boundary is
             // covered by the reader's own `missing_exec_session_falls_back_to_the_archive`
             // and `not_ready_live_output_falls_back_to_the_archive` cases.
-            // The shared fixture script is rewritten to exit after its output,
-            // so the second task's process ends on its own while the controller
-            // still caches the record as active.
-            write_lody_background_script(&workspace_path, LODY_EXITING_BACKGROUND_SCRIPT);
-            let stale = controller
-                .spawn_background_subprocess(SpawnBackgroundSubprocessRequest {
-                    agent_type: Some("background-demo".to_string()),
-                    ..SpawnBackgroundSubprocessRequest::default()
-                })
-                .await
-                .expect("spawn a second owned background task");
-            let recorded_output = tokio::time::timeout(Duration::from_secs(10), async {
-                loop {
-                    let output = controller
-                        .background_output_tail(TaskOwner::Workspace, &stale.id, 20)
-                        .await
-                        .expect("read the second task's live output");
-                    if output.contains("lody-output-two") {
-                        break output;
-                    }
-                    tokio::time::sleep(Duration::from_millis(25)).await;
-                }
-            })
-            .await
-            .expect("the second background task must record its output");
-            // The liveness projection reports the ended exec session without
-            // mutating the cached record, so it is the observable that proves
-            // the process is gone while the record is still active.
-            tokio::time::timeout(Duration::from_secs(10), async {
-                loop {
-                    let projected = controller
-                        .background_status_entries_with_liveness(TaskOwner::Session(session.session_id.0.as_ref()))
-                        .await
-                        .into_iter()
-                        .find(|observed| observed.entry.id == stale.id)
-                        .expect("the second background record must be cached");
-                    if !projected.entry.status.is_active() {
-                        break;
-                    }
-                    tokio::time::sleep(Duration::from_millis(25)).await;
-                }
-            })
-            .await
-            .expect("the second background task's exec session must end");
-            let cached = controller
-                .background_status_entries(TaskOwner::Session(session.session_id.0.as_ref()))
-                .await
-                .into_iter()
-                .find(|entry| entry.id == stale.id)
-                .expect("the second background record must stay cached");
-            assert!(
-                cached.status.is_active(),
-                "the controller must still cache the task as active before the read: {cached:?}"
-            );
-
-            // Spawning the task publishes its lifecycle update asynchronously.
-            // Settle that traffic before the baseline so the comparison below
-            // attributes every difference to the read under test.
-            // A quiet window is the goal, so either outcome is acceptable: a
-            // delivered notification restarts the window, and the outer
-            // timeout ends it.
-            drop(
-                tokio::time::timeout(Duration::from_secs(2), async {
-                    while tokio::time::timeout(Duration::from_millis(100), notification_rx.recv())
-                        .await
-                        .is_ok()
-                    {}
-                })
-                .await,
-            );
-            let _ = drain_notifications(&mut notification_rx);
-            // The lifecycle forwarder delivers asynchronously, so draining the
-            // client channel after the response would race its delivery. The
-            // controller calls its progress observers synchronously from the
-            // publication site, so a recording observer proves the read
-            // published nothing without depending on delivery timing.
-            let observer = Arc::new(RecordingBackgroundObserver::default());
-            let _observer_registration = controller.register_progress_observer(
-                session.session_id.0.to_string(),
-                Arc::clone(&observer) as Arc<dyn diapason_core::subagents::SubagentProgressObserver>,
-            );
-            let _ = observer.take();
-            let before = observable_background_snapshot(
+            let stale = spawn_stale_background_record(&controller, &session.session_id, &workspace_path).await;
+            let _stale_output = read_stale_record_output_is_inert(
+                &cx,
                 &controller,
-                TaskOwner::Session(session.session_id.0.as_ref()),
+                &session.session_id,
                 &workspace_path,
-                0,
+                &mut notification_rx,
+                &stale,
             )
-            .await;
-            let stale_output = lody_output_tail(&cx, &session.session_id, &stale.id, 20).await?;
-            let published = observer.take();
-            let after = observable_background_snapshot(
-                &controller,
-                TaskOwner::Session(session.session_id.0.as_ref()),
-                &workspace_path,
-                0,
-            )
-            .await;
-            assert_eq!(
-                after, before,
-                "an output read of an active record with an exited child must not refresh, settle, respawn, or persist"
-            );
-            assert!(published.is_empty(), "an output read must not publish a background status update: {published:?}");
-            let still_cached = controller
-                .background_status_entries(TaskOwner::Session(session.session_id.0.as_ref()))
-                .await
-                .into_iter()
-                .find(|entry| entry.id == stale.id)
-                .expect("the second background record must stay cached after the read");
-            assert!(
-                still_cached.status.is_active(),
-                "an output read must not settle a record the controller still caches as active"
-            );
-            assert_eq!(
-                stale_output["output"], recorded_output,
-                "an exited task must still serve the output it recorded: {stale_output}"
-            );
-            match cached.transcript_path.as_ref().or(cached.archive_path.as_ref()) {
-                Some(path) => {
-                    let archived = std::fs::read_to_string(path).expect("read the recorded transcript");
-                    assert!(
-                        archived.contains(stale_output["output"].as_str().unwrap_or_default()),
-                        "a recorded transcript must supply the read output: {stale_output}"
-                    );
-                }
-                None => assert!(
-                    stale_output["output"]
-                        .as_str()
-                        .is_some_and(|output| output.contains("lody-output-two")),
-                    "a task with no recorded transcript must serve its live buffer: {stale_output}"
-                ),
-            }
+            .await?;
             // Restore the long-running fixture before the sibling spawn below,
             // which must stay live. The stale child has already read its own
             // script and exited, so rewriting the file cannot affect it.
@@ -579,96 +305,21 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             // The child is already gone, so cleanup only settles the record and
             // releases its exec session.
             let settled = controller
-                .force_cancel_background(TaskOwner::Workspace, &stale.id)
+                .force_cancel_background(TaskOwner::Workspace, stale.id())
                 .await
                 .expect("settle the second background task")
                 .into_entry();
             assert!(!settled.status.is_active(), "the second task must be settled during cleanup");
 
-            // Exercise the registry route itself: a detached session view must
-            // never execute through the shared runtime's ownerless controller.
-            let registry = foreign_runtime
-                .local_tool_registry
-                .with_subagent_controller(Some(Arc::clone(&foreign_controller)));
-            registry.mark_tool_preapproved("agent").await;
-            let spawned = registry
-                .execute_tool(
-                    "agent",
-                    serde_json::json!({
-                        "action": "spawn_subprocess", "agent_type": "background-demo",
-                    }),
-                )
-                .await
-                .expect("spawn through the session registry executor");
-            let sibling = foreign_controller
-                .background_status_entries(TaskOwner::Session(foreign_session.session_id.0.as_ref()))
-                .await
-                .into_iter()
-                .next()
-                .expect("sibling task");
-            assert_eq!(sibling.owner_session_id.as_deref(), Some(foreign_session.session_id.0.as_ref()));
-            assert_ne!(
-                sibling.exec_session_id, background.exec_session_id,
-                "same-workspace sessions need distinct child processes"
-            );
-            assert_eq!(spawned["id"], sibling.id);
-            let disabled = registry.with_subagent_controller(None);
-            // Preapproval is consumed once, including on the successful spawn.
-            disabled.mark_tool_preapproved("agent").await;
-            let denied = disabled
-                .execute_tool(
-                    "agent",
-                    serde_json::json!({
-                        "action": "spawn_subprocess", "agent_type": "background-demo",
-                    }),
-                )
-                .await
-                .expect("registry execution errors are returned in the public JSON envelope");
-            assert_eq!(denied["error"]["message"], "Subagent controller is not active in this session");
-            assert_eq!(denied["error"]["category"], "ExecutionError");
-            assert!(denied.get("id").is_none(), "an empty controller slot must not spawn a child: {denied}");
-            assert!(registry.has_subagent_controller(), "detaching a sibling view must not clear its controller");
+            let sibling = exercise_detached_session_registry(
+                &foreign_runtime,
+                &foreign_controller,
+                &foreign_session.session_id,
+                &background.exec_session_id,
+            )
+            .await;
 
-            // Request accounting is adapter telemetry recorded at the ACP
-            // transport boundary, not domain state, so it is asserted here
-            // rather than folded into the controller snapshot. The chosen
-            // contract counts every operation of the management surface, so
-            // the `list` and `output` reads above are included in the totals
-            // alongside the `cancel` commands. The collector's public export is
-            // the production path an embedder reads.
-            let metrics = inspected_agent
-                .local_tool_registry
-                .metrics_collector()
-                .get_acp_extension_metrics();
-            assert!(
-                metrics.management_requests_started >= 8,
-                "every management request must be accounted for: {metrics:?}"
-            );
-            assert_eq!(
-                metrics.management_requests_in_flight, 0,
-                "every management request must leave the handler: {metrics:?}"
-            );
-            assert_eq!(
-                metrics.management_requests_succeeded + metrics.management_requests_failed,
-                metrics.management_requests_started,
-                "every started request must record one outcome: {metrics:?}"
-            );
-            assert!(
-                metrics.management_requests_failed >= 4,
-                "the rejected cancel, oversized tail, and two unknown-task reads must record failures: {metrics:?}"
-            );
-            let prometheus = inspected_agent.local_tool_registry.metrics_collector().export_prometheus();
-            let started_series =
-                format!("diapason_acp_management_requests_started_total {}", metrics.management_requests_started);
-            assert!(
-                prometheus.lines().any(|line| line == started_series),
-                "the public Prometheus export must render the ACP management counter: {started_series}"
-            );
-            let in_flight_series = "diapason_acp_management_requests_in_flight 0";
-            assert!(
-                prometheus.lines().any(|line| line == in_flight_series),
-                "the public Prometheus export must render the ACP in-flight gauge: {in_flight_series}"
-            );
+            assert_management_requests_are_accounted(&inspected_agent);
 
             drop(
                 cx.send_request(CloseSessionRequest::new(session.session_id.clone()))
@@ -677,7 +328,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             );
             assert!(
                 foreign_controller
-                    .refresh_then_background_snapshot(TaskOwner::Workspace, &sibling.id)
+                    .refresh_then_background_snapshot(TaskOwner::Workspace, &sibling)
                     .await
                     .expect("read the sibling background snapshot")
                     .entry
@@ -691,7 +342,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 crate::zed::agent::session_workspace::WorkspaceRuntimeLifecycleState::Open
             );
             let cancelled_sibling = foreign_controller
-                .force_cancel_background(TaskOwner::Workspace, &sibling.id)
+                .force_cancel_background(TaskOwner::Workspace, &sibling)
                 .await
                 .expect("cancel the sibling background task")
                 .into_entry();

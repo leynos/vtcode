@@ -63,6 +63,12 @@ async fn not_ready_live_output_falls_back_to_the_archive() -> anyhow::Result<()>
         .await?;
     let archive_path = write_stored_archive(&sessions_dir, "quiet-output-child")?;
 
+    // Prove the fallback's premise: the session is present and live, but it has
+    // produced no output yet. Passing on any non-live result would let a
+    // missing-session fallback masquerade as the not-ready branch.
+    let live = manager.read_session_output(exec_session_id.as_str(), false).await;
+    assert!(matches!(&live, Ok(None)), "the quiet child must resolve as a live session with no output: {live:?}");
+
     let output = reader
         .read_source(BackgroundOutputSource {
             exec_session_id: exec_session_id.as_str(),

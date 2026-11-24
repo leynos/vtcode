@@ -13,7 +13,8 @@ use super::fixtures::{
     SessionDirOverride, launched_exec_session_id, reader_environment, write_archive, write_archive_lines,
     write_stored_archive,
 };
-use crate::tools::exec_session::{ExecSessionNotFound, controller_exec_session_id, is_missing_exec_session};
+use crate::subagents::controller_exec_session_id;
+use crate::tools::exec_session::{ExecSessionNotFound, is_missing_exec_session};
 use crate::utils::path::canonicalize_workspace;
 use crate::utils::session_archive::override_sessions_dir_for_tests;
 use hashbrown::HashMap;
@@ -138,8 +139,16 @@ async fn a_settled_record_restored_from_the_ledger_still_serves_its_own_archive(
 
 /// An unreadable archive is reported as an archive fault.
 #[tokio::test]
+#[serial_test::serial(session_dir_override)]
 async fn an_unreadable_archive_is_an_archive_fault() -> anyhow::Result<()> {
     let temp = tempdir()?;
+    // The reader falls back to the session store, which is process-wide state;
+    // pin it to an empty directory so a concurrent test's override cannot
+    // decide this read.
+    let sessions_dir = temp.path().join("sessions");
+    std::fs::create_dir_all(&sessions_dir)?;
+    override_sessions_dir_for_tests(&sessions_dir);
+    let _override = SessionDirOverride;
     let root = canonicalize_workspace(temp.path());
     let (_manager, _pty_sessions, reader) = reader_environment(&root);
     let exec_session_id = launched_exec_session_id("unreadable-archive-child");
@@ -170,8 +179,15 @@ async fn an_unreadable_archive_is_an_archive_fault() -> anyhow::Result<()> {
 /// archive fault so a caller sees a storage failure rather than an empty
 /// preview.
 #[tokio::test]
+#[serial_test::serial(session_dir_override)]
 async fn a_recorded_but_absent_archive_is_an_archive_fault() -> anyhow::Result<()> {
     let temp = tempdir()?;
+    // The reader also consults the process-wide session store; keep it empty
+    // and owned by this test so the recorded path is what decides the read.
+    let sessions_dir = temp.path().join("sessions");
+    std::fs::create_dir_all(&sessions_dir)?;
+    override_sessions_dir_for_tests(&sessions_dir);
+    let _override = SessionDirOverride;
     let root = canonicalize_workspace(temp.path());
     let (_manager, _pty_sessions, reader) = reader_environment(&root);
     let exec_session_id = launched_exec_session_id("absent-archive-child");
@@ -302,9 +318,17 @@ fn the_missing_session_classifier_accepts_both_storage_layers() {
 /// check covers the record, not the file it names, so the reader must not
 /// serve a file the task has no claim to.
 #[tokio::test]
+#[serial_test::serial(session_dir_override)]
 async fn a_recorded_archive_outside_the_task_scope_is_refused() -> anyhow::Result<()> {
     let workspace = tempdir()?;
     let elsewhere = tempdir()?;
+    // Point the process-wide session store at an empty directory owned by this
+    // test: the refusal must come from the recorded path, not from whichever
+    // store another test happened to install.
+    let sessions_dir = workspace.path().join("sessions");
+    std::fs::create_dir_all(&sessions_dir)?;
+    override_sessions_dir_for_tests(&sessions_dir);
+    let _override = SessionDirOverride;
     let root = canonicalize_workspace(workspace.path());
     let (_manager, _pty_sessions, reader) = reader_environment(&root);
     let exec_session_id = launched_exec_session_id("foreign-archive-child");

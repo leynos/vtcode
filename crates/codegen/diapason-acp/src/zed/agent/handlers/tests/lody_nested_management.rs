@@ -224,7 +224,7 @@ async fn nested_subagent_management_is_owned_by_the_root_session() {
             );
 
             // The owner can read the grandchild through the child's scoped
-            // controller. The runtime snapshot materialises once the child run
+            // controller. The runtime snapshot materializes once the child run
             // has recorded its configuration, so poll briefly.
             let owned_output = tokio::time::timeout(Duration::from_secs(15), async {
                 loop {

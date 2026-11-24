@@ -11,8 +11,8 @@ mod ledger_view;
 mod snapshot;
 mod status;
 
-pub(crate) use self::foreground::ChildRunRequest;
 pub use self::foreground::{ChildRecord, ChildRunResult, ControllerState, StatusEntryBuilder, TurnDelegationHints};
+pub(crate) use self::foreground::{ChildRunRequest, HookPayload};
 pub use self::ledger_view::{
     BackgroundLiveness, BackgroundLivenessEntry, BackgroundRecord, BackgroundSubprocessSnapshot,
 };

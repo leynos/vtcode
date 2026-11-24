@@ -3,12 +3,10 @@
 use tempfile::TempDir;
 
 use crate::config::DiapasonConfig;
+use crate::subagents::SubagentInvocationContext;
 use crate::subagents::background::{load_background_state, persist_background_state};
-use crate::subagents::{BackgroundSubprocessStatus, SubagentInvocationContext};
 
-#[cfg(unix)]
-use super::super::controller_background_run::remove_spec_before_next_background_retry;
-use super::super::{BackgroundRunRequest, BackgroundRunReservation};
+use super::super::BackgroundRunReservation;
 use super::reserve_support::{
     OBSERVED_EXEC, WORKER, WORKER_AGENT, insert_observed_record, owned_row_id, persisted_row, plan, worker_spec,
 };
@@ -110,12 +108,6 @@ async fn a_claim_another_controller_persisted_prevents_a_second_reservation() {
     second.signal_shutdown().await;
 }
 
-/// A caller dropped before its launch spawns is driven by the next refresh.
-///
-/// The reservation records the claim as not retryable because the call that
-/// reserved it is about to spawn the process. If that call is dropped before
-/// the spawn, nothing else drives the record and it reports an active launch
-/// forever. The claim guard hands it to refresh, which runs the replacement
 /// A launch started by another invocation's parent is refused for reuse.
 ///
 /// The pre-lock reuse check refuses a record another invocation's parent owns,

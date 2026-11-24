@@ -6,6 +6,30 @@ use super::controller_background_settlement::restart_allowed;
 
 use super::*;
 
+/// Why a record this controller does not drive cannot be observed.
+///
+/// Another session's launch runs in that session's process, so this
+/// controller's exec manager cannot see it. A missing read is then no evidence
+/// of an exit, and the entry keeps its cached status with this bounded reason.
+const FOREIGN_BACKGROUND_LIVENESS_REASON: &str =
+    "background subprocess belongs to another session, so this controller cannot observe its exec session";
+
+/// One background record captured for the liveness overlay.
+///
+/// The projection and the facts the overlay decides from are read under one
+/// state lock, so a decision cannot mix two versions of the record.
+struct BackgroundLivenessCapture {
+    entry: BackgroundSubprocessEntry,
+    active: bool,
+    /// Whether this controller drives — and so can observe — the launch.
+    driven: bool,
+    exec_session_id: String,
+    observed_status: BackgroundSubprocessStatus,
+    desired_enabled: bool,
+    restart_attempts: u8,
+    liveness: BackgroundLiveness,
+}
+
 /// Resolves a caller-supplied background record id to the loaded map key.
 ///
 /// The map is keyed by canonical owner-scoped id, while a client can still hold
@@ -141,36 +165,44 @@ impl SubagentController {
     /// address are projected, under the same rule as
     /// [`Self::background_status_entries`].
     pub async fn background_status_entries_with_liveness(&self, owner: TaskOwner<'_>) -> Vec<BackgroundLivenessEntry> {
-        let mut entries = {
+        let mut captures = {
             let state = self.state.read().await;
             state
                 .background_children
                 .values()
                 .filter(|record| owner.background_owned(record.owner_session_id.as_deref()))
-                .map(|record| {
-                    (
-                        record.build_status_entry(),
-                        record.status.is_active(),
-                        record.exec_session_id.clone(),
-                        record.status,
-                        record.desired_enabled,
-                        record.restart_attempts,
-                        BackgroundLiveness::Observed,
-                    )
+                .map(|record| BackgroundLivenessCapture {
+                    entry: record.build_status_entry(),
+                    active: record.status.is_active(),
+                    driven: self.background_record_restart_is_authorised(record),
+                    exec_session_id: record.exec_session_id.clone(),
+                    observed_status: record.status,
+                    desired_enabled: record.desired_enabled,
+                    restart_attempts: record.restart_attempts,
+                    liveness: BackgroundLiveness::Observed,
                 })
                 .collect::<Vec<_>>()
         };
 
-        for (entry, active, exec_session_id, observed_status, desired_enabled, restart_attempts, liveness) in
-            &mut entries
-        {
-            if !*active {
+        for capture in &mut captures {
+            if !capture.active {
                 continue;
             }
-            let alive = if exec_session_id.is_empty() {
+            // Another session's launch runs in that session's process. Its exec
+            // session is invisible here, so re-reading the cached record cannot
+            // distinguish a stopped process from one this controller simply
+            // cannot see; keep the cached status and report it unobserved
+            // rather than inventing a terminal outcome.
+            if !capture.driven {
+                capture.liveness = BackgroundLiveness::Unobserved {
+                    reason: FOREIGN_BACKGROUND_LIVENESS_REASON.to_string(),
+                };
+                continue;
+            }
+            let alive = if capture.exec_session_id.is_empty() {
                 false
             } else {
-                match self.config.exec_sessions.snapshot_session(exec_session_id).await {
+                match self.config.exec_sessions.snapshot_session(&capture.exec_session_id).await {
                     Ok(snapshot) => matches!(
                         snapshot.lifecycle_state,
                         Some(crate::tools::types::DiapasonSessionLifecycleState::Running)
@@ -179,8 +211,8 @@ impl SubagentController {
                     Err(error) => {
                         // Nothing is known about the process, so keep the
                         // cached status instead of projecting an exit.
-                        *liveness = BackgroundLiveness::Unobserved {
-                            reason: bounded_liveness_reason(&error, exec_session_id),
+                        capture.liveness = BackgroundLiveness::Unobserved {
+                            reason: bounded_liveness_reason(&error, &capture.exec_session_id),
                         };
                         continue;
                     }
@@ -197,15 +229,15 @@ impl SubagentController {
             // as a failure, or settle a launch another caller has replaced.
             let current = {
                 let state = self.state.read().await;
-                state.background_children.get(&entry.id).map(|record| {
+                state.background_children.get(&capture.entry.id).map(|record| {
                     (
                         record.build_status_entry(),
                         liveness_observation_is_current(
                             record,
-                            exec_session_id.as_str(),
-                            *observed_status,
-                            *desired_enabled,
-                            *restart_attempts,
+                            capture.exec_session_id.as_str(),
+                            capture.observed_status,
+                            capture.desired_enabled,
+                            capture.restart_attempts,
                         ),
                     )
                 })
@@ -217,7 +249,7 @@ impl SubagentController {
                     if !current_entry.status.is_active() {
                         current_entry.ended_at.get_or_insert(current_entry.updated_at);
                     }
-                    *entry = current_entry;
+                    capture.entry = current_entry;
                     continue;
                 }
                 // The record no longer exists, so there is no current outcome to
@@ -232,12 +264,12 @@ impl SubagentController {
             // the replacement exec session is not registered yet. It must stay
             // `Starting` rather than be projected as a failure, even when
             // `auto_restore` is disabled, because nothing has failed yet.
-            entry.status = if *desired_enabled
-                && (entry.status == BackgroundSubprocessStatus::Starting
-                    || restart_allowed(self.config.vt_cfg.subagents.background.auto_restore, *restart_attempts))
+            capture.entry.status = if capture.desired_enabled
+                && (capture.entry.status == BackgroundSubprocessStatus::Starting
+                    || restart_allowed(self.config.vt_cfg.subagents.background.auto_restore, capture.restart_attempts))
             {
                 BackgroundSubprocessStatus::Starting
-            } else if *desired_enabled {
+            } else if capture.desired_enabled {
                 BackgroundSubprocessStatus::Error
             } else {
                 BackgroundSubprocessStatus::Stopped
@@ -247,14 +279,14 @@ impl SubagentController {
             // record that never observed an end instant therefore gets its own
             // last observed instant, not the query time, so repeated polls of
             // one unchanged record report the same end.
-            if !entry.status.is_active() {
-                entry.ended_at.get_or_insert(entry.updated_at);
+            if !capture.entry.status.is_active() {
+                capture.entry.ended_at.get_or_insert(capture.entry.updated_at);
             }
         }
 
-        entries
+        captures
             .into_iter()
-            .map(|(entry, _, _, _, _, _, liveness)| BackgroundLivenessEntry { entry, liveness })
+            .map(|capture| BackgroundLivenessEntry { entry: capture.entry, liveness: capture.liveness })
             .collect()
     }
 
@@ -547,5 +579,121 @@ pub(super) async fn read_output_tail(
         }
         Ok(BackgroundOutput::NotReady) => Ok(String::new()),
         Err(error) => Err(anyhow::Error::new(error)).with_context(|| format!("read background output for {target}")),
+    }
+}
+
+#[cfg(test)]
+mod foreign_liveness_tests {
+    //! Pins that a record this controller does not drive is never projected as
+    //! an exit it cannot have observed.
+
+    use std::path::PathBuf;
+
+    use tempfile::TempDir;
+
+    use crate::config::DiapasonConfig;
+    use crate::config::types::ReasoningEffortLevel;
+    use crate::tools::exec_session::ExecSessionManager;
+    use crate::tools::registry::PtySessionManager;
+
+    use super::*;
+
+    const WORKER: &str = "background-worker";
+    const WORKER_AGENT: &str = "worker";
+    const FOREIGN_EXEC: &str = "exec-foreign";
+
+    fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
+        let vt_cfg = DiapasonConfig::default();
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
+        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        SubagentControllerConfig {
+            workspace_root,
+            parent_session_id: "parent-session".to_string(),
+            parent_model: "gpt-5.6-sol".to_string(),
+            parent_provider: "openai".to_string(),
+            parent_reasoning_effort: ReasoningEffortLevel::Medium,
+            api_key: "test-key".to_string(),
+            vt_cfg,
+            openai_chatgpt_auth: None,
+            depth: 0,
+            workspace_gated: false,
+            exec_sessions,
+            output_reader: None,
+            pty_manager: pty_sessions.manager().clone(),
+            managed_background_runtime: false,
+            lock_scope: None,
+        }
+    }
+
+    /// A running record owned by another session.
+    fn foreign_record() -> BackgroundRecord {
+        BackgroundRecord {
+            id: WORKER.to_string(),
+            owner_session_id: Some("other-session".to_string()),
+            agent_name: WORKER_AGENT.to_string(),
+            display_label: WORKER_AGENT.to_string(),
+            description: WORKER_AGENT.to_string(),
+            source: "builtin".to_string(),
+            colour: None,
+            session_id: format!("session-{WORKER}"),
+            parent_session_id: "other-session".to_string(),
+            exec_session_id: FOREIGN_EXEC.to_string(),
+            desired_enabled: true,
+            status: BackgroundSubprocessStatus::Running,
+            created_at: "2026-08-28T00:00:00Z".parse().expect("created_at"),
+            updated_at: "2026-08-28T00:00:00Z".parse().expect("updated_at"),
+            started_at: None,
+            ended_at: None,
+            pid: None,
+            prompt: "work".to_string(),
+            summary: None,
+            error: None,
+            archive_path: None,
+            transcript_path: None,
+            max_turns: None,
+            model_override: None,
+            reasoning_override: None,
+            restart_attempts: 0,
+        }
+    }
+
+    /// A foreign launch this controller's exec manager cannot see must not be
+    /// reported as exited.
+    ///
+    /// The workspace listing includes records owned by other sessions, whose
+    /// processes run in that session's process. A typed missing result here
+    /// says nothing about the process, so with auto-restore off the old
+    /// projection turned a live task into `Error`; the entry must instead keep
+    /// its cached status and report that liveness was unobserved.
+    #[tokio::test]
+    async fn a_foreign_record_is_unobserved_rather_than_exited() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller");
+        {
+            let mut state = controller.state.write().await;
+            state.background_children.insert(WORKER.to_string(), foreign_record());
+        }
+
+        let entries = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
+        let entry = entries
+            .iter()
+            .find(|entry| entry.entry.id == WORKER)
+            .expect("the workspace listing includes a record owned by another session");
+
+        assert_eq!(
+            entry.entry.status,
+            BackgroundSubprocessStatus::Running,
+            "a foreign record keeps its cached status instead of being projected as an exit"
+        );
+        match &entry.liveness {
+            BackgroundLiveness::Unobserved { reason } => {
+                assert!(reason.contains("another session"), "the reason names why it is unobserved: {reason}");
+            }
+            BackgroundLiveness::Observed => panic!("a foreign record's liveness cannot be observed here"),
+        }
+
+        controller.signal_shutdown().await;
     }
 }

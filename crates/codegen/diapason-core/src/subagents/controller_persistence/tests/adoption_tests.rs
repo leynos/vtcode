@@ -84,9 +84,13 @@ async fn migrate_ledger_to(workspace: &Path, owner: &str) {
         .expect("write migrated ledger");
 }
 
-/// Writes a ledger together with the migration evidence the owner migration
-/// records for each `(base id, exec session)` pair.
-async fn write_ledger_with_migration_evidence(
+/// Writes a ledger whose `migrated_launches` evidence already names each
+/// `(base id, exec session)` pair.
+///
+/// The fixture writes that evidence directly rather than running a migration:
+/// these cases test consuming evidence that is already durable, which is the
+/// state the core save leaves behind in production.
+async fn write_ledger_with_existing_migration_evidence(
     workspace: &Path,
     records: Vec<PersistedBackgroundRecord>,
     migrated_launches: &[(&str, &str)],
@@ -104,8 +108,8 @@ async fn write_ledger_with_migration_evidence(
         .expect("write the ledger");
 }
 
-/// A launch controller adopts a migrated launch, saves it once, and cannot
-/// resurrect it after the owning session stops it.
+/// A migrated launch is adopted, saved once, and cannot be resurrected after
+/// the owning session stops it.
 ///
 /// This is the ordering the ACP launch runtime creates: the workspace
 /// controller loads the ownerless row before the session migrates it, so its
@@ -294,8 +298,7 @@ async fn only_an_unscoped_controller_adopts_rows() {
     );
 }
 
-/// A stale workspace copy of a migrated launch cannot come back after a
-/// replacement supersedes the migrated row.
+/// Consuming existing migration evidence suppresses a stale workspace copy.
 ///
 /// The workspace controller caches the ownerless launch before a session
 /// migrates it. The session then replaces that launch, so the ledger no longer
@@ -303,6 +306,10 @@ async fn only_an_unscoped_controller_adopts_rows() {
 /// unchanged workspace snapshot would write an ownerless row the next workspace
 /// controller treats as its own work to restore. The migration evidence kept in
 /// the ledger is what identifies the launch once its owned row is gone.
+///
+/// The fixture writes that evidence directly, which is the state the core save
+/// leaves behind in production; this test is about consuming it, not about
+/// migration recording it.
 #[tokio::test]
 async fn a_migrated_launch_is_not_revived_by_a_workspace_save_after_a_replacement() {
     let temp = TempDir::new().expect("temporary workspace");
@@ -323,14 +330,19 @@ async fn a_migrated_launch_is_not_revived_by_a_workspace_save_after_a_replacemen
     );
 
     // A session migrates the row and then replaces the launch it names, so the
-    // ledger holds only the replacement. The migration records the launch it
-    // attributed in the ledger's durable evidence, exactly as
-    // `migrate_legacy_owner_rows` does.
+    // ledger holds only the replacement. Its migration evidence names the
+    // launch that was attributed, which the core save writes in production and
+    // this fixture writes directly.
     let mut replacement = legacy_row(owner);
     replacement.owner_session_id = Some(owner.to_string());
     replacement.exec_session_id = "exec-replacement".to_string();
     replacement.canonicalize_id();
-    write_ledger_with_migration_evidence(temp.path(), vec![replacement], &[("background-worker", "exec-launch")]).await;
+    write_ledger_with_existing_migration_evidence(
+        temp.path(),
+        vec![replacement],
+        &[("background-worker", "exec-launch")],
+    )
+    .await;
 
     // The stale snapshot is saved again with nothing about it changed.
     workspace_controller

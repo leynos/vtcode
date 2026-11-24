@@ -1,7 +1,84 @@
 //! Regressions for replacing a controller's publication route.
+//!
+//! The reservation gate lives here because production never installs one: only
+//! a regression that must prove a clock handoff excludes a reservation parks
+//! the first reservation inside the route's read guard.
 
 use super::*;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+/// A test-only gate around one reservation's read-guard window.
+///
+/// A test that must prove a clock handoff excludes a reservation parks the
+/// first reservation after it takes the route's read guard and before it
+/// increments the clock. The handoff needs the write guard, so it cannot copy
+/// the revision the parked reservation is about to take; releasing the gate
+/// lets the reservation record its revision first, and the handoff's
+/// `fetch_max` carries it into the adopted clock.
+#[derive(Default)]
+pub(in crate::subagents) struct ReserveRendezvous {
+    parked_once: AtomicBool,
+    entered: tokio::sync::Notify,
+    expired: AtomicBool,
+    released: Mutex<bool>,
+    release: std::sync::Condvar,
+}
+
+impl ReserveRendezvous {
+    /// Parks the first reservation that reaches the gate until [`Self::release`].
+    pub(in crate::subagents) fn park_once(&self) {
+        if self.parked_once.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        self.entered.notify_one();
+        // The wait is bounded so a failing test reports its assertion instead
+        // of hanging the parked thread. An expired gate is recorded so the
+        // test can tell its own timeout apart from lock contention.
+        let released = self.released.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (released, outcome) = self
+            .release
+            .wait_timeout_while(released, std::time::Duration::from_secs(30), |released| !*released)
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if outcome.timed_out() && !*released {
+            self.expired.store(true, Ordering::SeqCst);
+        }
+    }
+
+    /// Waits until the gated reservation is parked in its read-guard window.
+    pub(in crate::subagents) async fn wait_until_parked(&self) {
+        self.entered.notified().await;
+    }
+
+    /// Releases the parked reservation so it can record its revision.
+    pub(in crate::subagents) fn release(&self) {
+        *self.released.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = true;
+        self.release.notify_all();
+    }
+
+    /// Reports whether the bounded wait elapsed without a release.
+    pub(in crate::subagents) fn expired(&self) -> bool {
+        self.expired.load(Ordering::SeqCst)
+    }
+}
+
+impl ProgressObserverRoute {
+    /// Installs the gate that parks one reservation, for the clock-handoff
+    /// regression.
+    pub(in crate::subagents) fn install_lifecycle_reserve_rendezvous(&self, rendezvous: Arc<ReserveRendezvous>) {
+        self.state
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .reserve_rendezvous = Some(rendezvous);
+    }
+
+    /// Reports whether this route's write guard is currently held.
+    ///
+    /// The probe calls this from an observer's `Drop` to prove the retired
+    /// route is released outside the guard that `reserve` contends with.
+    fn write_guard_held(&self) -> bool {
+        self.state.try_read().is_err()
+    }
+}
 
 /// An observer that reports whether the route was still write-locked when the
 /// registry owning it was dropped.

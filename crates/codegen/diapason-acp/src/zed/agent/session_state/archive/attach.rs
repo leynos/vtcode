@@ -110,23 +110,7 @@ impl ZedAgent {
         // and that restore takes only ownerless rows. A row this session
         // launched must carry its owner before that load, or it is relaunched
         // here as workspace work instead of being adopted by this session.
-        let background_owner_migration_failed =
-            if self.vt_config.as_deref().is_some_and(|config| config.subagents.enabled) {
-                match crate::zed::agent::optional_setup::migrate_resumed_session_background_owners(
-                    workspace.path(),
-                    session_id.0.as_ref(),
-                )
-                .await
-                {
-                    Ok(_) => false,
-                    Err(error) => {
-                        log_suppressed_error(&error, "archive_attach", "background_owner_migration_failed");
-                        true
-                    }
-                }
-            } else {
-                false
-            };
+        let background_owner_migration_failed = self.migrate_resumed_background_owners(workspace, session_id).await;
         // A failed migration can leave rows ownerless that this session may yet
         // adopt when its controller retries the migration. The workspace
         // controller restores ownerless rows, so letting it run would relaunch
@@ -300,6 +284,39 @@ impl ZedAgent {
         }
         if let Err(error) = controller.save_background_ledger().await {
             log_suppressed_error(&error, "archive_attach", "background_owner_adoption_save_failed");
+        }
+    }
+
+    /// Gives the ledger rows this resumed session launched to its owner.
+    ///
+    /// The workspace runtime's restore takes only ownerless rows, so a row this
+    /// session launched must carry its owner before that load; otherwise the
+    /// workspace controller relaunches it as its own work instead of this
+    /// session adopting it.
+    ///
+    /// Reports whether the migration failed. A failed migration leaves rows
+    /// ownerless that this session may yet adopt, so the caller defers the
+    /// workspace restore and lets the session controller retry the migration.
+    /// Migration is skipped entirely when subagents are disabled.
+    async fn migrate_resumed_background_owners(
+        &self,
+        workspace: &AcpSessionWorkspace,
+        session_id: &acp::SessionId,
+    ) -> bool {
+        if !self.vt_config.as_deref().is_some_and(|config| config.subagents.enabled) {
+            return false;
+        }
+        match crate::zed::agent::optional_setup::migrate_resumed_session_background_owners(
+            workspace.path(),
+            session_id.0.as_ref(),
+        )
+        .await
+        {
+            Ok(_) => false,
+            Err(error) => {
+                log_suppressed_error(&error, "archive_attach", "background_owner_migration_failed");
+                true
+            }
         }
     }
 

@@ -332,7 +332,9 @@ async fn a_parked_reservation_excludes_the_clock_handoff() {
         let controller = Arc::clone(&controller);
         tokio::task::spawn_blocking(move || controller.reserve_lifecycle_revision())
     };
-    rendezvous.wait_until_parked().await;
+    tokio::time::timeout(Duration::from_secs(5), rendezvous.wait_until_parked())
+        .await
+        .expect("the reservation must reach the parked checkpoint before the handoff starts");
     assert!(!rendezvous.expired(), "the reservation gate expired before the handoff started");
 
     // The handoff needs the write guard the parked reservation holds.

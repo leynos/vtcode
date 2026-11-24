@@ -13,8 +13,10 @@ use std::path::Path;
 
 use super::types::BackgroundSubprocessEntry;
 
+mod controller_exec_id;
 mod exec_session;
 
+pub(crate) use controller_exec_id::{controller_exec_session_id, controller_exec_session_task_id};
 pub use exec_session::ExecSessionOutputReader;
 
 /// The output one background task can serve for a read.

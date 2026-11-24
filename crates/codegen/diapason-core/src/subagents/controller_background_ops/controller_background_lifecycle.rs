@@ -134,6 +134,22 @@ pub(super) fn background_launch_is_owed(
     })
 }
 
+/// Reports whether a fresh, non-retryable claim still drives this launch.
+///
+/// A fresh claim is recorded as not retryable because the call that reserved it
+/// is about to spawn the process. Its session is not registered yet, so an
+/// observation made elsewhere reads it as missing; replacing it would start a
+/// second process beside the launch still in flight. A retryable entry is a
+/// restart a previous refresh scheduled after its driver was abandoned, so
+/// refresh may legitimately drive that one and it is not reported here.
+fn background_launch_is_driven(state: &Arc<RwLock<ControllerState>>, record_id: &str, exec_session_id: &str) -> bool {
+    with_pending_background_launches(|registry| {
+        registry.iter().any(|entry| {
+            pending_background_launch_matches(entry, state, record_id, exec_session_id) && !entry.retry_from_refresh
+        })
+    })
+}
+
 /// Returns the scheduled restarts this controller still owes.
 fn pending_background_launch_retries(state: &Arc<RwLock<ControllerState>>) -> Vec<PendingBackgroundRestart> {
     with_pending_background_launches(|registry| {
@@ -274,7 +290,11 @@ impl SubagentController {
     /// records, including legacy ones. Another session's record belongs to that
     /// session: its exec sessions live in that process, so this controller would
     /// read them as missing and start a second process for the same task.
-    fn background_record_restart_is_authorised(&self, record: &BackgroundRecord) -> bool {
+    ///
+    /// The same rule decides whether this controller's exec manager can observe
+    /// a record's process at all: another session's launch lives in that
+    /// process, so a missing read here is not evidence that it exited.
+    pub(super) fn background_record_restart_is_authorised(&self, record: &BackgroundRecord) -> bool {
         match self.background_owner_session_id.as_deref() {
             Some(owner) => record.owner_session_id.as_deref() == Some(owner),
             None => record.owner_session_id.is_none(),
@@ -303,6 +323,14 @@ impl SubagentController {
         };
 
         for (record_id, agent_name, exec_session_id, restart_attempts) in desired_records {
+            // A fresh claim drives its own launch: the call that reserved it is
+            // about to spawn the process. Its exec session is not registered
+            // yet, which is not an exit, so restoring here would start a second
+            // process beside the launch still in flight. A schedule a dropped
+            // refresh left behind is retryable and is driven by refresh instead.
+            if background_launch_is_driven(&self.state, &record_id, &exec_session_id) {
+                continue;
+            }
             let observation = self.observe_background_exec_session(Some(exec_session_id.as_str())).await;
             let is_live = matches!(&observation, BackgroundExecSessionObservation::Live(snapshot) if exec_session_is_running(snapshot));
 
@@ -366,6 +394,12 @@ impl SubagentController {
 
         let mut restored = Vec::new();
         for (record_id, agent_name, exec_session_id, restart_attempts) in desired_records {
+            // A fresh claim drives its own launch, so a session that is not
+            // registered yet is not an exit. Relaunching would start a second
+            // process beside the launch still in flight.
+            if background_launch_is_driven(&self.state, &record_id, &exec_session_id) {
+                continue;
+            }
             let observation = self.observe_background_exec_session(Some(exec_session_id.as_str())).await;
             if matches!(&observation, BackgroundExecSessionObservation::Live(snapshot) if exec_session_is_running(snapshot))
             {
@@ -1060,6 +1094,50 @@ mod cancellation_reconcile_tests {
             "the retry discharges the obligation it drove"
         );
         drop(state);
+
+        controller.signal_shutdown().await;
+    }
+
+    /// A restore must not replace a launch its own driver still owes.
+    ///
+    /// A fresh claim records a non-retryable obligation because the call that
+    /// reserved it is about to spawn the process. Until that session registers,
+    /// restore observes it as missing, and replacing it would start a second
+    /// process beside the launch still in flight. The agent is deliberately
+    /// unresolvable: a restore that tried to replace the claim would settle the
+    /// record `Error`, so leaving it `Starting` proves the claim was left alone.
+    #[tokio::test]
+    async fn a_restore_skips_a_record_whose_launch_a_live_driver_still_owes() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(restarting_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller");
+        let record =
+            background_record(WORKER, "no-such-agent", WORKER_EXEC, BackgroundSubprocessStatus::Starting, true);
+        {
+            let mut state = controller.state.write().await;
+            state.background_children.insert(record.id.clone(), record);
+        }
+        mark_background_launch_owed(&controller.state, WORKER, "no-such-agent", 1, WORKER_EXEC, false);
+
+        controller
+            .restore_background_subagents()
+            .await
+            .expect("restore leaves the in-flight claim to its driver");
+
+        let state = controller.state.read().await;
+        let record = state.background_children.get(WORKER).expect("record");
+        assert_eq!(
+            record.status,
+            BackgroundSubprocessStatus::Starting,
+            "restore must not settle or replace a claim its driver still owns"
+        );
+        assert_eq!(record.exec_session_id, WORKER_EXEC, "the in-flight launch keeps the record");
+        drop(state);
+        assert!(
+            background_launch_is_owed(&controller.state, WORKER, WORKER_EXEC),
+            "the driver's launch obligation is untouched"
+        );
 
         controller.signal_shutdown().await;
     }

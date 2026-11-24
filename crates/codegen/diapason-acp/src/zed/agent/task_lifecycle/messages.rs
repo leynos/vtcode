@@ -29,8 +29,11 @@ impl LifecycleUpdate {
 
     /// Last transition time of the snapshotted task.
     ///
-    /// Controllers refresh this field on every status change, so it orders two
-    /// snapshots of the same task even when they arrive out of order.
+    /// This is the wire timestamp, not the ordering key. Controllers can record
+    /// two transitions in one clock tick, and a carried-over timestamp need not
+    /// move at all, so the forwarder orders snapshots by the lifecycle revision
+    /// the controller stamps when it captures the transition (see
+    /// `QueuedLifecycleUpdate`), never by this field.
     pub(super) fn updated_at(&self) -> DateTime<Utc> {
         match self {
             Self::Subagent { task, .. } => task.updated_at,

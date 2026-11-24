@@ -67,17 +67,37 @@ pub(super) async fn migrate_legacy_owner_rows(workspace_root: &Path, owner_sessi
         .await
         .context("Failed to lock the background subagent ledger for owner migration")?;
     let path = ledger_path(workspace_root);
-    let raw = match fs::read_to_string(&path).await {
+    let Some(mut state) = read_ledger_state(&path).await? else {
+        return Ok(0);
+    };
+    let migrated = assign_owner_to_launched_rows(&mut state, owner_session_id);
+    if migrated == 0 {
+        return Ok(0);
+    }
+    write_migrated_ledger_state(&path, &state).await?;
+    Ok(migrated)
+}
+
+/// Reads the ledger document, treating a missing ledger as nothing to migrate.
+async fn read_ledger_state(path: &Path) -> anyhow::Result<Option<serde_json::Value>> {
+    let raw = match fs::read_to_string(path).await {
         Ok(raw) => raw,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
             return Err(error).with_context(|| format!("Failed to read {}", path.display()));
         }
     };
-    let mut state: serde_json::Value =
-        serde_json::from_str(&raw).with_context(|| format!("Failed to parse {}", path.display()))?;
+    let state = serde_json::from_str(&raw).with_context(|| format!("Failed to parse {}", path.display()))?;
+    Ok(Some(state))
+}
+
+/// Gives every ownerless row this session launched to `owner_session_id`.
+///
+/// Returns the number of rows migrated. A row launched by another session, and
+/// a row that already carries an owner, are left untouched.
+fn assign_owner_to_launched_rows(state: &mut serde_json::Value, owner_session_id: &str) -> usize {
     let Some(records) = state.get_mut("records").and_then(serde_json::Value::as_array_mut) else {
-        return Ok(0);
+        return 0;
     };
     let mut migrated = 0;
     for record in records {
@@ -96,13 +116,16 @@ pub(super) async fn migrate_legacy_owner_rows(workspace_root: &Path, owner_sessi
             migrated += 1;
         }
     }
-    if migrated == 0 {
-        return Ok(0);
-    }
-    let payload = serde_json::to_string_pretty(&state).context("Failed to serialize background subagent state")?;
-    diapason_commons::fs::write_file_atomic_with_context(&path, &payload, "background subagent owner migration")
-        .await?;
-    Ok(migrated)
+    migrated
+}
+
+/// Rewrites the ledger with the migrated ownership.
+///
+/// The caller holds the ledger's inter-process lock, so this read-modify-write
+/// cannot race a save from another process.
+async fn write_migrated_ledger_state(path: &Path, state: &serde_json::Value) -> anyhow::Result<()> {
+    let payload = serde_json::to_string_pretty(state).context("Failed to serialize background subagent state")?;
+    diapason_commons::fs::write_file_atomic_with_context(path, &payload, "background subagent owner migration").await
 }
 
 /// Restores the background records an owner-scoped controller holds, rolling

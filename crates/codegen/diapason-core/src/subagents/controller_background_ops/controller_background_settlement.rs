@@ -210,6 +210,12 @@ impl SubagentController {
     /// `honour_restart_allowance` keeps a first spawn failure `Starting` so the
     /// caller can retry it, while a restart preparation failure is settled
     /// straight away because its allowance is already spent.
+    ///
+    /// A settled `Error` raises the owed-write marker under the lock that stores
+    /// it, so a save that fails or is interrupted leaves a write the next
+    /// refresh retries instead of a failure only this process can see. The
+    /// marker is discharged only once the save succeeds; the original launch
+    /// error is still what the caller receives.
     async fn settle_background_launch_error(
         &self,
         record_id: &str,
@@ -222,7 +228,7 @@ impl SubagentController {
         // longer owes a launch; a replacement records its own key, so clearing
         // this session's obligation cannot hide one.
         clear_background_launch_owed(&self.state, record_id, exec_session_id);
-        {
+        let write_generation = {
             let mut state = self.state.write().await;
             let Some(record) = state.background_children.get_mut(record_id) else {
                 return;
@@ -240,16 +246,26 @@ impl SubagentController {
             record.summary = Some("Background subagent failed to start".to_string());
             record.updated_at = Utc::now();
             record.ended_at.get_or_insert(Utc::now());
-        }
+            // The terminal record becomes visible when this lock is released,
+            // and reuse could then report a failure the ledger has not
+            // received. Register the write under the same lock, so a save that
+            // fails or is interrupted leaves the obligation for the next
+            // refresh to retry.
+            mark_background_ledger_write_pending(&self.state)
+        };
         self.publish_background_status(record_id).await;
         // The caller receives the original spawn error, so a persistence
-        // failure must not replace it; the ledger catches up on the next save.
-        if let Err(save_error) = self.save_background_state().await {
-            tracing::warn!(
-                record_id,
-                error = %save_error,
-                "Failed to persist the settled background launch failure"
-            );
+        // failure must not replace it. The obligation raised above stays owed,
+        // and the next refresh retries the write.
+        match self.save_background_state().await {
+            Ok(()) => clear_background_ledger_write_pending(&self.state, write_generation),
+            Err(save_error) => {
+                tracing::warn!(
+                    record_id,
+                    error = %save_error,
+                    "Failed to persist the settled background launch failure"
+                );
+            }
         }
     }
 
@@ -517,3 +533,146 @@ impl SubagentController {
 
 #[cfg(all(test, unix))]
 mod stale_observation_tests;
+
+#[cfg(test)]
+mod terminal_failure_write_tests {
+    //! Pins that a settled launch failure stays owed to the ledger until a save
+    //! records it.
+
+    use std::path::PathBuf;
+
+    use tempfile::TempDir;
+
+    use crate::config::DiapasonConfig;
+    use crate::config::types::ReasoningEffortLevel;
+    use crate::subagents::background::{background_state_lock_path_for_tests, load_background_state};
+    use crate::tools::exec_session::ExecSessionManager;
+    use crate::tools::registry::PtySessionManager;
+
+    use super::*;
+
+    const WORKER: &str = "background-worker";
+    const WORKER_AGENT: &str = "worker";
+    const LAUNCH_EXEC: &str = "exec-launch";
+
+    fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
+        let vt_cfg = DiapasonConfig::default();
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
+        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        SubagentControllerConfig {
+            workspace_root,
+            parent_session_id: "parent-session".to_string(),
+            parent_model: "gpt-5.6-sol".to_string(),
+            parent_provider: "openai".to_string(),
+            parent_reasoning_effort: ReasoningEffortLevel::Medium,
+            api_key: "test-key".to_string(),
+            vt_cfg,
+            openai_chatgpt_auth: None,
+            depth: 0,
+            workspace_gated: false,
+            exec_sessions,
+            output_reader: None,
+            pty_manager: pty_sessions.manager().clone(),
+            managed_background_runtime: false,
+            lock_scope: None,
+        }
+    }
+
+    /// The durable claim a failed launch leaves behind.
+    fn starting_record() -> BackgroundRecord {
+        BackgroundRecord {
+            id: WORKER.to_string(),
+            owner_session_id: None,
+            agent_name: WORKER_AGENT.to_string(),
+            display_label: WORKER_AGENT.to_string(),
+            description: WORKER_AGENT.to_string(),
+            source: "builtin".to_string(),
+            colour: None,
+            session_id: format!("session-{WORKER}"),
+            parent_session_id: "parent-session".to_string(),
+            exec_session_id: LAUNCH_EXEC.to_string(),
+            desired_enabled: true,
+            status: BackgroundSubprocessStatus::Starting,
+            created_at: "2026-08-28T00:00:00Z".parse().expect("created_at"),
+            updated_at: "2026-08-28T00:00:00Z".parse().expect("updated_at"),
+            started_at: None,
+            ended_at: None,
+            pid: None,
+            prompt: "work".to_string(),
+            summary: None,
+            error: None,
+            archive_path: None,
+            transcript_path: None,
+            max_turns: None,
+            model_override: None,
+            reasoning_override: None,
+            restart_attempts: 0,
+        }
+    }
+
+    /// A terminal settlement whose save fails is retried by the next refresh.
+    ///
+    /// The record is `Error` only in memory after the failed save; an ordinary
+    /// refresh skips a terminal record, so without an owed write the ledger
+    /// would keep the unfinished `Starting` claim forever. The settlement must
+    /// register the write under the lock that stores the failure, and only a
+    /// successful save may clear it.
+    #[tokio::test]
+    async fn a_terminal_failure_whose_save_fails_stays_owed_to_the_ledger() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller");
+        {
+            let mut state = controller.state.write().await;
+            state.background_children.insert(WORKER.to_string(), starting_record());
+        }
+        // A directory at the lock path makes the save fail immediately.
+        let lock_path = background_state_lock_path_for_tests(temp.path());
+        std::fs::create_dir_all(&lock_path).expect("the lock path blocks the save");
+
+        controller
+            .settle_failed_background_restart(WORKER, LAUNCH_EXEC, &anyhow::anyhow!("spawn transport fault"))
+            .await;
+
+        {
+            let state = controller.state.read().await;
+            let record = state.background_children.get(WORKER).expect("record");
+            assert_eq!(record.status, BackgroundSubprocessStatus::Error);
+            assert!(
+                record
+                    .error
+                    .as_deref()
+                    .is_some_and(|error| error.contains("spawn transport fault")),
+                "{:?}",
+                record.error
+            );
+        }
+        assert!(
+            pending_background_ledger_write_generation(&controller.state).is_some(),
+            "the settlement must owe the ledger the failure it recorded"
+        );
+        std::fs::remove_dir(&lock_path).expect("the lock path is writable again");
+
+        assert!(
+            controller
+                .retry_owed_background_ledger_write()
+                .await
+                .expect("the retried write succeeds"),
+            "the failed save must leave a write for the next refresh to retry"
+        );
+        assert!(
+            pending_background_ledger_write_generation(&controller.state).is_none(),
+            "a successful write discharges the obligation"
+        );
+        let persisted = load_background_state(temp.path()).await.expect("reload the ledger");
+        let stored = persisted
+            .records
+            .iter()
+            .find(|record| record.id == WORKER)
+            .expect("the settled failure reaches the ledger");
+        assert_eq!(stored.status, BackgroundSubprocessStatus::Error);
+
+        controller.signal_shutdown().await;
+    }
+}

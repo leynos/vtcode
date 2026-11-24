@@ -479,6 +479,17 @@ enum BackgroundCancellationMode {
 /// The stable lead-in a stop's close fault carries in a record's error text.
 const BACKGROUND_CLOSE_FAULT_PREFIX: &str = "Failed to close the background subprocess's exec session";
 
+/// The summary a record carries while a stop's close is still owed.
+///
+/// A listing shows it while the process may still be live; a confirmed close
+/// replaces it with [`BACKGROUND_STOPPED_SUMMARY`]. The text is not a run
+/// outcome, so clearing it must never discard a failure the run itself
+/// reported.
+const BACKGROUND_STOPPING_SUMMARY: &str = "Background subagent is stopping";
+
+/// The summary a settled stop carries once its close is confirmed.
+const BACKGROUND_STOPPED_SUMMARY: &str = "Background subagent stopped";
+
 /// Records a stop's close fault without discarding a terminal outcome.
 ///
 /// A record that already failed owns its `error` and `summary`: they describe
@@ -502,7 +513,7 @@ fn record_background_close_fault(record: &mut BackgroundRecord, error: &anyhow::
         return;
     }
     record.error = Some(fault);
-    record.summary = Some("Background subagent is stopping".to_string());
+    record.summary = Some(BACKGROUND_STOPPING_SUMMARY.to_string());
 }
 
 /// The result of a stop request.
@@ -774,6 +785,10 @@ impl SubagentController {
     /// empty-session case, which has no competing attempt to order against.
     /// Returns the settled entry for the launch the close addressed, or `None`
     /// when the record no longer names that exec session.
+    ///
+    /// A settled record also raises the owed-write marker, in the same lock
+    /// that clears its close obligation: from that moment the outcome exists
+    /// only in memory, so an interrupted save must leave the write retryable.
     async fn settle_background_stop_closed(
         &self,
         record_id: &str,
@@ -798,15 +813,35 @@ impl SubagentController {
         if record.status.is_active() {
             record.status = BackgroundSubprocessStatus::Stopped;
             record.error = None;
-            record.summary = Some("Background subagent stopped".to_string());
+            record.summary = Some(BACKGROUND_STOPPED_SUMMARY.to_string());
             record.ended_at.get_or_insert_with(Utc::now);
             record.updated_at = Utc::now();
-        } else if record.status == BackgroundSubprocessStatus::Stopped {
-            // A retried close may settle a stop whose record already reached a
-            // terminal outcome. Preserve that outcome; only the pending close's
-            // error text is cleared.
-            record.error = None;
+        } else {
+            // A retried or later close may settle a stop whose record already
+            // reached a terminal outcome. Preserve that outcome: only the
+            // pending close's own error text is cleared, and a genuine run
+            // failure keeps both its error and its summary.
+            if record.status == BackgroundSubprocessStatus::Stopped
+                && record
+                    .error
+                    .as_deref()
+                    .is_some_and(|error| error.contains(BACKGROUND_CLOSE_FAULT_PREFIX))
+            {
+                record.error = None;
+            }
+            // The pending-stop summary is cleanup state, not a run outcome. A
+            // close that exhausted its retry allowance leaves it on an `Error`
+            // record, so a later confirmed close must replace it even though
+            // the status and any run error stay exactly as they were.
+            if record.summary.as_deref() == Some(BACKGROUND_STOPPING_SUMMARY) {
+                record.summary = Some(BACKGROUND_STOPPED_SUMMARY.to_string());
+            }
         }
+        // The settled outcome exists only in memory until the caller saves it.
+        // The owed write is recorded in the same settlement that clears the
+        // close obligation, so a caller dropped before its save leaves the
+        // write retryable instead of losing the stop.
+        mark_background_ledger_write_pending(&self.state);
         clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
         // Captured under the same lock that applied the close, while the record
         // still names the launch this stop addressed.
@@ -925,6 +960,11 @@ impl SubagentController {
     /// leaves it intact for the next one. A close a declined launch owes is
     /// retried without consulting the record, because no record names that
     /// launch any more.
+    ///
+    /// The settlement that discharges a close obligation also records the
+    /// ledger write it owes. This save clears that generation only once it has
+    /// succeeded, so a caller dropped between the two leaves the settled stop
+    /// retryable by the next reconcile instead of losing it.
     pub(super) async fn retry_pending_background_stop_closes(&self) -> Result<()> {
         let pending = pending_background_stop_closes(&self.state);
         if pending.is_empty() {
@@ -959,15 +999,23 @@ impl SubagentController {
         for record_id in changed {
             self.publish_background_status(&record_id).await;
         }
+        // The settlements above raised the owed-write obligation before they
+        // cleared each close obligation. Capture the generation they created so
+        // this save discharges exactly it, and only if the save succeeds.
+        let owed_generation = pending_background_ledger_write_generation(&self.state);
+        #[cfg(test)]
+        pass_background_stop_retry_save_gate(&self.state).await;
         if let Err(error) = self.save_background_state().await {
-            // The stop is settled in memory but not yet durable. Remember the
-            // owed write so refresh retries it before any reuse observes the
-            // record.
+            // The stop is settled in memory but not yet durable. Keep the
+            // obligation raised (and bump it, in case this pass settled nothing)
+            // so refresh retries the write before any reuse observes the record.
             mark_background_ledger_write_pending(&self.state);
             tracing::warn!(
                 error = %error,
                 "Failed to persist a settled background stop"
             );
+        } else if let Some(generation) = owed_generation {
+            clear_background_ledger_write_pending(&self.state, generation);
         }
         Ok(())
     }
@@ -1025,7 +1073,7 @@ impl SubagentController {
         // record keeps its active status until then. Settling `Stopped` here
         // would report a process gone before anything tried to stop it.
         record.desired_enabled = false;
-        record.summary = Some("Background subagent is stopping".to_string());
+        record.summary = Some(BACKGROUND_STOPPING_SUMMARY.to_string());
         record.updated_at = Utc::now();
         let record_id = record.id.clone();
         let agent_name = record.agent_name.clone();
@@ -1054,9 +1102,11 @@ impl SubagentController {
         // and this save the settled record exists only in memory. The archive
         // refresh is awaited in that window; an interrupted refresh would
         // otherwise lose the save, and nothing would publish the stop again.
-        // Raising the owed-write marker first makes the next refresh retry the
-        // write before any caller can observe the record.
-        let generation = mark_background_ledger_write_pending(&self.state);
+        // The close's settlement raised the owed-write marker already; reuse
+        // that generation so the successful save discharges it, and raise one
+        // here only if the close settled nothing.
+        let generation = pending_background_ledger_write_generation(&self.state)
+            .unwrap_or_else(|| mark_background_ledger_write_pending(&self.state));
         #[cfg(test)]
         pass_background_cancellation_save_gate(&self.state).await;
         self.refresh_background_archive_metadata(target).await?;
@@ -1122,9 +1172,68 @@ async fn pass_background_cancellation_save_gate(state: &Arc<RwLock<ControllerSta
     gate.release.notified().await;
 }
 
+/// A test gate before a reconciled stop's ledger save.
+///
+/// The close has already settled the record and cleared its close obligation by
+/// the time this gate is awaited, so parking here lets a test drop the caller
+/// in exactly the window where only the owed-write marker can preserve the
+/// stop.
 #[cfg(test)]
-mod attempt_registry_tests {
-    //! Pins that the stop-close attempt registry drains itself.
+struct BackgroundStopRetrySaveGate {
+    state: Weak<RwLock<ControllerState>>,
+    entered: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+#[cfg(test)]
+fn background_stop_retry_save_gates() -> &'static Mutex<Vec<BackgroundStopRetrySaveGate>> {
+    static GATES: std::sync::OnceLock<Mutex<Vec<BackgroundStopRetrySaveGate>>> = std::sync::OnceLock::new();
+    GATES.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Arms a gate that holds the next reconciled-stop save of `state`.
+#[cfg(test)]
+fn gate_next_background_stop_retry_save(state: &Arc<RwLock<ControllerState>>) -> (Arc<Notify>, Arc<Notify>) {
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let mut gates = background_stop_retry_save_gates()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    gates.retain(|gate| gate.state.strong_count() > 0);
+    gates.push(BackgroundStopRetrySaveGate {
+        state: Arc::downgrade(state),
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+    });
+    (entered, release)
+}
+
+#[cfg(test)]
+async fn pass_background_stop_retry_save_gate(state: &Arc<RwLock<ControllerState>>) {
+    let gate = {
+        let mut gates = background_stop_retry_save_gates()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        gates.retain(|gate| gate.state.strong_count() > 0);
+        let index = gates
+            .iter()
+            .position(|gate| std::ptr::eq(gate.state.as_ptr(), Arc::as_ptr(state)));
+        index.map(|index| gates.remove(index))
+    };
+    let Some(gate) = gate else {
+        return;
+    };
+    gate.entered.notify_one();
+    gate.release.notified().await;
+}
+
+#[cfg(test)]
+mod stop_close_settlement_tests {
+    //! Pins the settlement obligations a confirmed close leaves behind.
+    //!
+    //! The attempt registry must drain itself, a reconciled stop must stay
+    //! owed to the ledger across an interrupted save, and a later close must
+    //! not leave the pending-stop summary claiming the stop is in progress.
 
     use std::path::PathBuf;
 
@@ -1132,6 +1241,7 @@ mod attempt_registry_tests {
 
     use crate::config::DiapasonConfig;
     use crate::config::types::ReasoningEffortLevel;
+    use crate::subagents::background::load_background_state;
     use crate::tools::exec_session::ExecSessionManager;
     use crate::tools::registry::PtySessionManager;
 
@@ -1226,6 +1336,117 @@ mod attempt_registry_tests {
             "the registry must drain once the last attempt returns after a confirmed close"
         );
         assert!(!background_stop_close_is_pending(&controller.state, WORKER, EXEC));
+
+        controller.signal_shutdown().await;
+    }
+
+    /// A reconcile dropped between the close and its save keeps the write owed.
+    ///
+    /// The close settles `Stopped` in memory and clears the close obligation,
+    /// so nothing would retry it if the caller disappeared before the save. The
+    /// owed-write obligation is recorded in the same settlement, which leaves
+    /// the stopped record retryable by the next refresh; only a successful save
+    /// may discharge it.
+    #[tokio::test]
+    async fn a_reconciled_stop_dropped_before_its_save_stays_owed() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller");
+        {
+            let mut state = controller.state.write().await;
+            state.background_children.insert(WORKER.to_string(), background_record());
+        }
+        mark_background_stop_close_pending(&controller.state, WORKER, EXEC);
+
+        let (entered, _release) = gate_next_background_stop_retry_save(&controller.state);
+        {
+            let retry = controller.retry_pending_background_stop_closes();
+            tokio::pin!(retry);
+            tokio::select! {
+                result = &mut retry => panic!("the gated reconcile saved before it was dropped: {result:?}"),
+                () = entered.notified() => {}
+            }
+        }
+
+        {
+            let state = controller.state.read().await;
+            let record = state.background_children.get(WORKER).expect("record");
+            assert_eq!(
+                record.status,
+                BackgroundSubprocessStatus::Stopped,
+                "the confirmed close settles the stop before the interrupted save"
+            );
+        }
+        assert!(
+            !background_stop_close_is_pending(&controller.state, WORKER, EXEC),
+            "the confirmed close discharges its close obligation"
+        );
+        assert!(
+            pending_background_ledger_write_generation(&controller.state).is_some(),
+            "the settlement must record the write it owes before clearing the close obligation"
+        );
+
+        assert!(
+            controller
+                .retry_owed_background_ledger_write()
+                .await
+                .expect("the retried write succeeds"),
+            "the interrupted save must still be owed to the next reconcile"
+        );
+        assert!(
+            pending_background_ledger_write_generation(&controller.state).is_none(),
+            "a successful write discharges the obligation"
+        );
+        let persisted = load_background_state(temp.path()).await.expect("reload the ledger");
+        let stored = persisted
+            .records
+            .iter()
+            .find(|record| record.id == WORKER)
+            .expect("the retried write reaches the ledger");
+        assert_eq!(stored.status, BackgroundSubprocessStatus::Stopped);
+        assert!(!stored.desired_enabled, "the written stop clears the desired flag");
+
+        controller.signal_shutdown().await;
+    }
+
+    /// A later confirmed close replaces the pending-stop summary.
+    ///
+    /// A close fault that exhausts its retry allowance leaves an `Error` record
+    /// with the summary "Background subagent is stopping". A later force cancel
+    /// can confirm closure, and the entry must no longer claim the stop is in
+    /// progress, while a genuine run failure keeps its own summary and error.
+    #[tokio::test]
+    async fn a_later_confirmed_close_clears_the_pending_stop_summary() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller");
+        let mut record = background_record();
+        record.status = BackgroundSubprocessStatus::Stopped;
+        record.error = Some(format!("{BACKGROUND_CLOSE_FAULT_PREFIX}: close transport fault"));
+        record.summary = Some(BACKGROUND_STOPPING_SUMMARY.to_string());
+        {
+            let mut state = controller.state.write().await;
+            state.background_children.insert(WORKER.to_string(), record);
+        }
+        mark_background_stop_close_pending(&controller.state, WORKER, EXEC);
+
+        controller
+            .retry_pending_background_stop_closes()
+            .await
+            .expect("the missing session counts as closed");
+
+        let state = controller.state.read().await;
+        let record = state.background_children.get(WORKER).expect("record");
+        assert_eq!(record.status, BackgroundSubprocessStatus::Stopped, "the terminal outcome is preserved");
+        assert!(record.error.is_none(), "the pending close's own error text is cleared");
+        assert_eq!(
+            record.summary.as_deref(),
+            Some(BACKGROUND_STOPPED_SUMMARY),
+            "a confirmed close must not leave the pending-stop summary in place"
+        );
+        drop(state);
 
         controller.signal_shutdown().await;
     }

@@ -6,7 +6,10 @@ use super::controller_background_lifecycle::clear_background_launch_owed;
 use super::controller_background_query::resolve_background_target;
 use super::controller_background_settlement::{
     clear_background_ledger_write_pending, failed_launch_still_owns_record, mark_background_ledger_write_pending,
+    persisted_background_row_is_desired,
 };
+
+use crate::subagents::background::lock_background_state;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -41,11 +44,7 @@ pub(super) fn background_exec_session_id(session_id: &str) -> String {
     // The archive reader authorises a restored row by rebuilding this id from
     // the record's own session id, so the pair is built through the shared
     // helper rather than a second copy of the convention.
-    crate::tools::exec_session::controller_exec_session_id(
-        session_id,
-        std::process::id(),
-        next_background_launch_sequence(),
-    )
+    controller_exec_session_id(session_id, std::process::id(), next_background_launch_sequence())
 }
 
 struct BackgroundRunIdentity {
@@ -105,6 +104,10 @@ impl SubagentController {
         request: BackgroundRunRequest,
     ) -> Result<BackgroundSubprocessEntry> {
         let mut plan = self.prepare_background_run(request).await?;
+        // An explicit start is unbound, so nothing ties it to the row the ledger
+        // holds. Check that row for a claim another process wrote before the
+        // reservation can overwrite it.
+        self.refuse_explicit_start_over_competing_claim(&plan).await?;
         loop {
             let reservation = match self.reserve_background_run(&plan).await {
                 Ok(reservation) => reservation,
@@ -131,7 +134,22 @@ impl SubagentController {
                 // caller receives what that launch has committed.
                 BackgroundRunReservation::Declined => return self.background_status_for(&plan.record_id).await,
             }
-            let metadata = match self.spawn_background_exec_session(&plan).await {
+            // From the reservation until the spawn returns, this launch is the
+            // record's only driver. A caller dropped in that window has no other
+            // path to settle the claim, so the guard settles it synchronously
+            // when it is dropped.
+            let spawn_result = {
+                let claim_guard = BackgroundLaunchClaimGuard::arm(&self.state, &plan.record_id, &plan.exec_session_id);
+                #[cfg(test)]
+                pass_background_spawn_gate(&self.state).await;
+                let spawned = self.spawn_background_exec_session(&plan).await;
+                // The process owns the launch from here. A drop while the commit
+                // is pending leaves the record naming the session it spawned, so
+                // the ordinary decline and close path can still reach it.
+                claim_guard.disarm();
+                spawned
+            };
+            let metadata = match spawn_result {
                 Ok(metadata) => {
                     // The commit runs after the spawn returns, without the
                     // state lock, so a cancellation or replacement can land in
@@ -200,6 +218,53 @@ impl SubagentController {
             clear_background_ledger_write_pending(&self.state, write_generation);
             return self.background_status_for(&plan.record_id).await;
         }
+    }
+
+    /// Refuses an explicit start when the ledger already holds a live claim.
+    ///
+    /// The reservation takes the ledger lock only to write its own claim, and an
+    /// unbound start observes no launch to compare against, so a desired row
+    /// another process wrote under the same id would be overwritten without this
+    /// check. The row is read under the same ledger lock the start already
+    /// takes, and a desired copy naming a different exec session is a launch
+    /// this controller cannot see: the start declines before spawning a second
+    /// process beside it.
+    ///
+    /// A bound plan replaces a launch it observed, so the reservation compares
+    /// it against the expected session directly and this check does not apply.
+    /// A ledger that cannot be locked names no claim; the ordinary save path
+    /// still records the write the start owes.
+    async fn refuse_explicit_start_over_competing_claim(&self, plan: &BackgroundRunPlan) -> Result<()> {
+        if plan.expected_exec_session_id.is_some() || self.config.managed_background_runtime {
+            return Ok(());
+        }
+        let Some(_ledger_guard) = lock_background_state(&self.config.workspace_root).await.ok() else {
+            return Ok(());
+        };
+        let (persisted, _launch_moved) = self
+            .persisted_record_for(&plan.record_id, plan.exec_session_id.as_str())
+            .await?;
+        let Some(row) = persisted else {
+            return Ok(());
+        };
+        if !persisted_background_row_is_desired(&row) {
+            return Ok(());
+        }
+        let record_exec_session_id = {
+            let state = self.state.read().await;
+            state
+                .background_children
+                .get(&plan.record_id)
+                .map(|record| record.exec_session_id.clone())
+        };
+        if record_exec_session_id.as_deref() == Some(row.exec_session_id.as_str()) {
+            // The row is this controller's own record, not a competing launch.
+            return Ok(());
+        }
+        bail!(
+            "Background subprocess '{}' already has a launch claimed by another controller; refresh the background tasks before starting it",
+            plan.spec.name
+        );
     }
 
     /// Builds the single retry a failed launch is still allowed, if any.
@@ -471,6 +536,87 @@ impl SubagentController {
     }
 }
 
+/// The bounded message an abandoned launch claim settles with.
+///
+/// The text is what a management list shows for a record whose caller vanished
+/// before its process started; it names no path, session or secret.
+const BACKGROUND_LAUNCH_ABANDONED_ERROR: &str = "Background launch was abandoned before its process started";
+
+/// Settles a fresh launch claim whose caller disappears before it spawns.
+///
+/// A fresh claim is recorded as non-retryable precisely because the call that
+/// reserved it is about to spawn the process. If that call is dropped in the
+/// window — a cancelled tool invocation, a `select!` that takes another branch —
+/// nothing else drives the record: refresh exempts a `Starting` record that owes
+/// a launch and never retries a fresh claim, so the record would report an
+/// active launch forever.
+///
+/// The drop handler cannot await, so it settles the unstarted claim
+/// synchronously: it takes the state lock without blocking, marks the record
+/// `Error` with a bounded message, and clears the claim obligation. It performs
+/// no asynchronous work and schedules no retry. If another task holds the state
+/// lock, the status is left as it was and the cleared obligation makes the next
+/// refresh settle the orphaned claim. Dropping the guard after the spawn returns
+/// is a disarm: the process owns the launch from then on, and the ordinary
+/// commit, decline and close paths settle it.
+struct BackgroundLaunchClaimGuard {
+    state: Arc<RwLock<ControllerState>>,
+    record_id: String,
+    exec_session_id: String,
+    armed: bool,
+}
+
+impl BackgroundLaunchClaimGuard {
+    /// Arms the guard for one fresh claim.
+    fn arm(state: &Arc<RwLock<ControllerState>>, record_id: &str, exec_session_id: &str) -> Self {
+        Self {
+            state: Arc::clone(state),
+            record_id: record_id.to_owned(),
+            exec_session_id: exec_session_id.to_owned(),
+            armed: true,
+        }
+    }
+
+    /// Reports that the launch reached its process, so its drop owes nothing.
+    fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for BackgroundLaunchClaimGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        // The handler runs on the dropping thread, so it must never park the
+        // runtime by awaiting. If another task holds the state lock, the record
+        // keeps its `Starting` status; the obligation below is still cleared, so
+        // the next refresh can settle the orphaned claim instead of exempting it
+        // forever.
+        if let Ok(mut state) = self.state.try_write() {
+            let now = Utc::now();
+            if let Some(record) = state.background_children.get_mut(&self.record_id)
+                && record.exec_session_id == self.exec_session_id
+                && record.desired_enabled
+                && record.status == BackgroundSubprocessStatus::Starting
+            {
+                record.status = BackgroundSubprocessStatus::Error;
+                record.error = Some(BACKGROUND_LAUNCH_ABANDONED_ERROR.to_string());
+                record.summary = Some("Background subagent failed to start".to_string());
+                record.updated_at = now;
+                record.ended_at.get_or_insert(now);
+                // The settlement exists only in memory, so the ledger is owed
+                // the write before the lock is released.
+                mark_background_ledger_write_pending(&self.state);
+            }
+        }
+        // The driver is gone, so no launch may keep exempting the record: a
+        // launch that took it recorded its own obligation under the exec session
+        // it minted, and a later refresh drives whatever this claim became.
+        clear_background_launch_owed(&self.state, &self.record_id, &self.exec_session_id);
+    }
+}
+
 /// A test gate between a successful spawn and the commit that records it.
 ///
 /// The commit runs without the state lock, so a cancellation or replacement can
@@ -515,6 +661,62 @@ pub(super) fn gate_next_background_commit(state: &Arc<RwLock<ControllerState>>) 
 async fn pass_background_commit_gate(state: &Arc<RwLock<ControllerState>>) {
     let gate = {
         let mut gates = background_commit_gates()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        gates.retain(|gate| gate.state.strong_count() > 0);
+        let index = gates
+            .iter()
+            .position(|gate| std::ptr::eq(gate.state.as_ptr(), Arc::as_ptr(state)));
+        index.map(|index| gates.remove(index))
+    };
+    let Some(gate) = gate else {
+        return;
+    };
+    gate.entered.notify_one();
+    gate.release.notified().await;
+}
+
+/// A test gate between a fresh reservation and its spawn.
+///
+/// No await separates the reservation from the spawn in production, so the only
+/// deterministic way a caller can be dropped "before its spawn" is this seam.
+/// Parking here lets a test prove the claim's drop handler settles the record
+/// instead of leaving it `Starting` with no driver.
+#[cfg(test)]
+struct BackgroundSpawnGate {
+    state: Weak<RwLock<ControllerState>>,
+    entered: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+#[cfg(test)]
+fn background_spawn_gates() -> &'static Mutex<Vec<BackgroundSpawnGate>> {
+    static GATES: std::sync::OnceLock<Mutex<Vec<BackgroundSpawnGate>>> = std::sync::OnceLock::new();
+    GATES.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Arms a gate that holds the next launch of `state` before its spawn.
+#[cfg(test)]
+fn gate_next_background_spawn(state: &Arc<RwLock<ControllerState>>) -> (Arc<Notify>, Arc<Notify>) {
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let mut gates = background_spawn_gates()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    gates.retain(|gate| gate.state.strong_count() > 0);
+    gates.push(BackgroundSpawnGate {
+        state: Arc::downgrade(state),
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+    });
+    (entered, release)
+}
+
+/// Parks the launch at the spawn gate when one is armed for `state`.
+#[cfg(test)]
+async fn pass_background_spawn_gate(state: &Arc<RwLock<ControllerState>>) {
+    let gate = {
+        let mut gates = background_spawn_gates()
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         gates.retain(|gate| gate.state.strong_count() > 0);
@@ -577,11 +779,13 @@ mod reservation_error_tests {
 
     use crate::config::DiapasonConfig;
     use crate::config::types::ReasoningEffortLevel;
-    use crate::subagents::background::lock_background_state;
+    use crate::subagents::background::{lock_background_state, persist_background_state};
     use crate::tools::exec_session::ExecSessionManager;
     use crate::tools::registry::PtySessionManager;
 
     use super::super::BackgroundRunRequest;
+    use super::super::controller_background_lifecycle::background_launch_is_owed;
+    use super::super::controller_background_settlement::pending_background_ledger_write_generation;
     use super::*;
 
     const WORKER: &str = "background-worker";
@@ -721,6 +925,145 @@ mod reservation_error_tests {
         );
         assert!(record.ended_at.is_some(), "a settled reservation failure has ended");
         drop(state);
+
+        controller.signal_shutdown().await;
+    }
+
+    /// Builds one desired ledger row under the worker's canonical id.
+    fn persisted_claim(exec_session_id: &str) -> PersistedBackgroundRecord {
+        serde_json::from_value(serde_json::json!({
+            "id": WORKER,
+            "owner_session_id": null,
+            "agent_name": WORKER_AGENT,
+            "display_label": WORKER_AGENT,
+            "description": WORKER_AGENT,
+            "source": "builtin",
+            "color": null,
+            "session_id": format!("session-{WORKER}"),
+            "parent_session_id": "parent-session",
+            "exec_session_id": exec_session_id,
+            "desired_enabled": true,
+            "status": "starting",
+            "created_at": "2026-08-28T00:00:00Z",
+            "updated_at": "2026-08-28T00:00:00Z",
+            "started_at": null,
+            "ended_at": null,
+            "pid": null,
+            "prompt": "work",
+            "summary": null,
+            "error": null,
+            "archive_path": null,
+            "transcript_path": null,
+            "max_turns": null,
+            "model_override": null,
+            "reasoning_override": null,
+            "restart_attempts": 0
+        }))
+        .expect("persisted background claim")
+    }
+
+    /// An explicit start must not reserve over a claim another process wrote.
+    ///
+    /// The start reads no persisted row for its id, so a desired row that
+    /// another process wrote after this controller loaded its state would be
+    /// overwritten and a second process could run the same task. The start
+    /// reads the row under the ledger lock and declines before spawning.
+    #[tokio::test]
+    async fn an_explicit_start_declines_a_competing_persisted_claim() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller");
+        persist_background_state(temp.path(), vec![persisted_claim("exec-other")])
+            .await
+            .expect("seed the competing claim");
+
+        let error = controller
+            .ensure_background_record_running(BackgroundRunRequest {
+                agent_name: WORKER_AGENT.to_string(),
+                stable_id: Some(WORKER.to_string()),
+                restart_attempts: 0,
+                overrides: None,
+                expected_exec_session_id: None,
+            })
+            .await
+            .expect_err("an explicit start must decline a claim it did not write");
+
+        assert!(
+            format!("{error:#}").contains("claimed by another controller"),
+            "the caller is told the launch is already claimed: {error:#}"
+        );
+        let state = controller.state.read().await;
+        assert!(!state.background_children.contains_key(WORKER), "a declined start must not reserve the record");
+        drop(state);
+
+        controller.signal_shutdown().await;
+    }
+
+    /// A launch dropped before its spawn settles the unstarted claim.
+    ///
+    /// A fresh claim is non-retryable, and refresh exempts a `Starting` record
+    /// that owes a launch, so a caller that disappears before spawning leaves
+    /// nothing to drive the record. The claim's drop handler settles it
+    /// `Error` synchronously and clears the obligation instead of reporting an
+    /// active launch forever.
+    #[tokio::test]
+    async fn a_launch_dropped_before_its_spawn_settles_the_unstarted_claim() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller");
+        let (entered, _release) = gate_next_background_spawn(&controller.state);
+        let exec_session_id = {
+            let launch = controller.ensure_background_record_running(BackgroundRunRequest {
+                agent_name: WORKER_AGENT.to_string(),
+                stable_id: Some(WORKER.to_string()),
+                restart_attempts: 0,
+                overrides: None,
+                expected_exec_session_id: None,
+            });
+            tokio::pin!(launch);
+            tokio::select! {
+                result = &mut launch => panic!("the gated launch settled before it was dropped: {result:?}"),
+                () = entered.notified() => {}
+            }
+            let state = controller.state.read().await;
+            let record = state.background_children.get(WORKER).expect("the reservation wrote the claim");
+            assert_eq!(
+                record.status,
+                BackgroundSubprocessStatus::Starting,
+                "the reservation leaves the record starting while its spawn is pending"
+            );
+            record.exec_session_id.clone()
+        };
+
+        {
+            let state = controller.state.read().await;
+            let record = state.background_children.get(WORKER).expect("the claim leaves a record");
+            assert_eq!(
+                record.status,
+                BackgroundSubprocessStatus::Error,
+                "an unstarted claim must settle instead of reporting an active launch forever"
+            );
+            assert_eq!(record.exec_session_id, exec_session_id, "the settlement keeps the launch identity");
+            assert!(
+                record
+                    .error
+                    .as_deref()
+                    .is_some_and(|error| error.contains("abandoned before its process started")),
+                "{:?}",
+                record.error
+            );
+            assert!(record.ended_at.is_some(), "a settled claim has ended");
+        }
+        assert!(
+            !background_launch_is_owed(&controller.state, WORKER, &exec_session_id),
+            "the drop discharges the claim it settled"
+        );
+        assert!(
+            pending_background_ledger_write_generation(&controller.state).is_some(),
+            "the settlement owes the ledger the failure it recorded"
+        );
 
         controller.signal_shutdown().await;
     }

@@ -23,7 +23,7 @@ use std::collections::HashSet;
 use anyhow::{Result, bail};
 
 use super::background::background_record_id;
-use super::{BackgroundSubprocessEntry, ChildRecord, StatusEntryBuilder, SubagentController, SubagentStatusEntry};
+use super::{BackgroundSubprocessEntry, ChildRecord, SubagentController, SubagentStatusEntry};
 
 /// The authority a caller presents when it asks the controller for a task.
 ///
@@ -117,22 +117,28 @@ pub fn resolve_owned_background_id<'a>(
         .map(|entry| entry.id.as_str())
 }
 
-/// Selects the child tasks a session owns, directly or through a descendant.
+/// The borrowed identity fields ownership follows for one child task.
+///
+/// The order is `(child id, child session id, parent thread id)`. Ownership
+/// only needs these three borrowed strings, so the walk never clones a status
+/// entry's labels, timings or other presentation fields.
+type ChildIdentity<'a> = (&'a str, &'a str, &'a str);
+
+/// Walks borrowed child identities and returns the ids the session owns.
 ///
 /// A delegation tree is layered: the session that starts a delegation owns the
 /// child it named, that child's session owns the grandchildren it started, and
 /// so on. A caller that owns the root therefore owns everything below it,
 /// which is why the walk repeats until it stops discovering new sessions.
-#[must_use]
-pub fn owned_child_ids<'a>(session_id: &str, entries: &'a [SubagentStatusEntry]) -> HashSet<&'a str> {
+fn owned_child_ids_in<'a>(session_id: &str, children: &[ChildIdentity<'a>]) -> HashSet<&'a str> {
     let mut owned_sessions = HashSet::from([session_id]);
     let mut owned_ids = HashSet::new();
     loop {
         let before = owned_ids.len();
-        for entry in entries {
-            if owned_sessions.contains(entry.parent_thread_id.as_str()) {
-                let _ = owned_ids.insert(entry.id.as_str());
-                let _ = owned_sessions.insert(entry.session_id.as_str());
+        for &(id, child_session_id, parent_thread_id) in children {
+            if owned_sessions.contains(parent_thread_id) {
+                let _ = owned_ids.insert(id);
+                let _ = owned_sessions.insert(child_session_id);
             }
         }
         if owned_ids.len() == before {
@@ -140,6 +146,16 @@ pub fn owned_child_ids<'a>(session_id: &str, entries: &'a [SubagentStatusEntry])
         }
     }
     owned_ids
+}
+
+/// Selects the child tasks a session owns, directly or through a descendant.
+#[must_use]
+pub fn owned_child_ids<'a>(session_id: &str, entries: &'a [SubagentStatusEntry]) -> HashSet<&'a str> {
+    let children = entries
+        .iter()
+        .map(|entry| (entry.id.as_str(), entry.session_id.as_str(), entry.parent_thread_id.as_str()))
+        .collect::<Vec<_>>();
+    owned_child_ids_in(session_id, &children)
 }
 
 impl SubagentController {
@@ -155,8 +171,14 @@ impl SubagentController {
     /// admitted for.
     pub async fn owns_child(&self, session_id: &str, child_id: &str) -> bool {
         let state = self.state.read().await;
-        let entries = state.children.values().map(ChildRecord::build_status_entry).collect::<Vec<_>>();
-        owned_child_ids(session_id, &entries).contains(child_id)
+        // Borrow only the three identity fields the walk reads: building a
+        // status entry here would clone every presentation field per record.
+        let children = state
+            .children
+            .values()
+            .map(|record| (record.id.as_str(), record.session_id.as_str(), record.parent_thread_id.as_str()))
+            .collect::<Vec<_>>();
+        owned_child_ids_in(session_id, &children).contains(child_id)
     }
 
     /// Returns the session this controller serves.

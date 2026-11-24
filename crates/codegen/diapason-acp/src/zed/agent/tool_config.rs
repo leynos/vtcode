@@ -53,6 +53,22 @@ impl ZedAgent {
         enabled_tools: &[SupportedTool],
         primary_agent: &str,
     ) -> Option<Vec<ToolDefinition>> {
+        self.tool_definitions_with_subagent_gate(provider_supports_tools, enabled_tools, primary_agent, true)
+    }
+
+    /// Builds the definitions advertised while subagent tools are gated.
+    ///
+    /// The catalogue can hold subagent tools because the launch workspace has a
+    /// controller of its own. A session without a workspace runtime advertises
+    /// from that catalogue, so it must apply the same controller gate the
+    /// runtime-backed path does; the runtime-enabled tool set is left unchanged.
+    fn tool_definitions_with_subagent_gate(
+        &self,
+        provider_supports_tools: bool,
+        enabled_tools: &[SupportedTool],
+        primary_agent: &str,
+        subagent_tools_advertised: bool,
+    ) -> Option<Vec<ToolDefinition>> {
         if !provider_supports_tools {
             return None;
         }
@@ -65,10 +81,11 @@ impl ZedAgent {
             Some(
                 self.acp_tool_registry
                     .definitions_for_filtered(enabled_tools, include_local, |tool_name| {
-                        is_acp_session_tool(tool_name)
-                            || self
-                                .primary_agents
-                                .allows_tool(primary_agent, tool_name, workspace_root.as_path())
+                        subagent_tool_is_advertised(subagent_tools_advertised, tool_name)
+                            && (is_acp_session_tool(tool_name)
+                                || self
+                                    .primary_agents
+                                    .allows_tool(primary_agent, tool_name, workspace_root.as_path()))
                     }),
             )
         }
@@ -103,7 +120,18 @@ impl ZedAgent {
             .workspace_runtime()
             .context("reading ACP session workspace runtime for tool definitions")?
         else {
-            return Ok(self.tool_definitions(provider_supports_tools, enabled_tools, primary_agent));
+            // This session advertises from the launch catalogue, so it must
+            // gate subagent tools on the controller it actually resolves (the
+            // launch fallback here) rather than inheriting them from the
+            // catalogue.
+            let subagent_tools_advertised =
+                provider_supports_tools && self.session_subagent_controller(session)?.is_some();
+            return Ok(self.tool_definitions_with_subagent_gate(
+                provider_supports_tools,
+                enabled_tools,
+                primary_agent,
+                subagent_tools_advertised,
+            ));
         };
         if !provider_supports_tools {
             return Ok(None);

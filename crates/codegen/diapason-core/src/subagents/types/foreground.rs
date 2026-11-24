@@ -75,6 +75,20 @@ pub(crate) struct ChildRunRequest {
     pub(crate) reasoning_override: Option<String>,
 }
 
+/// The values a terminal child reports to its stop hooks.
+///
+/// Named rather than positional: several fields share a type, so a positional
+/// payload made a silent swap possible when a caller read it.
+pub(crate) struct HookPayload {
+    pub(crate) parent_session_id: String,
+    pub(crate) child_thread_id: String,
+    pub(crate) agent_name: String,
+    pub(crate) display_label: String,
+    pub(crate) background: bool,
+    pub(crate) status: String,
+    pub(crate) transcript_path: Option<PathBuf>,
+}
+
 // ─── Status Entry Builders ──────────────────────────────────────────────────
 
 pub trait StatusEntryBuilder {
@@ -162,16 +176,16 @@ impl ChildRecord {
     }
 
     /// Build the hook payload for a terminal run (no more queued prompts).
-    pub(crate) fn build_hook_payload(&self) -> (String, String, String, String, bool, String, Option<PathBuf>) {
-        (
-            self.parent_thread_id.clone(),
-            self.session_id.clone(),
-            self.spec.name.clone(),
-            self.display_label.clone(),
-            self.background,
-            self.status.as_str().to_string(),
-            self.transcript_path.clone().or_else(|| self.archive_path.clone()),
-        )
+    pub(crate) fn build_hook_payload(&self) -> HookPayload {
+        HookPayload {
+            parent_session_id: self.parent_thread_id.clone(),
+            child_thread_id: self.session_id.clone(),
+            agent_name: self.spec.name.clone(),
+            display_label: self.display_label.clone(),
+            background: self.background,
+            status: self.status.as_str().to_string(),
+            transcript_path: self.transcript_path.clone().or_else(|| self.archive_path.clone()),
+        }
     }
 }
 

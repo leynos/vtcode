@@ -16,7 +16,7 @@ use crate::subagents::controller_child_ids::AllocationRendezvous;
 /// joining subtree already holds, not through the joining controller itself.
 /// A controller allocates through its own slot, so only a controller whose slot
 /// forwards to the allocator being merged can resolve it before the rewrite and
-/// record into it afterwards; the joining controller's own slot would serialise
+/// record into it afterwards; the joining controller's own slot would serialize
 /// the two operations by itself.
 ///
 /// The detection has to run from the tree's own controller. An allocation
@@ -58,7 +58,7 @@ async fn concurrent_graft_and_allocation_never_repeat_a_task_id() {
         // raced graft is about to merge and redirect, so it resolves that
         // allocator without taking the lock on the joining controller's own
         // slot. A race driven through the joining controller itself would be
-        // serialised by that slot's own read/write lock and would prove nothing
+        // serialized by that slot's own read/write lock and would prove nothing
         // about the adoption lock.
         let descendant_session = format!("descendant-session-{round}");
         let mut descendant_config = test_controller_config(workspace_root.clone(), DiapasonConfig::default());
@@ -180,15 +180,16 @@ async fn concurrent_graft_and_allocation_never_repeat_a_task_id() {
         };
         rendezvous.wait_for_merge_attempt().await;
         let contended = tokio::time::timeout(Duration::from_millis(100), &mut graft).await;
-        // An expired gate released the reservation without the test releasing
-        // it, so the contention check below would report a lock that was never
-        // held. Fail with the timeout that actually happened instead.
+        assert!(contended.is_err(), "round {round}: the graft must block behind the in-flight reservation");
+        rendezvous.release();
+        // Check the gate only after releasing it, so the state is settled: an
+        // expired gate released the reservation without the test choosing to,
+        // and the contention above would then have been reported for a lock
+        // that was never held.
         assert!(
             !rendezvous.expired(),
             "round {round}: the reservation gate expired instead of holding the adoption lock"
         );
-        assert!(contended.is_err(), "round {round}: the graft must block behind the in-flight reservation");
-        rendezvous.release();
         graft
             .await
             .expect("the graft task must finish")

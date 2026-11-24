@@ -176,23 +176,15 @@ impl SubagentController {
             record.updated_at = Utc::now();
             let has_more_work = record.apply_result(result);
             let hook_payload = (!has_more_work).then(|| {
-                let (
-                    parent_session_id,
-                    child_thread_id,
-                    agent_name,
-                    display_label,
-                    background,
-                    status,
-                    transcript_path,
-                ) = record.build_hook_payload();
+                let payload = record.build_hook_payload();
                 SubagentStopHookContext {
-                    parent_session_id,
-                    child_thread_id,
-                    agent_name,
-                    display_label,
-                    background,
-                    status,
-                    transcript_path,
+                    parent_session_id: payload.parent_session_id,
+                    child_thread_id: payload.child_thread_id,
+                    agent_name: payload.agent_name,
+                    display_label: payload.display_label,
+                    background: payload.background,
+                    status: payload.status,
+                    transcript_path: payload.transcript_path,
                 }
             });
             let progress_entry = record.build_status_entry();

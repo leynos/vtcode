@@ -12,6 +12,14 @@ use super::{
     BackgroundSubprocessEntry, StatusEntryBuilder, SubagentController, SubagentProgressObserver, SubagentStatusEntry,
 };
 
+/// The reservation gate the clock-handoff regression installs.
+///
+/// Defined in the test module, but named here because the route carries it in
+/// test builds. Re-exported so tests that drive the route through its public
+/// type can still name it.
+#[cfg(test)]
+pub(super) use self::tests::ReserveRendezvous;
+
 /// The observers registered against one controller, keyed by registration id.
 #[derive(Default)]
 pub(super) struct ProgressObserverRegistry {
@@ -44,62 +52,6 @@ pub(super) struct ProgressObserverRouteState {
     /// retires with the clock it guarded.
     #[cfg(test)]
     reserve_rendezvous: Option<Arc<ReserveRendezvous>>,
-}
-
-/// A test-only gate around one reservation's read-guard window.
-///
-/// Production never installs one. A test that must prove a clock handoff
-/// excludes a reservation parks the first reservation after it takes the
-/// route's read guard and before it increments the clock. The handoff needs the
-/// write guard, so it cannot copy the revision the parked reservation is about
-/// to take; releasing the gate lets the reservation record its revision first,
-/// and the handoff's `fetch_max` carries it into the adopted clock.
-#[cfg(test)]
-#[derive(Default)]
-pub(super) struct ReserveRendezvous {
-    parked_once: std::sync::atomic::AtomicBool,
-    entered: tokio::sync::Notify,
-    expired: std::sync::atomic::AtomicBool,
-    released: Mutex<bool>,
-    release: std::sync::Condvar,
-}
-
-#[cfg(test)]
-impl ReserveRendezvous {
-    /// Parks the first reservation that reaches the gate until [`Self::release`].
-    fn park_once(&self) {
-        if self.parked_once.swap(true, Ordering::SeqCst) {
-            return;
-        }
-        self.entered.notify_one();
-        // The wait is bounded so a failing test reports its assertion instead
-        // of hanging the parked thread. An expired gate is recorded so the
-        // test can tell its own timeout apart from lock contention.
-        let released = self.released.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let (released, outcome) = self
-            .release
-            .wait_timeout_while(released, std::time::Duration::from_secs(30), |released| !*released)
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if outcome.timed_out() && !*released {
-            self.expired.store(true, Ordering::SeqCst);
-        }
-    }
-
-    /// Waits until the gated reservation is parked in its read-guard window.
-    pub(super) async fn wait_until_parked(&self) {
-        self.entered.notified().await;
-    }
-
-    /// Releases the parked reservation so it can record its revision.
-    pub(super) fn release(&self) {
-        *self.released.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = true;
-        self.release.notify_all();
-    }
-
-    /// Reports whether the bounded wait elapsed without a release.
-    pub(super) fn expired(&self) -> bool {
-        self.expired.load(Ordering::SeqCst)
-    }
 }
 
 /// The swappable publication route of one controller.
@@ -147,16 +99,6 @@ impl ProgressObserverRoute {
         route.lifecycle_clock.fetch_add(1, Ordering::Relaxed)
     }
 
-    /// Installs the gate that parks one reservation, for the clock-handoff
-    /// regression.
-    #[cfg(test)]
-    pub(super) fn install_lifecycle_reserve_rendezvous(&self, rendezvous: Arc<ReserveRendezvous>) {
-        self.state
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .reserve_rendezvous = Some(rendezvous);
-    }
-
     /// Carries this route's clock forward into `lifecycle_clock` and adopts it.
     ///
     /// Reading this route's clock, raising the adopted clock to it and
@@ -180,15 +122,12 @@ impl ProgressObserverRoute {
     ) {
         // A handoff retires the route state, and with it any test gate that was
         // parking a reservation against the retired clock. The gate field
-        // exists only in test builds, so the value is built per configuration
-        // rather than with an update that names it.
-        #[cfg(not(test))]
-        let adopted = ProgressObserverRouteState { registry, scope, lifecycle_clock };
-        #[cfg(test)]
+        // exists only in test builds, so it is named only there.
         let adopted = ProgressObserverRouteState {
             registry,
             scope,
             lifecycle_clock,
+            #[cfg(test)]
             reserve_rendezvous: None,
         };
         let mut route = self.state.write().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -197,15 +136,6 @@ impl ProgressObserverRoute {
         let retired = std::mem::replace(&mut *route, adopted);
         drop(route);
         drop(retired);
-    }
-
-    /// Reports whether this route's write guard is currently held.
-    ///
-    /// A test calls this from an observer's `Drop` to prove the retired route
-    /// is released outside the guard that `reserve` contends with.
-    #[cfg(test)]
-    pub(super) fn write_guard_held(&self) -> bool {
-        self.state.try_read().is_err()
     }
 }
 

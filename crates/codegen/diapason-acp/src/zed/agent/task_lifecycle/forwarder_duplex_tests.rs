@@ -1,5 +1,5 @@
 //! Duplex transport regressions for the lifecycle forwarder.
-use super::projection_tests::{live, subagent_event, subagent_event_for, with_updated_at};
+use super::projection_tests::{live, subagent_event, subagent_event_for, with_task_id, with_updated_at};
 use super::*;
 use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnectionTo, on_receive_notification};
 use std::time::Duration;
@@ -100,6 +100,12 @@ async fn stale_initial_task_snapshot_is_not_forwarded_after_settlement() {
                 },
             )
             .unwrap();
+        // An ordered sentinel queued after the stale replay. Delivery is FIFO,
+        // so receiving the sentinel third proves the stale replay was dropped
+        // rather than merely delayed, without waiting on a wall-clock window.
+        queue
+            .try_send(&progress_tx, live(with_task_id(subagent_event("queued"), "sentinel-task".to_string())))
+            .unwrap();
     });
 
     let first = duplex.next(Duration::from_secs(2)).await.expect("initial task update");
@@ -120,8 +126,27 @@ async fn stale_initial_task_snapshot_is_not_forwarded_after_settlement() {
     };
     assert_eq!(update.meta.expect("progress task metadata")["lody"]["task"]["status"], "completed");
 
-    let stale = duplex.next(Duration::from_millis(250)).await;
-    assert!(stale.is_none(), "a stale initial snapshot must not be forwarded after settlement");
+    let sentinel = duplex.next(Duration::from_secs(2)).await.expect("ordered sentinel update");
+    let acp::AgentNotification::SessionNotification(sentinel) = sentinel else {
+        panic!("task lifecycle must use standard session notifications");
+    };
+    let acp::SessionUpdate::ToolCall(sentinel_call) = sentinel.update else {
+        panic!("the sentinel task's first snapshot must create a tool call");
+    };
+    assert_eq!(
+        sentinel_call.tool_call_id.0.as_ref(),
+        "task:sentinel-task",
+        "the stale replay queued before the sentinel must not have been forwarded"
+    );
+    assert_eq!(
+        sentinel_call.meta.expect("sentinel task metadata")["lody"]["task"]["status"],
+        "pending",
+        "the sentinel must be the queued task's first snapshot"
+    );
+    assert!(
+        duplex.received.try_recv().is_err(),
+        "the sentinel must be the last queued update, so nothing may follow it"
+    );
 
     duplex.finish().await;
 }
