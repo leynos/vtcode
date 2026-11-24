@@ -22,6 +22,7 @@ class WorkflowValidationCiTests(unittest.TestCase):
     """Assert provisioning, hardening, and trusted lint invocation as parsed YAML."""
 
     def setUp(self) -> None:
+        """Parse the CI workflow and isolate the ``lint-clippy`` job and steps."""
         self.workflow = load_workflow(CI_WORKFLOW_PATH)
         self.steps = job_steps(self.workflow, "lint-clippy")
         jobs = self.workflow["jobs"]
@@ -30,6 +31,11 @@ class WorkflowValidationCiTests(unittest.TestCase):
         assert isinstance(self.job, dict)
 
     def test_pinned_yamllint_provisioning_precedes_actionlint(self) -> None:
+        """Check yamllint is pinned, cached and installed before actionlint.
+
+        The job environment must also redirect uv's cache and tool paths into
+        the workspace.
+        """
         environment = self.job.get("env")
         self.assertIsInstance(environment, dict)
         assert isinstance(environment, dict)
@@ -71,6 +77,11 @@ class WorkflowValidationCiTests(unittest.TestCase):
         )
 
     def test_verified_actionlint_download_precedes_installer(self) -> None:
+        """Check the cached, checksum-verified archive reaches the installer.
+
+        The download step must verify the archive before invoking the pinned
+        installer revision.
+        """
         cache = named_step(self.steps, "Cache actionlint")
         self.assertEqual(cache.get("id"), "cache_actionlint")
         self.assertEqual(cache.get("uses"), CACHE_ACTION)
@@ -114,6 +125,11 @@ class WorkflowValidationCiTests(unittest.TestCase):
         )
 
     def test_ci_uses_the_trusted_make_binary_and_cached_actionlint(self) -> None:
+        """Check lint uses the system make and the cached actionlint binary.
+
+        The contract step must run through the Make target rather than a
+        repository-controlled script.
+        """
         lint = named_step(self.steps, "Lint")
         self.assertEqual(
             lint.get("run"),

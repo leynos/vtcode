@@ -117,6 +117,18 @@ Command skills never enter the model-invocable catalogue. Both IDs are excluded
 from the `## Skills` prompt section, so use slash completion or `/skills`
 discovery to reach them.
 
+## Workflow validation tooling
+
+`make lint` runs yamllint with the repository `.yamllint.yml` policy and then
+actionlint through `make github-actions-lint`, so malformed YAML fails before
+the GitHub Actions-specific checks. The full configuration details are in
+[docs/development/ci-cd.md](./development/ci-cd.md).
+
+- `make test-github-actions-validation` runs the controlled-linter contract
+  tests through `uv` with PyYAML 6.0.3.
+- CI pins yamllint 1.38.0 and actionlint 1.7.12, and verifies the actionlint
+  archive checksum before running the reviewed installer.
+
 ## ACP interrupted tool recovery
 
 `crates/codegen/diapason-acp/src/zed/agent/tool_recovery.rs` owns the history
