@@ -66,7 +66,7 @@ class WorkflowValidationCiTests(unittest.TestCase):
         install_yamllint = named_step(self.steps, "Install yamllint")
         self.assertEqual(
             install_yamllint.get("run"),
-            'uv tool install "yamllint==${YAMLLINT_VERSION}"\n'
+            'uv tool install --force "yamllint==${YAMLLINT_VERSION}"\n'
             'echo "${UV_TOOL_BIN_DIR}" >> "$GITHUB_PATH"\n',
         )
 

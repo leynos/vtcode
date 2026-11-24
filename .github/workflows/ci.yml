@@ -229,7 +229,7 @@ jobs:
           key: yamllint-${{ runner.os }}-${{ runner.arch }}-${{ env.YAMLLINT_VERSION }}
       - name: Install yamllint
         run: |
-          uv tool install "yamllint==${YAMLLINT_VERSION}"
+          uv tool install --force "yamllint==${YAMLLINT_VERSION}"
           echo "${UV_TOOL_BIN_DIR}" >> "$GITHUB_PATH"
       - name: Cache actionlint
         id: cache_actionlint

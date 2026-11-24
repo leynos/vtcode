@@ -168,6 +168,7 @@ class MakefileProcessTests(unittest.TestCase):
                 self.assertEqual(result.returncode, expected, result.stderr)
                 self.assertEqual(read_call_log(self.call_log), ["yamllint", "actionlint"])
 
+
 class ActionlintDownloadTests(unittest.TestCase):
     """Exercise the verified actionlint download boundary in the CI script."""
 
@@ -261,7 +262,6 @@ class ActionlintDownloadTests(unittest.TestCase):
             self.assertFalse(output.exists())
             self.assertFalse(installer_log.exists())
             self.assertEqual(len(read_call_log(call_log)), 1)
-
 
 
 if __name__ == "__main__":
