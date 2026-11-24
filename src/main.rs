@@ -226,6 +226,10 @@ fn bootstrap_main() -> Result<BootstrapOutcome> {
         anyhow::bail!("The --print/-p flag cannot be combined with subcommands. Use print mode without a subcommand.");
     }
 
+    // Print input must be validated before `resolve_startup_context`, which
+    // resolves provider configuration and credentials below. A missing prompt
+    // must never require a provider credential; see the `print_mode_`
+    // regressions in `tests/cli_harness_failures.rs`.
     let print_mode = args.print.clone().map(main_helpers::build_print_prompt).transpose()?;
     let colour_policy = resolve_runtime_colour_policy(&args);
     colour_policy::set_colour_output_policy(colour_policy);

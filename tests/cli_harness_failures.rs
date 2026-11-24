@@ -3,15 +3,18 @@
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
 use anyhow::{Context, Result};
-use assert_cmd::prelude::*;
+use assert_cmd::Command;
 use predicates::prelude::*;
-use std::process::Command;
 
 #[path = "../crates/codegen/diapason-core/tests/support/mod.rs"]
 mod support;
 
 use support::TestHarness;
 
+/// Build the isolated command used by every CLI failure regression.
+///
+/// Returns `assert_cmd::Command` rather than `std::process::Command` so a test
+/// can supply stdin, which print mode reads when no inline prompt is given.
 fn base_command(harness: &TestHarness) -> Result<Command> {
     let _workspace_config = harness
         .write_file(
@@ -51,7 +54,7 @@ api_key_env = "OPENROUTER_API_KEY"
     let state = harness.workspace().join(".test-state");
     let cache = harness.workspace().join(".test-cache");
     let runtime = harness.workspace().join(".test-runtime");
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("diapason"));
+    let mut cmd = Command::cargo_bin("diapason")?;
     let _configured_command = cmd
         .env_clear()
         .env("HOME", home)
@@ -92,6 +95,80 @@ fn print_mode_with_prompt_requires_provider_authentication() -> Result<()> {
         .context("mark workspace initialized")?;
     let mut cmd = base_command(&harness)?;
     let _argument = cmd.env_remove("OPENROUTER_API_KEY").arg("--print").arg("hello");
+
+    let _assertion = cmd.assert().failure().stderr(
+        predicate::str::contains("API key not found for provider 'openrouter'")
+            .and(predicate::str::contains("No prompt provided").not()),
+    );
+
+    Ok(())
+}
+
+#[test]
+fn print_mode_treats_whitespace_inline_prompt_as_missing() -> Result<()> {
+    let harness = TestHarness::new().context("initialize harness workspace")?;
+    let _marker = harness
+        .write_file(".diapason/.keep", "")
+        .context("mark workspace initialized")?;
+    let mut cmd = base_command(&harness)?;
+    let _argument = cmd.env_remove("OPENROUTER_API_KEY").arg("--print").arg("   ");
+
+    let _assertion = cmd.assert().failure().stderr(
+        predicate::str::contains("No prompt provided")
+            .and(predicate::str::contains("API key not found for provider 'openrouter'").not()),
+    );
+
+    Ok(())
+}
+
+#[test]
+fn print_mode_treats_whitespace_stdin_as_missing() -> Result<()> {
+    let harness = TestHarness::new().context("initialize harness workspace")?;
+    let _marker = harness
+        .write_file(".diapason/.keep", "")
+        .context("mark workspace initialized")?;
+    let mut cmd = base_command(&harness)?;
+    let _argument = cmd.env_remove("OPENROUTER_API_KEY").arg("--print").write_stdin(" \n\t\n");
+
+    let _assertion = cmd.assert().failure().stderr(
+        predicate::str::contains("No prompt provided")
+            .and(predicate::str::contains("API key not found for provider 'openrouter'").not()),
+    );
+
+    Ok(())
+}
+
+#[test]
+fn print_mode_missing_prompt_precedes_config_failure() -> Result<()> {
+    let harness = TestHarness::new().context("initialize harness workspace")?;
+    let _marker = harness
+        .write_file(".diapason/.keep", "")
+        .context("mark workspace initialized")?;
+    let missing_config = harness.workspace().join("missing-config.toml");
+    let mut cmd = base_command(&harness)?;
+    let _argument = cmd
+        .env_remove("OPENROUTER_API_KEY")
+        .arg("--config")
+        .arg(&missing_config)
+        .arg("--print");
+
+    let _assertion = cmd.assert().failure().stderr(
+        predicate::str::contains("No prompt provided")
+            .and(predicate::str::contains("API key not found for provider 'openrouter'").not())
+            .and(predicate::str::contains(missing_config.to_string_lossy()).not()),
+    );
+
+    Ok(())
+}
+
+#[test]
+fn print_mode_with_stdin_prompt_requires_provider_authentication() -> Result<()> {
+    let harness = TestHarness::new().context("initialize harness workspace")?;
+    let _marker = harness
+        .write_file(".diapason/.keep", "")
+        .context("mark workspace initialized")?;
+    let mut cmd = base_command(&harness)?;
+    let _argument = cmd.env_remove("OPENROUTER_API_KEY").arg("--print").write_stdin("hello\n");
 
     let _assertion = cmd.assert().failure().stderr(
         predicate::str::contains("API key not found for provider 'openrouter'")
