@@ -363,6 +363,9 @@ paths are unchanged because no call site changed.
   `RUSTFLAGS="-D warnings"` exits 0 with no diagnostics.
 - [x] 2026-11-24: `cargo clippy --locked -p diapason-ui --all-targets --
   -D warnings` exits 0.
+- [x] 2026-11-24: the vendored fork compiles warning-free as an ordinary path
+  dependency under `RUSTFLAGS="-D warnings"` (standalone probe, exit 0, 20m46s
+  in the shared compile queue). No `#[allow(...)]` was added.
 - [x] 2026-11-24: `cargo nextest run --locked -p diapason-ui -E
   'test(syntax_highlight)'` passes 18/18, including the two new tests.
 - [x] 2026-11-24: `THIRD-PARTY-NOTICES` regenerated with cargo-about 0.9.2 and
@@ -389,10 +392,16 @@ is the repository toolchain, 1.93.0.
 default_newlines.packdump: 75 syntaxes, 368467 bytes
 default_nonewlines.packdump: 75 syntaxes, 368082 bytes
 highlighted 75 bundled grammars
-themes: ["InspiredGitHub", "Solarized (dark)", "Solarized (light)", "base16-eighties.dark", "base16-mocha.dark", "base16-ocean.dark", "base16-ocean.light"]
+themes: 7 loaded
 82 checks executed
 WIRE COMPATIBILITY: PASS
 ```
+
+The probe prints the theme names on one line; that line is shortened to
+`7 loaded` above to respect the prose line limit. The seven names, in the
+probe's order, are `InspiredGitHub`, `Solarized (dark)`,
+`Solarized (light)`, `base16-eighties.dark`, `base16-mocha.dark`,
+`base16-ocean.dark`, and `base16-ocean.light`.
 
 The probe asserts, per asset, that stock bincode 1.3.3 re-encodes the decoded
 value to the original bytes *and* that the vendored codec re-encodes the same
@@ -424,7 +433,7 @@ round-trip assertions are not vacuous.
   first scan wrongly flagged `bincode-next`, `rapidhash`, and `unty-next`.
   Re-running with the system `GIT_EXEC_PATH` and no Lody credential helper
   found only the one genuine baseline change. This is a local-environment
-  artifact, not a finding, and no baseline entries were added for it.
+  artefact, not a finding, and no baseline entries were added for it.
 - The baseline entry for the `aligned-vec` crate carried a `bincode` row in its
   stale-dependency list. Removing bincode from the graph removed that row, so
   the entry had to be reconciled. This is the resolved-finding removal the plan

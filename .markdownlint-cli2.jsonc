@@ -43,6 +43,10 @@
     // Release-note archive: a generated historical record, not hand-authored
     // documentation.
     "CHANGELOG.md",
+    // Vendored third-party sources and their upstream documentation. Their
+    // prose style belongs to upstream and must not be rewritten here; the
+    // Rust sources are likewise excluded from the workspace formatter.
+    "patches/**",
     // Markdown-renderer test fixtures: inputs compared byte-for-byte against
     // snapshots, not documentation.
     "crates/codegen/diapason-core/src/utils/fixtures/*.md",
