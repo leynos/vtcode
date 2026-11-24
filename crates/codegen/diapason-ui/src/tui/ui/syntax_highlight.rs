@@ -493,7 +493,12 @@ mod tests {
         }
     }
 
-    /// Every bundled theme must load by name under the vendored dump codec.
+    /// Every bundled theme must decode into usable scope rules.
+    ///
+    /// `load_theme` silently falls back to an arbitrary theme when a name is
+    /// unknown, so a theme name alone proves nothing. This asserts each name is
+    /// present in the decoded dump *and* that its theme carries scope selectors,
+    /// which only exist if the dump's rule list decoded.
     #[test]
     fn every_bundled_theme_loads_by_name() {
         let expected = [
@@ -508,7 +513,8 @@ mod tests {
         let available = available_themes();
         for name in expected {
             assert!(available.iter().any(|candidate| candidate == name), "missing theme {name}");
-            assert_eq!(load_theme(name, false).name, load_theme(name, false).name);
+            let theme = SHARED_THEME_SET.themes.get(name).unwrap_or_else(|| panic!("{name} absent"));
+            assert!(!theme.scopes.is_empty(), "{name} decoded no scope rules");
         }
         assert_eq!(available.len(), expected.len(), "bundled theme count changed");
     }
