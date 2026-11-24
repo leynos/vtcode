@@ -305,6 +305,8 @@ impl ClipboardCommandRunner for SystemCommandRunner {
 mod tests {
     use std::{collections::VecDeque, fs, path::PathBuf};
 
+    use image::Rgb;
+
     use super::*;
 
     #[derive(Default)]
@@ -410,6 +412,77 @@ mod tests {
         assert_png_decodes(&decoded);
 
         let _ = fs::remove_file(path);
+    }
+
+    /// Deterministic 3x2 sample used to prove each declared decoder handles a
+    /// real file of its format.
+    fn codec_sample_image() -> DynamicImage {
+        DynamicImage::ImageRgb8(ImageBuffer::from_fn(3, 2, |x, y| {
+            Rgb([32 + x as u8 * 48, 64 + y as u8 * 64, 128 + (x + y) as u8 * 16])
+        }))
+    }
+
+    fn encoded_codec_sample(format: ImageFormat) -> Vec<u8> {
+        let mut cursor = Cursor::new(Vec::new());
+        codec_sample_image()
+            .write_to(&mut cursor, format)
+            .expect("sample image should encode in the requested format");
+        cursor.into_inner()
+    }
+
+    fn read_file_path_image_as_png(format: ImageFormat, file_name: &str) -> DynamicImage {
+        let path = temp_file(file_name);
+        fs::write(&path, encoded_codec_sample(format)).expect("write generated image");
+
+        let mut source = MockClipboardSource {
+            file_paths_result: Some(Ok(vec![path.clone()])),
+            rgba_result: Some(Err(ClipboardImageError::NoImage)),
+        };
+        let runner = MockCommandRunner::default();
+
+        let part = read_clipboard_image_with(&mut source, &runner, false).expect("file path image should be read");
+        let decoded_bytes = decoded_content_part_png(part);
+        let decoded = image::load_from_memory_with_format(&decoded_bytes, ImageFormat::Png)
+            .expect("returned bytes should be a PNG");
+
+        let _ = fs::remove_file(path);
+        decoded
+    }
+
+    fn assert_codec_sample_dimensions(decoded: &DynamicImage) {
+        assert_eq!((decoded.width(), decoded.height()), (3, 2));
+    }
+
+    #[test]
+    fn decodes_png_file_path_image_as_png() {
+        let decoded = read_file_path_image_as_png(ImageFormat::Png, "codec-png.png");
+
+        assert_codec_sample_dimensions(&decoded);
+        assert_eq!(decoded.to_rgb8(), codec_sample_image().to_rgb8());
+    }
+
+    #[test]
+    fn decodes_jpeg_file_path_image_as_png() {
+        let decoded = read_file_path_image_as_png(ImageFormat::Jpeg, "codec-jpeg.jpeg");
+
+        // JPEG is lossy, so only the geometry is compared exactly.
+        assert_codec_sample_dimensions(&decoded);
+    }
+
+    #[test]
+    fn decodes_gif_file_path_image_as_png() {
+        let decoded = read_file_path_image_as_png(ImageFormat::Gif, "codec-gif.gif");
+
+        assert_codec_sample_dimensions(&decoded);
+        assert_eq!(decoded.to_rgb8(), codec_sample_image().to_rgb8());
+    }
+
+    #[test]
+    fn decodes_webp_file_path_image_as_png() {
+        let decoded = read_file_path_image_as_png(ImageFormat::WebP, "codec-webp.webp");
+
+        assert_codec_sample_dimensions(&decoded);
+        assert_eq!(decoded.to_rgb8(), codec_sample_image().to_rgb8());
     }
 
     #[test]

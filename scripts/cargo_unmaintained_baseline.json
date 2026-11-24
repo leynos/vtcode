@@ -3,18 +3,6 @@
   "repository": "leynos/diapason",
   "entries": [
     {
-      "name": "aligned-vec",
-      "version": "0.6.4",
-      "repo_status": { "Age": 367 },
-      "outdated_deps": [
-        { "name": "equator", "req": "^0.4.1", "version_used": "0.4.2", "version_latest": "0.6.0" },
-        { "name": "bincode", "req": "^1", "version_used": "1.3.3", "version_latest": "3.0.0" }
-      ],
-      "classification": "transitive-stale-dependency-requirement",
-      "rationale": "Transitive dependency of the image crate's AVIF encoder stack with stale equator and bincode requirements; tracked for dependency-owner review in #108.",
-      "issue": 108
-    },
-    {
       "name": "better-panic",
       "version": "0.3.0",
       "repo_status": { "Age": 1097 },
@@ -127,17 +115,6 @@
       "outdated_deps": [],
       "classification": "repository-clone-unverified",
       "rationale": "Active image dependency with no outdated requirements. The pinned scanner cannot clone the upstream repository, so maintenance remains unverified; tracked for review in #108.",
-      "issue": 108
-    },
-    {
-      "name": "qoi",
-      "version": "0.4.1",
-      "repo_status": { "Age": 406 },
-      "outdated_deps": [
-        { "name": "rand", "req": "^0.8", "version_used": "0.8.7", "version_latest": "0.10.4" }
-      ],
-      "classification": "transitive-stale-dependency-requirement",
-      "rationale": "Transitive dependency with a stale rand requirement; tracked for dependency-owner review in #108.",
       "issue": 108
     },
     {

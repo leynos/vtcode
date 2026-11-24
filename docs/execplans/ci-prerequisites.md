@@ -114,7 +114,9 @@ staging.
   rather than being fabricated in this main-based prerequisite.
 - [ ] (2026-09-08) Re-run the audit and notices freshness gates after the
   lockfile-only `chacha20` 0.10.2 update. RustSec maintenance debt is tracked
-  separately in #119 and #120; no audit warning is allow-listed.
+  separately in #119 and #120; no audit warning is allow-listed. The
+  `RUSTSEC-2024-0436` (`paste`) remediation is recorded in
+  [`rustsec-2024-0436-paste-image-backends.md`](rustsec-2024-0436-paste-image-backends.md).
 - [x] (2026-09-08) Regenerate `THIRD-PARTY-NOTICES` through the pinned
   repository generator after the `chacha20` lockfile update; the independent
   freshness gate remains pending.
