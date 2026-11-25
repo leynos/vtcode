@@ -1,7 +1,7 @@
 # Remediate syntect's unmaintained transitive dependencies
 
-Status: IN PROGRESS — implementation and affected-crate gates complete; the
-workspace-wide gate run is in flight. This prerequisite addresses issue
+Status: COMPLETE — implementation, affected-crate gates, and the
+workspace-wide locked gate run all pass. This prerequisite addresses issue
 [#120](https://github.com/leynos/vtcode/issues/120).
 
 ## Purpose and constraints
@@ -386,8 +386,29 @@ paths are unchanged because no call site changed.
   target advisory and reports 10 allowed warnings, down from 12.
 - [x] 2026-11-24: documentation updated in `docs/modules/diapason_ui.md` and
   `docs/execplans/ci-prerequisites.md`.
-- [ ] Workspace-wide locked gates (`check`, `clippy`, consumer tests) delegated
-  to the serial gate runner; result pending.
+- [x] 2026-11-25: workspace-wide locked gates complete, all exit 0 —
+  `cargo check --locked --workspace --all-targets --all-features` with
+  `RUSTFLAGS="-D warnings"` (37m53s), `cargo clippy --locked --workspace
+  --all-targets --all-features -- -D warnings` (12m05s), `cargo nextest run
+  -p diapason-ui` 85/85, `-p diapason-core` 21/21, and the `diapason` binary
+  171/171. `cargo audit --file Cargo.lock` against 1567 advisories exits 0 with
+  10 allowed warnings and neither target advisory.
+
+### Gate evidence
+
+```plaintext
+cargo check --locked --workspace --all-targets --all-features   EXIT_STATUS=0  DURATION=2275s
+cargo clippy --locked --workspace --all-targets --all-features  EXIT_STATUS=0  DURATION=726s
+cargo nextest run --locked -p diapason-ui      85 passed, 902 skipped   EXIT_STATUS=0
+cargo nextest run --locked -p diapason-core    21 passed, 3763 skipped  EXIT_STATUS=0
+cargo nextest run --locked -p diapason (bin)  171 passed, 2363 skipped  EXIT_STATUS=0
+cargo audit --file Cargo.lock   10 allowed warnings, neither target ID   EXIT_STATUS=0
+```
+
+The workspace check was retried once by the gate runner after the first
+attempt reached the runner's own time limit; the retry log is the
+`.attempt-1-partial.out` sibling and the completed run is the one quoted. No
+compiler diagnostic appeared in either attempt.
 
 ### Wire-compatibility transcript
 
