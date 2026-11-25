@@ -133,9 +133,9 @@ struct FindExecSyntaxClassifier {
     /// Whether the previous token contained the `{}` placeholder, which `find`
     /// requires before `+` terminates an `-exec` expression.
     after_placeholder: bool,
-    /// Whether the next token is the operand of a predicate such as `-name`,
-    /// which `find` consumes before any action can start.
-    expecting_predicate_operand: bool,
+    /// How many operands a predicate such as `-name` still consumes before any
+    /// action can start. `-fprintf` and `-fprint` take more than one.
+    predicate_operands_remaining: u8,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -171,20 +171,21 @@ impl FindExecSyntaxClassifier {
             && is_find_exec_terminator(word, &literal, previous_was_placeholder)
         {
             self.context = FindCommandContext::Expression;
-            self.expecting_predicate_operand = false;
+            self.predicate_operands_remaining = 0;
             return false;
         }
 
         // A predicate such as `-name` consumes the next token as its operand,
         // so a following quoted `'-exec'` is a pattern, not an action.
+        // `-fprintf`/`-fprint` take more than one operand.
         if self.context == FindCommandContext::Expression {
-            if self.expecting_predicate_operand {
-                self.expecting_predicate_operand = false;
+            if self.predicate_operands_remaining > 0 {
+                self.predicate_operands_remaining -= 1;
                 return contains_dynamic_shell_syntax(word);
             }
 
-            if is_find_predicate_with_operand(&literal) {
-                self.expecting_predicate_operand = true;
+            if let Some(operands) = find_predicate_operand_count(&literal) {
+                self.predicate_operands_remaining = operands;
                 return contains_dynamic_shell_syntax(word);
             }
         }
@@ -298,6 +299,11 @@ impl FindExecSyntaxClassifier {
                     // That only costs an extra approval; the alternative would
                     // permit code execution.
                     self.context = FindCommandContext::ShellArguments;
+                } else if context != FindCommandContext::Expression && literal == "env" {
+                    // `env` reached behind a launcher still splits its `-S`
+                    // argument into words, so `timeout 5 env -S 'sh -c {}'`
+                    // runs the substituted path as shell source.
+                    self.context = FindCommandContext::EnvArguments;
                 }
 
                 is_dynamic
@@ -348,49 +354,59 @@ fn is_find_exec_terminator(raw: &str, literal: &str, previous_was_placeholder: b
     raw == "\\;" || literal == ";" || (literal == "+" && previous_was_placeholder)
 }
 
-/// Returns whether `find` consumes the next token as this predicate's operand.
-fn is_find_predicate_with_operand(literal: &str) -> bool {
-    matches!(
-        literal,
-        "-name"
-            | "-iname"
-            | "-path"
-            | "-ipath"
-            | "-wholename"
-            | "-iwholename"
-            | "-lname"
-            | "-ilname"
-            | "-regex"
-            | "-iregex"
-            | "-type"
-            | "-xtype"
-            | "-user"
-            | "-group"
-            | "-uid"
-            | "-gid"
-            | "-perm"
-            | "-size"
-            | "-mtime"
-            | "-atime"
-            | "-ctime"
-            | "-mmin"
-            | "-amin"
-            | "-cmin"
-            | "-newer"
-            | "-anewer"
-            | "-cnewer"
-            | "-used"
-            | "-links"
-            | "-inum"
-            | "-samefile"
-            | "-fstype"
-            | "-printf"
-            | "-fprintf"
-            | "-maxdepth"
-            | "-mindepth"
-            | "-regextype"
-            | "-context"
-    )
+/// Returns how many operands `find` consumes after this predicate, if any.
+fn find_predicate_operand_count(literal: &str) -> Option<u8> {
+    // `-fprintf` takes a file name and a format, and `-fprint`/`-fls` take a
+    // file name, so a single-operand model would leave the format looking like
+    // the next expression token.
+    match literal {
+        "-fprintf" => Some(2),
+        "-fprint" | "-fprint0" | "-fls" => Some(1),
+        _ if matches!(
+            literal,
+            "-name"
+                | "-iname"
+                | "-path"
+                | "-ipath"
+                | "-wholename"
+                | "-iwholename"
+                | "-lname"
+                | "-ilname"
+                | "-regex"
+                | "-iregex"
+                | "-type"
+                | "-xtype"
+                | "-user"
+                | "-group"
+                | "-uid"
+                | "-gid"
+                | "-perm"
+                | "-size"
+                | "-mtime"
+                | "-atime"
+                | "-ctime"
+                | "-mmin"
+                | "-amin"
+                | "-cmin"
+                | "-newer"
+                | "-anewer"
+                | "-cnewer"
+                | "-used"
+                | "-links"
+                | "-inum"
+                | "-samefile"
+                | "-fstype"
+                | "-printf"
+                | "-maxdepth"
+                | "-mindepth"
+                | "-regextype"
+                | "-context"
+        ) =>
+        {
+            Some(1)
+        }
+        _ => None,
+    }
 }
 
 /// Removes shell quoting that performs no expansion, so a classifier can
@@ -1182,6 +1198,7 @@ mod tests {
         assert!(contains_dynamic_find_syntax("find . -exec env -i -- bash -ec {} \\;"));
         assert!(contains_dynamic_find_syntax("find . -exec env -u HOME -- bash -c {} \\;"));
         assert!(contains_dynamic_find_syntax("find . -exec env --split-string 'bash -c {}' \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec timeout 5 env -S 'sh -c {}' \\;"));
         assert!(!contains_dynamic_find_syntax("find . -exec env bash -c 'printf %s' {} \\;"));
     }
 
@@ -1191,6 +1208,10 @@ mod tests {
         // action that follows still starts an exec.
         assert!(contains_dynamic_find_syntax("find . -name '-exec' -exec {} \\;"));
         assert!(contains_dynamic_find_syntax("find . -type f -exec {} \\;"));
+        // `-fprintf` consumes a file name and a format, so the quoted format
+        // cannot start a fictitious action.
+        assert!(contains_dynamic_find_syntax("find . -fprintf output '-exec' -exec '{}' \\;"));
+        assert!(contains_dynamic_find_syntax("find . -fprint '-exec' -exec '{}' \\;"));
         // Ordinary patterns stay static.
         assert!(!contains_dynamic_find_syntax("find . -name '*.rs' -exec printf {} \\;"));
     }
