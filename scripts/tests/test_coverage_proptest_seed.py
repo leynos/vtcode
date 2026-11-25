@@ -71,8 +71,13 @@ def violations(workflow: dict) -> list[str]:
         found.append(f"the {SEED_STEP!r} step is missing")
     elif COVERAGE_STEP not in names:
         found.append(f"the {COVERAGE_STEP!r} step is missing")
-    elif names.index(SEED_STEP) > names.index(COVERAGE_STEP):
-        found.append("the seed step must run before the coverage step")
+    else:
+        # Compare the position of the step that actually writes the seed, not
+        # an earlier placeholder with the same name.
+        seed_position = steps(workflow).index(seeds[0])
+        coverage_position = names.index(COVERAGE_STEP)
+        if seed_position > coverage_position:
+            found.append("the seed step must run before the coverage step")
 
     if COVERAGE_STEP in names:
         run_value = str(step_named(workflow, COVERAGE_STEP).get("run", "")).strip()
@@ -110,6 +115,14 @@ class CoverageProptestSeedTest(unittest.TestCase):
         steps_list = steps(self.workflow)
         seed = step_named(self.workflow, SEED_STEP)
         steps_list.remove(seed)
+        steps_list.append(seed)
+        self.assert_fails("must run before the coverage step")
+
+    def test_seed_writer_after_coverage_fails_behind_a_placeholder(self) -> None:
+        steps_list = steps(self.workflow)
+        seed = step_named(self.workflow, SEED_STEP)
+        steps_list.remove(seed)
+        steps_list.insert(0, {"name": SEED_STEP, "run": "true"})
         steps_list.append(seed)
         self.assert_fails("must run before the coverage step")
 

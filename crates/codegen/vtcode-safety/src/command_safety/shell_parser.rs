@@ -260,14 +260,43 @@ fn is_env_assignment(argument: &str) -> bool {
     argument.split_once('=').is_some_and(|(name, _)| !name.is_empty())
 }
 
+/// Removes shell quoting that performs no expansion, so a classifier can
+/// compare against the literal token value.
+///
+/// Extraction keeps the quote characters in each token, so `'sh'` and `"sh"`
+/// reach the classifier verbatim. Single quotes never expand; double quotes
+/// only expand through `$`, backticks and backslash, so a double-quoted token
+/// without those characters is literal too. Anything else is returned
+/// unchanged, and the callers keep passing the raw token to
+/// `contains_dynamic_shell_syntax` so expansions stay rejected.
+fn strip_literal_shell_quoting(token: &str) -> &str {
+    if let Some(inner) = token.strip_prefix('\'').and_then(|rest| rest.strip_suffix('\'')) {
+        if !inner.contains('\'') {
+            return inner;
+        }
+    }
+
+    if let Some(inner) = token.strip_prefix('"').and_then(|rest| rest.strip_suffix('"')) {
+        if !inner.contains(['"', '$', '`', '\\']) {
+            return inner;
+        }
+    }
+
+    token
+}
+
 fn is_shell_interpreter(program: &str) -> bool {
     matches!(
-        base_command_name(program).to_ascii_lowercase().as_str(),
+        base_command_name(strip_literal_shell_quoting(program))
+            .to_ascii_lowercase()
+            .as_str(),
         "sh" | "bash" | "dash" | "zsh" | "ksh" | "ksh93" | "ash" | "mksh"
     )
 }
 
 fn is_shell_command_option(argument: &str) -> bool {
+    let argument = strip_literal_shell_quoting(argument);
+
     if argument == "-c" {
         return true;
     }
@@ -900,6 +929,18 @@ mod tests {
     }
 
     #[test]
+    fn find_exec_quoted_literal_tokens_stay_dynamic() {
+        // Extraction keeps the quote characters, so a quoted interpreter,
+        // command option and placeholder must still be recognised after the
+        // non-expanding quoting is stripped.
+        assert!(contains_dynamic_find_syntax("find . -exec 'sh' -c '{}' \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec \"bash\" -c \"{}\" \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec 'sh' '-c' {} \\;"));
+        // Quoting that performs expansion stays rejected, quoted or not.
+        assert!(contains_dynamic_find_syntax("find . -exec sh -c \"$1\" {} \\;"));
+    }
+
+    #[test]
     fn find_exec_recognizes_supported_shell_interpreters() {
         for shell in ["sh", "bash", "dash", "zsh", "ksh", "ksh93", "ash", "mksh"] {
             let script = format!("find . -exec {shell} -c {{}} \\;");
@@ -948,6 +989,12 @@ mod tests {
             exec_option in prop_oneof![Just("-exec"), Just("-execdir")],
             terminator in prop_oneof![Just("+"), Just("\\;")],
         ) {
+            // A shell interpreter in the program position makes the following
+            // argument command source, so those cases are correctly dynamic
+            // and belong to the dynamic-source regressions instead.
+            prop_assume!(!is_shell_interpreter(&utility));
+            prop_assume!(!is_shell_command_option(&argument));
+
             let script = format!("find {root} -type f {exec_option} {utility} {argument} {{}} {terminator}");
 
             prop_assert!(!contains_dynamic_find_syntax(&script), "unexpectedly dynamic: {script}");

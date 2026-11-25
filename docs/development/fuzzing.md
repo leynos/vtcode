@@ -86,10 +86,20 @@ cargo nextest run --locked -p vtcode-core --test core_fuzz_props \
 
 A native signal kills the process before proptest can shrink the input or write
 a `.proptest-regressions` entry. To recover the script, run a scratch harness
-that appends each generated script to a file and flushes it before calling
-`parse_shell_commands`; the last line is the crashing input. Keep the preceding
-scripts as well, because the crash may depend on parser state accumulated by
-earlier cases.
+that records each generated script and flushes it before calling
+`parse_shell_commands`. Generated scripts may contain newlines, so a line per
+script is ambiguous; write one JSON string per record instead, which escapes
+newlines and keeps each script on one line:
+
+```rust
+writeln!(log, "{}", serde_json::to_string(&script)?)?;
+log.flush()?;
+let _parsed = parse_shell_commands(&script);
+```
+
+The last record is the crashing input; `serde_json::from_str::<String>` on that
+line recovers the exact bytes. Keep the preceding records as well, because the
+crash may depend on parser state accumulated by earlier cases.
 
 ## Coverage (Optional)
 
