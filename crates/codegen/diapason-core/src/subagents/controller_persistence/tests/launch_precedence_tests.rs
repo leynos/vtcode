@@ -124,3 +124,62 @@ fn a_stop_applies_to_the_current_persisted_launch() {
     );
     assert_eq!(merged[0].exec_session_id, "exec-2", "the older launch must not become the enabled row");
 }
+
+/// A settled snapshot copy that never started cannot displace a persisted launch.
+///
+/// A settlement with no `started_at` describes a launch that never ran: an
+/// abandoned claim, or a run that failed before its process began. Its
+/// `updated_at` is therefore not proof that it superseded anything, and using it
+/// to win would overwrite a launch another controller has persisted and may be
+/// running. The persisted replacement must survive.
+///
+/// The claim still wants the launch in this fixture, so the stop expectation
+/// protects nothing here: only the missing start instant distinguishes it from a
+/// launch of its own.
+#[test]
+fn a_settled_snapshot_copy_without_a_start_does_not_displace_a_persisted_launch() {
+    // Shape 0 is `worker` owned by `session-a`; the snapshot's copy settled and
+    // never recorded a launch instant, while its `updated_at` is the newer one.
+    let persisted = vec![merge_launch_record(0, 1, true, "exec-live", "live-launch")];
+    let mut settled = merge_launch_record(0, 9, true, "exec-never-started", "abandoned-claim");
+    settled.started_at = None;
+    settled.status = crate::subagents::BackgroundSubprocessStatus::Error;
+
+    let merged =
+        merge_background_records(persisted, vec![settled], Some("session-a"), &BTreeSet::new(), &BTreeMap::new(), &[]);
+
+    assert_eq!(merged.len(), 1, "the canonical id keeps one launch");
+    assert_eq!(
+        merged[0].exec_session_id, "exec-live",
+        "a launch that never started must not displace the persisted launch"
+    );
+    assert!(merged[0].desired_enabled, "the persisted launch keeps its intent");
+}
+
+/// A started copy still supersedes the persisted launch whatever its status.
+///
+/// The start instant is evidence of a launch of its own, so a copy that carries
+/// one is compared by timestamp as before even when it has already settled: an
+/// explicit restart that ran and stopped is the newer state of the record.
+#[test]
+fn a_started_snapshot_copy_still_supersedes_the_persisted_launch() {
+    // Shape 0 is `worker` owned by `session-a`.
+    let persisted = vec![merge_launch_record(0, 1, true, "exec-old", "old-launch")];
+    let mut restarted = merge_launch_record(0, 9, false, "exec-restarted", "restarted-then-stopped");
+    restarted.started_at = Some("2026-08-28T00:00:08Z".parse().expect("the restart instant"));
+
+    let merged = merge_background_records(
+        persisted,
+        vec![restarted],
+        Some("session-a"),
+        &BTreeSet::new(),
+        &BTreeMap::new(),
+        &[],
+    );
+
+    assert_eq!(merged.len(), 1, "the canonical id keeps one launch");
+    assert_eq!(
+        merged[0].exec_session_id, "exec-restarted",
+        "a launch that recorded its start supersedes the one it replaced"
+    );
+}

@@ -28,8 +28,10 @@ use crate::tooling::AcpToolRegistry;
 
 mod runtime;
 use runtime::WorkspaceRuntimeLookup;
+pub(super) use runtime::{
+    PendingWorkspaceRestore, WorkspaceRuntimeCache, WorkspaceRuntimeLifecycle, WorkspaceRuntimeLifecycleState,
+};
 pub(in crate::zed) use runtime::{SessionWorkspaceLease, SessionWorkspaceRuntime};
-pub(super) use runtime::{WorkspaceRuntimeCache, WorkspaceRuntimeLifecycle, WorkspaceRuntimeLifecycleState};
 
 #[derive(Clone)]
 pub(super) struct SessionWorkspaceRuntimeConfig {
@@ -330,6 +332,14 @@ impl ZedAgent {
     /// the workspace controller with its owner migration, adopting the rows it
     /// still holds ownerless before the session controller is built.
     ///
+    /// A deferred restore is owed, not cancelled. The runtime records the debt,
+    /// and the next acquisition of that runtime — this attach's own, or one a
+    /// later `session/new` makes for the same workspace — runs it exactly once,
+    /// because the caller that claims the debt also clears it. The resumed
+    /// attach claims it only after its required history checkpoint, so a
+    /// deferred restore can never start a child an attach that later fails
+    /// would leave running.
+    ///
     /// The launch runtime is returned as-is for its own workspace root, so it
     /// has already made that choice; `defer_background_restore` cannot undo a
     /// restore the launch controller ran before the session attached. A resume
@@ -349,8 +359,8 @@ impl ZedAgent {
                 let mut runtimes = self.workspace_runtimes.lock().await;
                 runtimes.lookup_or_reserve_initialization(&workspace_root)
             };
-            let (runtime, runtime_cell) = match lookup {
-                WorkspaceRuntimeLookup::Ready(runtime) => (runtime, None),
+            let (runtime, runtime_cell, reused) = match lookup {
+                WorkspaceRuntimeLookup::Ready(runtime) => (runtime, None, true),
                 WorkspaceRuntimeLookup::Initialize(runtime_cell) => {
                     let runtime_result = runtime_cell
                         .get_or_try_init(|| {
@@ -374,7 +384,7 @@ impl ZedAgent {
                                 &runtime,
                                 &runtime_cell,
                             );
-                            (runtime, Some(runtime_cell))
+                            (runtime, Some(runtime_cell), false)
                         }
                         Err(error) => {
                             self.workspace_runtimes
@@ -388,6 +398,19 @@ impl ZedAgent {
             };
 
             if let Some(lease) = SessionWorkspaceLease::acquire(Arc::clone(&runtime)).await? {
+                // Only a reused runtime can carry a debt, and only a
+                // non-deferring acquisition may pay one. A runtime built by
+                // this call restored, or deferred, at build time, so claiming
+                // here would restore a second time; and a deferring
+                // acquisition belongs to a resumed attach, which releases the
+                // debt itself after its required checkpoint rather than here,
+                // before it. A `session/new` that reuses the runtime never
+                // migrates, so nothing is left ownerless to adopt and the debt
+                // an earlier resume blocked is payable now.
+                if reused && !defer_background_restore {
+                    runtime.release_background_restore();
+                    self.run_owed_workspace_background_restore(&runtime).await;
+                }
                 return Ok(lease);
             }
             self.workspace_runtimes
@@ -396,6 +419,40 @@ impl ZedAgent {
                 .remove_runtime_if_same(&workspace_root, &runtime);
             drop(runtime_cell);
         }
+    }
+
+    /// Runs the workspace-scope restore a deferred build still owes, if any.
+    ///
+    /// Runs outside any resumed attach's critical section, because the claim
+    /// clears the debt under one lock: at most one acquisition of a runtime ever
+    /// performs the restore, however many later sessions reuse it.
+    ///
+    /// The caller has already established that no owner migration is
+    /// unresolved, so the ownerless rows the restore takes are genuinely
+    /// nobody's: a row this session launched has been migrated or adopted
+    /// before the release that marked the debt payable. A resumed attach calls
+    /// this only after its required history checkpoint, so a restored child can
+    /// never outlive an attach that then fails.
+    pub(in crate::zed::agent) async fn run_owed_workspace_background_restore(&self, runtime: &SessionWorkspaceRuntime) {
+        if !runtime.take_owed_background_restore() {
+            return;
+        }
+        let Some(controller) = runtime.local_tool_registry.subagent_controller() else {
+            return;
+        };
+        let Some(config) = self.vt_config.as_deref().filter(|config| config.subagents.enabled) else {
+            return;
+        };
+        if !config.subagents.background.auto_restore {
+            return;
+        }
+        let outcome = crate::zed::agent::optional_setup::restore_workspace_background_subagents(
+            &controller,
+            config,
+            &runtime.workspace_root,
+        )
+        .await;
+        crate::zed::agent::optional_setup::report_optional_setup_outcome("background subagent restore", &outcome);
     }
 }
 
@@ -543,6 +600,15 @@ async fn build_prepared_workspace_runtime(
     )
     .await?;
 
+    // A deferred restore is not dropped, only postponed: the runtime records
+    // that it still owes one, so a later acquisition of the same runtime can
+    // run it once ownership is safe to reconcile. Every other build restored
+    // at once and owes nothing.
+    let pending_background_restore = if prepared.defer_background_restore {
+        PendingWorkspaceRestore::BlockedByOwnerMigration
+    } else {
+        PendingWorkspaceRestore::NotOwed
+    };
     let runtime = SessionWorkspaceRuntime {
         workspace_root: prepared.workspace_root,
         workspace_hooks_gated: prepared.workspace_hooks_gated,
@@ -559,6 +625,7 @@ async fn build_prepared_workspace_runtime(
             active_sessions: 0,
         }),
         lifecycle_changed: Notify::new(),
+        pending_background_restore: Mutex::new(pending_background_restore),
     };
     runtime.report_optional_setup_outcomes();
     Ok(runtime)

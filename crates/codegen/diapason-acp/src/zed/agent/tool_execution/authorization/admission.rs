@@ -8,9 +8,11 @@
 //! prompt or resolution and fails closed only when the session has no
 //! controller: the model's raw arguments may name an obsolete target, and a
 //! `PermissionRequest` hook may replace them before dispatch. The second check
-//! runs after the permission stages and judges per-target ownership on the
-//! arguments that will actually execute; without it a rewrite could name a
-//! target this session does not own and only core would later refuse the call.
+//! runs after the permission stages — therefore after the initial `ToolCall`
+//! notification — and judges per-target ownership on the arguments that will
+//! actually execute; without it a rewrite could name a target this session does
+//! not own and only core would later refuse the call. It still precedes
+//! preapproval, the in-progress notification and dispatch.
 //!
 //! Admission and execution must answer one question the same way. The command
 //! a call dispatches to runs through the session's controller with
@@ -48,6 +50,34 @@ pub(super) fn session_subagent_controller_error(
     ))
 }
 
+/// The arguments an admission check judges.
+///
+/// A call that parsed cleanly is judged on its parsed value: that value is what
+/// the executor dispatches, and the ACP model already holds it, so admitting it
+/// never costs a second serialization. Only a call whose arguments did not
+/// parse is judged on its raw text, where there is no parsed value to judge.
+#[derive(Clone, Copy)]
+pub(super) enum AdmissionArguments<'a> {
+    /// The arguments as parsed, and as a permission rewrite may have replaced
+    /// them.
+    Parsed(&'a Value),
+    /// The model's original argument text, used when parsing failed.
+    Raw(&'a str),
+}
+
+impl AdmissionArguments<'_> {
+    /// The subagent ids these arguments name.
+    ///
+    /// The tool name decides the target shape, so an ordinary tool yields no
+    /// targets at all and its arguments are never read.
+    fn targets(self, tool_name: &str) -> Vec<String> {
+        match self {
+            Self::Parsed(args) => diapason_core::subagents::agent_call_targets(tool_name, args),
+            Self::Raw(arguments) => raw_call_targets(tool_name, arguments),
+        }
+    }
+}
+
 /// Rejects a subagent tool call this session cannot own.
 ///
 /// The ACP model advertises tools from the workspace registry, which knows the
@@ -60,9 +90,20 @@ pub(super) fn session_subagent_controller_error(
 /// will accept, which is the controller-local set [`session_owns_subagent`]
 /// applies.
 ///
-/// A target that is not admitted is refused before the call is resolved,
-/// authorized or announced, so a `wait` list naming one unaddressable task is
-/// rejected as a whole under this reason instead of failing later in core.
+/// This check runs late: the initial `ToolCall` notification has already been
+/// published and the permission stages (the `PermissionRequest` hook and, when
+/// required, the client prompt) have already resolved, so the refusal is never
+/// announced for a call id the client has not seen start. It runs before
+/// preapproval, before the in-progress notification and before dispatch, so a
+/// refused call is never marked approved or handed to the executor. A `wait`
+/// list naming one unaddressable task is therefore rejected as a whole under
+/// this reason, after the call was announced, instead of failing later in core
+/// after it was admitted.
+///
+/// It establishes ownership only. A target that passes is one this session may
+/// address; whether the command accepts it is a separate question, so a
+/// session-owned background record passes admission and may still be rejected
+/// by a command that applies only to child tasks.
 ///
 /// This is the post-rewrite check. The caller runs it on the arguments a
 /// permission hook installed, so a rewrite cannot smuggle in a foreign target;
@@ -71,7 +112,7 @@ pub(super) fn session_subagent_controller_error(
 pub(super) async fn session_subagent_admission_error(
     tool_name: &str,
     controller: Option<&Arc<diapason_core::subagents::SubagentController>>,
-    arguments: &str,
+    arguments: AdmissionArguments<'_>,
 ) -> Option<String> {
     if !diapason_core::subagents::is_subagent_tool(tool_name) {
         return None;
@@ -79,7 +120,7 @@ pub(super) async fn session_subagent_admission_error(
     let Some(controller) = controller else {
         return session_subagent_controller_error(tool_name, None);
     };
-    for target in subagent_call_targets(tool_name, arguments) {
+    for target in arguments.targets(tool_name) {
         if !session_owns_subagent(controller, target.as_str()).await {
             return Some(format!("Tool '{tool_name}' cannot operate on '{target}': it is not owned by this session"));
         }
@@ -87,17 +128,17 @@ pub(super) async fn session_subagent_admission_error(
     None
 }
 
-/// Returns the subagent ids a call names, mirroring the core executor's
-/// action inference for the unified `agent` tool.
-fn subagent_call_targets(tool_name: &str, arguments: &str) -> Vec<String> {
+/// Returns the subagent ids a raw argument text names.
+///
+/// The core executor reports malformed arguments on its own path, so a text
+/// that cannot be parsed names no target to admit or reject here. A text that
+/// does parse is read through the same parser the executor uses, so an
+/// admission decision cannot be made about a different task than the one the
+/// executor then addresses.
+fn raw_call_targets(tool_name: &str, arguments: &str) -> Vec<String> {
     let Ok(args) = serde_json::from_str::<Value>(arguments) else {
-        // The core executor reports the malformed arguments; there is no
-        // target to admit or reject here.
         return Vec::new();
     };
-    // The core executor reads the same call through the same parser, so an
-    // admission decision cannot be made about a different task than the one
-    // the executor then addresses.
     diapason_core::subagents::agent_call_targets(tool_name, &args)
 }
 
@@ -145,7 +186,7 @@ mod tests {
                 early.contains("Subagent controller is not active in this session"),
                 "the early rejection must carry the established fail-closed reason: {early}"
             );
-            let rejection = session_subagent_admission_error(tool, None, "{}")
+            let rejection = session_subagent_admission_error(tool, None, AdmissionArguments::Raw("{}"))
                 .await
                 .expect("a subagent tool must not run without a session controller");
             assert!(
@@ -156,8 +197,8 @@ mod tests {
     }
 
     /// A target the session controller does not hold must be rejected before
-    /// the call is resolved, authorized or executed, even though the workspace
-    /// registry advertises the tool.
+    /// the call is preapproved, announced as in progress or executed, even
+    /// though the workspace registry advertises the tool.
     #[tokio::test]
     async fn subagent_tools_are_rejected_for_a_target_the_session_does_not_own() {
         let temp = assert_fs::TempDir::new().expect("temporary workspace");
@@ -196,9 +237,10 @@ mod tests {
             session_subagent_controller_error(tools::AGENT, Some(&controller)).is_none(),
             "the early check must not reject an unowned raw target"
         );
-        let rejection = session_subagent_admission_error(tools::AGENT, Some(&controller), unowned)
-            .await
-            .expect("the post-rewrite check must reject a target the session does not own");
+        let rejection =
+            session_subagent_admission_error(tools::AGENT, Some(&controller), AdmissionArguments::Raw(unowned))
+                .await
+                .expect("the post-rewrite check must reject a target the session does not own");
         assert!(rejection.contains("not-mine"), "the rejection must name the target: {rejection}");
     }
 
@@ -307,7 +349,7 @@ mod tests {
             session_subagent_admission_error(
                 tools::AGENT,
                 Some(&root),
-                r#"{"action":"send_input","id":"child-task"}"#,
+                AdmissionArguments::Raw(r#"{"action":"send_input","id":"child-task"}"#),
             )
             .await
             .is_none(),
@@ -322,7 +364,7 @@ mod tests {
         let rejection = session_subagent_admission_error(
             tools::AGENT,
             Some(&root),
-            r#"{"action":"send_input","id":"grandchild-task"}"#,
+            AdmissionArguments::Raw(r#"{"action":"send_input","id":"grandchild-task"}"#),
         )
         .await
         .expect("a grandchild tracked by a descendant controller is not addressable here");
@@ -339,7 +381,7 @@ mod tests {
         let mixed = session_subagent_admission_error(
             tools::AGENT,
             Some(&root),
-            r#"{"action":"wait","ids":["child-task","grandchild-task"]}"#,
+            AdmissionArguments::Raw(r#"{"action":"wait","ids":["child-task","grandchild-task"]}"#),
         )
         .await
         .expect("one unaddressable target must refuse the whole wait list");
@@ -351,7 +393,7 @@ mod tests {
 
     #[tokio::test]
     async fn ordinary_tools_do_not_need_a_session_controller() {
-        let rejection = session_subagent_admission_error("read_file", None, "{}").await;
+        let rejection = session_subagent_admission_error("read_file", None, AdmissionArguments::Raw("{}")).await;
         assert!(rejection.is_none(), "a non-subagent tool must not be tied to a controller");
     }
 
@@ -360,7 +402,7 @@ mod tests {
     /// A legacy call without `action` is inferred from its argument shape.
     #[test]
     fn unified_agent_targets_follow_the_dispatched_action() {
-        let targets = |arguments: Value| subagent_call_targets(tools::AGENT, &arguments.to_string());
+        let targets = |arguments: Value| AdmissionArguments::Parsed(&arguments).targets(tools::AGENT);
 
         assert_eq!(targets(json!({"action": "send_input", "id": "child-1"})), vec!["child-1"]);
         assert_eq!(targets(json!({"action": "resume", "id": "child-1"})), vec!["child-1"]);
@@ -374,6 +416,58 @@ mod tests {
 
     #[test]
     fn malformed_arguments_name_no_target() {
-        assert!(subagent_call_targets(tools::AGENT, "not json").is_empty());
+        assert!(raw_call_targets(tools::AGENT, "not json").is_empty());
+    }
+
+    /// An ordinary tool's arguments are never read, whichever form they take.
+    ///
+    /// Admission is asked about every dispatched call, so a check that read an
+    /// ordinary tool's arguments would pay for target extraction on every file
+    /// read. The tool name decides the target shape, and a non-subagent name
+    /// yields none, so neither a parsed value nor a raw text can name a target
+    /// for one.
+    #[test]
+    fn ordinary_tools_name_no_targets_from_either_argument_form() {
+        let parsed = json!({"action": "send_input", "id": "looks-like-a-target"});
+        assert!(
+            AdmissionArguments::Parsed(&parsed).targets("read_file").is_empty(),
+            "a parsed ordinary-tool argument set must not be mined for targets"
+        );
+        assert!(
+            AdmissionArguments::Raw(r#"{"action":"send_input","id":"looks-like-a-target"}"#)
+                .targets("read_file")
+                .is_empty(),
+            "a raw ordinary-tool argument text must not be mined for targets"
+        );
+    }
+
+    /// Admission must judge the same arguments the executor dispatches.
+    ///
+    /// A call that parsed is judged on its parsed value, which is exactly what
+    /// the executor receives; rendering it back to text first would re-serialize
+    /// every ordinary tool call for a check that reads no target from it. A call
+    /// that never parsed has no parsed value, so it is judged on the raw text
+    /// and the executor still reports the malformed arguments itself.
+    #[test]
+    fn admission_judges_the_value_the_executor_dispatches() {
+        let token = "target-only-a-rewrite-can-name";
+        let parsed = json!({"action": "send_input", "id": token});
+
+        assert_eq!(
+            AdmissionArguments::Parsed(&parsed).targets(tools::AGENT),
+            vec![token],
+            "a parsed call must be judged on its parsed value"
+        );
+        // The same call as text is judged identically, because the raw form
+        // parses and then reads the parsed value.
+        assert_eq!(
+            AdmissionArguments::Raw(&parsed.to_string()).targets(tools::AGENT),
+            vec![token],
+            "a raw argument text that parses must reach the same decision"
+        );
+        assert!(
+            AdmissionArguments::Raw("{not json").targets(tools::AGENT).is_empty(),
+            "an unparsable text names no target, leaving the diagnostic to the executor"
+        );
     }
 }

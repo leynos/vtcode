@@ -2,6 +2,7 @@
 
 use self::controller_background_liveness::{bounded_liveness_reason, exec_session_is_missing};
 
+use super::controller_background_lifecycle::background_launch_is_owed;
 use super::controller_background_settlement::restart_allowed;
 
 use super::*;
@@ -257,15 +258,27 @@ impl SubagentController {
                 None => continue,
                 Some((_, true)) => {}
             }
+            // A cached `Starting` status is only meaningful while a launch is
+            // still owed for it. A record whose claim was abandoned before its
+            // process started keeps `Starting` with nothing left to drive it:
+            // its driver dropped the obligation, so refresh will settle it on
+            // the next pass. Reporting that claim as an active task here would
+            // list a launch that is not running and never will, which is the
+            // opposite of what a liveness projection is for. Such a record is
+            // left to the refresh path, and this read-only query projects the
+            // failure the settlement will write.
+            let launch_owed =
+                background_launch_is_owed(&self.state, capture.entry.id.as_str(), capture.exec_session_id.as_str());
             // A refresh settles an exited process as `Error` once its single
-            // restart allowance is spent. A cached `Starting` status means the
-            // process is still coming up: either its first exec session is not
-            // registered yet, or the restart counter has been incremented but
-            // the replacement exec session is not registered yet. It must stay
-            // `Starting` rather than be projected as a failure, even when
-            // `auto_restore` is disabled, because nothing has failed yet.
+            // restart allowance is spent. A cached `Starting` status with a
+            // launch still owed means the process is still coming up: either
+            // its first exec session is not registered yet, or the restart
+            // counter has been incremented but the replacement exec session is
+            // not registered yet. It must stay `Starting` rather than be
+            // projected as a failure, even when `auto_restore` is disabled,
+            // because nothing has failed yet.
             capture.entry.status = if capture.desired_enabled
-                && (capture.entry.status == BackgroundSubprocessStatus::Starting
+                && ((capture.entry.status == BackgroundSubprocessStatus::Starting && launch_owed)
                     || restart_allowed(self.config.vt_cfg.subagents.background.auto_restore, capture.restart_attempts))
             {
                 BackgroundSubprocessStatus::Starting

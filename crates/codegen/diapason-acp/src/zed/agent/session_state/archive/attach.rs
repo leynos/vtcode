@@ -10,7 +10,8 @@ use diapason_core::utils::session_archive::{
     SessionArchive, SessionListing, find_session_by_identifier, history_persistence_enabled,
 };
 use std::path::Path;
-use tracing::{debug, warn};
+use std::sync::Arc;
+use tracing::warn;
 
 use crate::acp;
 use crate::zed::agent::log_suppressed_error;
@@ -116,10 +117,13 @@ impl ZedAgent {
         // controller's restore takes ownerless rows, so letting that restore
         // run would relaunch the same record the session controller may restore
         // too. Deferring the workspace controller's restore keeps attach
-        // working without risking a duplicate process; when the retry also
-        // fails, no restore happens, which is the fail-safe outcome. The
-        // session controller's own restore is deferred separately, until the
-        // required checkpoint below has succeeded.
+        // working without risking a duplicate process. The deferral is a debt
+        // the runtime keeps, not a cancellation: below, once ownership is
+        // reconciled, this attach releases it and runs the restore exactly
+        // once, and a runtime that outlives the attach passes the same debt to
+        // whichever later session acquires it. The session controller's own
+        // restore is deferred separately, until the required checkpoint below
+        // has succeeded.
         let workspace_lease = self
             .workspace_runtime_for(workspace, background_owner_migration_failed)
             .await
@@ -136,7 +140,7 @@ impl ZedAgent {
         // this session launched. Only a failed migration leaves the controller
         // construction to retry it; the restore still stays deferred until the
         // required checkpoint below.
-        let subagent_controller = self
+        let (subagent_controller, owner_migration_unresolved) = self
             .build_session_subagent_controller_with_owner_migration(
                 workspace_lease.runtime(),
                 session_id,
@@ -144,6 +148,12 @@ impl ZedAgent {
                 background_owner_migration_failed,
             )
             .await;
+        // Kept past the lease's move into the handle: the deferred workspace
+        // restore is released and claimed on the runtime below, after the
+        // required checkpoint. Holding the runtime rather than the lease is
+        // deliberate — the lease is what keeps the runtime alive for the
+        // session, and the runtime alone is what the debt lives on.
+        let workspace_runtime = workspace_lease.runtime().clone();
         let handle = self.build_session_handle(
             thread,
             SessionHandleBootstrap {
@@ -151,7 +161,7 @@ impl ZedAgent {
                 session_id: session_id.clone(),
                 archive: Some(archive),
                 trigger: SessionStartTrigger::Resume,
-                workspace_runtime: Some(workspace_lease.runtime().clone()),
+                workspace_runtime: Some(Arc::clone(&workspace_runtime)),
                 workspace_lease: Some(workspace_lease),
             },
         );
@@ -221,6 +231,20 @@ impl ZedAgent {
                 "Repaired unresolved tool calls while loading durable ACP session"
             );
         }
+        // Ownership is now as reconciled as this attach can make it: the
+        // migration ran, the workspace controller adopted what it still held
+        // ownerless, and the session controller retried the migration when the
+        // first run failed. A deferred workspace restore is payable only when
+        // that retry resolved the migration; while any row this session
+        // launched is still ownerless, the debt stays blocked and the runtime
+        // passes it to whichever later acquisition can reconcile it. Releasing
+        // the debt is all that happens here — the restore itself runs below,
+        // after the required checkpoint, so a deferred restore and a
+        // session-owned one share the same deadline and neither can start a
+        // child an attach that later fails would leave running.
+        if !owner_migration_unresolved {
+            workspace_runtime.release_background_restore();
+        }
         // Restoring background sub-agents must stay after the required
         // checkpoint above and before registration. A restored child can
         // outlive a failed attach, because the fail-closed path releases the
@@ -228,6 +252,13 @@ impl ZedAgent {
         // restored background children. It must also precede registration:
         // registration's concurrent-existing branch releases this handle's
         // lease, after which the restored controller must already own its work.
+        //
+        // The workspace-scope restore comes first because it is the older
+        // debt: it was deferred before this attach built the session
+        // controller, and a workspace restore that ran after a session restore
+        // could relaunch a row this session had just restored work for. It is
+        // claimed, so it runs at most once across every runtime reuse.
+        self.run_owed_workspace_background_restore(&workspace_runtime).await;
         if let Some(controller) = subagent_controller.as_deref() {
             let outcome = crate::zed::agent::optional_setup::restore_acp_session_background_subagents(
                 controller,
@@ -241,86 +272,6 @@ impl ZedAgent {
             return Ok(existing);
         }
         Ok(handle)
-    }
-
-    /// Reconciles the workspace controller with the owner migration this attach
-    /// just wrote.
-    ///
-    /// The workspace runtime can be built before any session resumes — the
-    /// launch runtime built by `ZedAgent::new` always is — so its controller may
-    /// hold ownerless copies of rows the migration has since given to
-    /// `session_id`. Left alone, that controller would restore a row the
-    /// session now owns, and its next save would write the ownerless copy back
-    /// beside the migrated record, leaving a restorable duplicate of a launch
-    /// the session may already have cancelled. The same controller then adopts
-    /// the rows it still holds ownerless, which makes the migrated ownership
-    /// durable before either scope restores anything.
-    ///
-    /// It runs before this attach builds the session controller, so that
-    /// controller is built from a ledger the workspace controller can no longer
-    /// add an ownerless copy to. Adoption happens whether or not this session
-    /// ends up with a controller: the stale copy belongs to the workspace
-    /// scope, and leaving it ownerless would let that scope restore a launch
-    /// the ledger already attributes to this session.
-    ///
-    /// Best effort: a failure is logged and the attach continues. The ledger
-    /// merge still refuses to write an ownerless copy over an owned record of
-    /// the same launch, so the duplicate cannot reappear even when this step
-    /// does not run.
-    async fn adopt_workspace_background_owner(
-        &self,
-        runtime: &crate::zed::agent::session_workspace::SessionWorkspaceRuntime,
-        session_id: &acp::SessionId,
-    ) {
-        let Some(controller) = runtime.local_tool_registry.subagent_controller() else {
-            return;
-        };
-        let adopted = match controller.adopt_persisted_background_owner(session_id.0.as_ref()).await {
-            Ok(adopted) => adopted,
-            Err(error) => {
-                log_suppressed_error(&error, "archive_attach", "background_owner_adoption_failed");
-                return;
-            }
-        };
-        if adopted == 0 {
-            return;
-        }
-        if let Err(error) = controller.save_background_ledger().await {
-            log_suppressed_error(&error, "archive_attach", "background_owner_adoption_save_failed");
-        }
-    }
-
-    /// Gives the ledger rows this resumed session launched to its owner.
-    ///
-    /// The workspace runtime's restore takes only ownerless rows, so a row this
-    /// session launched must carry its owner before that load; otherwise the
-    /// workspace controller relaunches it as its own work instead of this
-    /// session adopting it.
-    ///
-    /// Reports whether the migration failed. A failed migration leaves rows
-    /// ownerless that this session may yet adopt, so the caller defers the
-    /// workspace restore and lets the session controller retry the migration.
-    /// Migration is skipped entirely when subagents are disabled.
-    async fn migrate_resumed_background_owners(
-        &self,
-        workspace: &AcpSessionWorkspace,
-        session_id: &acp::SessionId,
-    ) -> bool {
-        if !self.vt_config.as_deref().is_some_and(|config| config.subagents.enabled) {
-            return false;
-        }
-        match crate::zed::agent::optional_setup::migrate_resumed_session_background_owners(
-            workspace.path(),
-            session_id.0.as_ref(),
-        )
-        .await
-        {
-            Ok(_) => false,
-            Err(error) => {
-                log_suppressed_error(&error, "archive_attach", "background_owner_migration_failed");
-                true
-            }
-        }
     }
 
     /// Publish a resumed session, returning any handle registered concurrently.

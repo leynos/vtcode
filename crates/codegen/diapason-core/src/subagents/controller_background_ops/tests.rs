@@ -18,6 +18,7 @@ use rstest::rstest;
 
 use crate::subagents::constants::SUBAGENT_PREVIEW_LINES;
 
+mod abandoned_start_liveness_tests;
 mod archive_fault_tests;
 mod cancel_tests;
 mod claim_conflict_tests;
@@ -31,9 +32,11 @@ mod reserve_tests;
 mod resolver_tests;
 mod run_tests;
 mod settlement_tests;
+mod start_lock_fault_tests;
 mod stop_close_outcome_tests;
 mod stop_close_tests;
-mod support;
+mod stop_intent_durability_tests;
+pub(super) mod support;
 
 const TARGET: &str = "background-worker";
 
@@ -233,39 +236,29 @@ async fn preview_keeps_the_preview_bound() {
     assert_eq!(lines.last().copied(), Some("26"));
 }
 
-/// An archive read fault reaches the caller instead of becoming an empty
-/// preview.
+/// A preview reports the storage fault it met, whatever layer raised it.
 ///
-/// The two read paths handle the same environmental fault the same way, so a
-/// caller can never mistake an unreadable archive for a task that has not
-/// written output yet.
+/// The live session and the archive are different storage layers behind the
+/// same reader, so both are exercised by one case table: a fault from either is
+/// the same fact for a caller — the preview could not be read — and neither may
+/// be masked as "no output yet". Each case supplies its own cause text, so a
+/// case that silently stopped faulting would fail rather than pass on an
+/// unrelated error.
+#[rstest]
+#[case::archive(FakeOutput::ArchiveFailure("archive is corrupt"), "archive is corrupt")]
+#[case::live(FakeOutput::LiveFailure("permission denied"), "permission denied")]
 #[tokio::test]
-async fn preview_propagates_an_archive_read_fault() {
-    let reader = FakeOutputReader::for_task(TARGET, FakeOutput::ArchiveFailure("archive is corrupt"));
+async fn preview_propagates_a_storage_read_fault(#[case] source: FakeOutput, #[case] cause: &str) {
+    let reader = FakeOutputReader::for_task(TARGET, source);
     let entry = entry_with_id(TARGET, Some("/tmp/session.json"));
 
     let error = read_preview(&reader, &entry, TARGET)
         .await
-        .expect_err("an unreadable archive must reach the caller");
+        .expect_err("a storage fault must reach the caller instead of an empty preview");
 
     let rendered = format!("{error:#}");
     assert!(rendered.contains("read background output for background-worker"), "{rendered}");
-    assert!(rendered.contains("archive is corrupt"), "{rendered}");
-}
-
-/// A preview does not mask a live-read fault.
-#[tokio::test]
-async fn preview_propagates_a_live_read_fault() {
-    let reader = FakeOutputReader::for_task(TARGET, FakeOutput::LiveFailure("permission denied"));
-    let entry = entry_with_id(TARGET, Some("/tmp/session.json"));
-
-    let error = read_preview(&reader, &entry, TARGET)
-        .await
-        .expect_err("a live read fault must reach the caller");
-
-    let rendered = format!("{error:#}");
-    assert!(rendered.contains("read background output for background-worker"), "{rendered}");
-    assert!(rendered.contains("permission denied"), "{rendered}");
+    assert!(rendered.contains(cause), "the {cause} cause must survive the mapping: {rendered}");
 }
 
 /// Both storage layers report a vanished session as the expected exit.

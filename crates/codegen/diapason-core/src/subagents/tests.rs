@@ -121,6 +121,7 @@ fn test_child_record(
         handle: None,
         notify: Arc::new(Notify::new()),
         worktree_path: None,
+        worktree_claim: 0,
         child_controller,
         closed: false,
     }

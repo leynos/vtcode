@@ -186,3 +186,81 @@ async fn a_stop_of_a_replacement_displaces_the_launch_it_replaced() {
 
     controller.signal_shutdown().await;
 }
+
+/// A stop that lands while the claim's own write is paused still wins.
+///
+/// This is the same transition as the test above, moved one step earlier: the
+/// reservation writes its claim inside the ledger lock, and the stop is applied
+/// while that write is parked. The reservation must be driven to completion:
+/// dropping it while the write is parked cancels the write, and the ledger then
+/// keeps the predecessor for reasons that have nothing to do with the stop.
+///
+/// Completing the claim write must already leave the replacement as the only
+/// row under the record's canonical id — the claim carries the replacement's
+/// exec session and is the launch this snapshot started, so it displaces the
+/// predecessor the merge could otherwise keep. The stop then makes its own
+/// save, as a cancellation always does, and settles that same launch: the
+/// stopped copy names the replacement's exec session, so it wins within the
+/// launch and the ledger ends with the stopped replacement alone. The ledger
+/// checkpoint is the harness's own seam for pausing a save, so the window is
+/// deterministic rather than a race.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_stop_applied_while_the_claim_write_is_paused_leaves_only_the_stopped_replacement() {
+    use crate::subagents::controller_persistence::ledger_write_checkpoints;
+
+    let temp = TempDir::new().expect("tempdir");
+    persist_background_state(temp.path(), vec![persisted_row(WORKER, None, WORKER_AGENT, OBSERVED_EXEC, true)])
+        .await
+        .expect("seed the observed launch");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+    insert_observed_record(&controller).await;
+
+    let (write_entered, write_release) = ledger_write_checkpoints::arm(temp.path());
+    let bound_plan = plan(worker_spec(), "exec-replacement", Some(OBSERVED_EXEC));
+    let reserve = controller.reserve_background_run(&bound_plan);
+    tokio::pin!(reserve);
+    tokio::select! {
+        result = &mut reserve => {
+            panic!("the reservation answered before its claim write was paused: {result:?}")
+        }
+        () = write_entered.notified() => {}
+    }
+
+    // The claim exists in memory while its write is parked. Stopping it now is
+    // the transition the ledger must end up representing.
+    {
+        let mut state = controller.state.write().await;
+        let record = state.background_children.get_mut(WORKER).expect("the claimed record");
+        assert_eq!(record.exec_session_id, "exec-replacement", "the paused write is the replacement's claim");
+        record.desired_enabled = false;
+        record.status = BackgroundSubprocessStatus::Stopped;
+        record.ended_at = Some(chrono::Utc::now());
+        record.updated_at = chrono::Utc::now();
+    }
+    write_release.notify_one();
+
+    // The parked write is only resumed when the reservation is polled again, so
+    // the reservation must run to completion before the claim can be on disk.
+    let reservation = reserve.await.expect("the replacement launch reserves the record");
+    assert!(matches!(reservation, BackgroundRunReservation::Reserved));
+
+    // A cancellation's own save is what carries the stop to the ledger; the
+    // claim write above could only carry the record as it stood when it began.
+    controller.save_background_state().await.expect("save the stop");
+
+    let ledger = load_background_state(temp.path()).await.expect("read the ledger");
+    assert_eq!(ledger.records.len(), 1, "the ledger keeps one row for the record");
+    let stored = &ledger.records[0];
+    assert_eq!(
+        stored.exec_session_id, "exec-replacement",
+        "the row written after the paused claim must name the stopped replacement"
+    );
+    assert!(!stored.desired_enabled, "the stop that landed during the write must reach the ledger");
+    assert!(
+        ledger.records.iter().all(|record| record.exec_session_id != OBSERVED_EXEC),
+        "the launch the replacement displaced must not survive beside it"
+    );
+
+    controller.signal_shutdown().await;
+}

@@ -7,14 +7,14 @@
 //! writes that pair, so a row restored from the ledger — including one a
 //! resumed session reads after a process restart — keeps its own archive
 //! readable, while a row naming another task's session with an unrelated exec
-//! id is refused before its live session or archive is touched. The
-//! recorded-path check remains as an independent safeguard for the file the
-//! store resolves.
+//! id is refused before its live session or archive is touched. A recorded path
+//! is authorised only against the file the store resolves, and the transcript
+//! served is that store's own snapshot: the archive is read once, so no second
+//! open can serve a file swapped in after the check.
 use anyhow::Result;
 use futures::future::BoxFuture;
 use std::path::Path;
 
-use crate::subagents::background::load_archive_transcript;
 use crate::tools::exec_session::{ExecSessionManager, controller_exec_session_task_id, is_missing_exec_session};
 use crate::utils::session_archive::find_session_by_identifier;
 
@@ -84,23 +84,20 @@ impl ExecSessionOutputReader {
             .await
             .map_err(BackgroundOutputError::Archived)?;
         let trusted_path = trusted.as_ref().map(|listing| listing.path.as_path());
-        let resolved = match recorded {
-            Some(recorded) => Some(authorised_archive_path(&recorded, trusted_path).await?),
-            None => trusted_path.map(Path::to_path_buf),
-        };
-        let Some(path) = resolved else {
+        if let Some(recorded) = recorded.as_deref() {
+            // A recorded path is only ever accepted against the file the store
+            // resolved, so the check runs before the store's answer is used.
+            authorise_archive_path(recorded, trusted_path).await?;
+        }
+        let Some(listing) = trusted else {
+            // Nothing is recorded for this task, and any recorded path was
+            // refused above: there is no archive to serve rather than a fault.
             return Ok(BackgroundOutput::NotReady);
         };
-        // The store already returned this archive's transcript when it resolved the
-        // task's identifier, so reuse it rather than reading and parsing the same
-        // file a second time.
-        if let Some(listing) = trusted.filter(|listing| listing.path == path) {
-            return Ok(BackgroundOutput::Archived(listing.snapshot.transcript.join("\n")));
-        }
-        load_archive_transcript(&path)
-            .await
-            .map(BackgroundOutput::Archived)
-            .map_err(BackgroundOutputError::Archived)
+        // The store's own snapshot is served, so the archive is never opened a
+        // second time. Reopening the authorised path would let a file swapped in
+        // after the check be read as this task's output.
+        Ok(BackgroundOutput::Archived(listing.snapshot.transcript.join("\n")))
     }
 }
 
@@ -130,27 +127,27 @@ fn unverified_session(source: BackgroundOutputSource<'_>) -> BackgroundOutputErr
     ))
 }
 
-/// Returns the recorded archive path only when it is this task's own archive.
+/// Accepts a recorded archive path only when it is the file the store resolved.
 ///
 /// The ledger supplies the transcript and archive paths as stored data, so a
 /// record can name any file this process is able to read, and the caller's
 /// ownership check covers the record rather than the file it names. The task's
 /// own archive is the one the session store resolves for its identifier, and
 /// that resolution builds the path inside the sessions directory and refuses a
-/// symlink or a non-file. A recorded path is therefore served only when it
+/// symlink or a non-file. A recorded path is therefore accepted only when it
 /// resolves to that same file. A path that merely exists inside the workspace
 /// — another task's archive, for example — is not this task's archive and is
 /// refused as an archive fault rather than served.
 ///
+/// The check returns no path. The caller serves the store's own snapshot, so no
+/// second handle is opened: a path swapped between this check and a reopen could
+/// otherwise serve a file the store never authorised, and the check exists to
+/// prevent exactly that.
+///
 /// A path that cannot be inspected is refused too, including one that does not
-/// exist: the read that follows opens the path again, so returning an absent
-/// path unchecked would let a file created — or a symlink substituted — at that
-/// path between this check and that open escape the rule this check exists to
-/// enforce.
-async fn authorised_archive_path(
-    recorded: &Path,
-    trusted: Option<&Path>,
-) -> Result<std::path::PathBuf, BackgroundOutputError> {
+/// exist, for the same reason: an absent path now may be a symlink by the time
+/// anything opened it.
+async fn authorise_archive_path(recorded: &Path, trusted: Option<&Path>) -> Result<(), BackgroundOutputError> {
     let metadata = tokio::fs::symlink_metadata(recorded).await.map_err(|error| {
         BackgroundOutputError::Archived(
             anyhow::Error::new(error).context(format!("inspect session archive {}", recorded.display())),
@@ -168,7 +165,7 @@ async fn authorised_archive_path(
     };
     let trusted_canonical = canonicalize_archive_path(trusted).await?;
     if canonical == trusted_canonical {
-        return Ok(canonical);
+        return Ok(());
     }
     Err(outside_task_scope(recorded))
 }

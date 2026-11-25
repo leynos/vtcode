@@ -42,11 +42,15 @@ async fn a_close_fault_keeps_the_stop_owed_until_a_retry_succeeds() {
 
     fail_next_background_close(&controller.state, exec_session_id, "close transport fault");
 
-    let entry = controller
+    let outcome = controller
         .force_cancel_background(TaskOwner::Workspace, "background-worker")
         .await
-        .expect("a close fault is reported on the record, not dropped")
-        .into_entry();
+        .expect("a close fault is reported on the record, not dropped");
+    // The typed outcome is the only place the fault is carried: discarding it
+    // before checking let a failed close read as a completed stop, which is
+    // exactly what an adapter announcing the task would get wrong.
+    assert!(outcome.is_close_pending(), "a failed close must reported as a pending close, not a completed stop");
+    let entry = outcome.into_entry();
 
     assert!(!entry.desired_enabled, "the stop is still intended");
     assert_ne!(

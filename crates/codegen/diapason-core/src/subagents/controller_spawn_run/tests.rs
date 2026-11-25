@@ -112,6 +112,7 @@ pub(super) fn child_record(id: &str, status: SubagentStatus) -> ChildRecord {
         handle: None,
         notify: Arc::new(Notify::new()),
         worktree_path: None,
+        worktree_claim: 0,
         child_controller: None,
         closed: false,
     }

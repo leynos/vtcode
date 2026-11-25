@@ -263,6 +263,7 @@ impl SubagentController {
             handle: None,
             notify: std::sync::Arc::new(tokio::sync::Notify::new()),
             worktree_path: None,
+            worktree_claim: 0,
             child_controller: None,
             closed: false,
         };

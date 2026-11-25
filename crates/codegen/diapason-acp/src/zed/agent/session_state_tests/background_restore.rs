@@ -253,6 +253,121 @@ async fn failed_background_owner_migration_defers_workspace_restore() {
     );
 }
 
+/// A restore deferred by a failed migration is owed, not cancelled.
+///
+/// The deferral above protects a resumed session whose owner migration did not
+/// resolve: the workspace restore takes ownerless rows, so running it would
+/// relaunch a row that session may yet adopt. Skipping it forever would be a
+/// different bug — the ownerless row would then never be restored at all, even
+/// once ownership was reconciled. The runtime records the debt instead, and the
+/// next acquisition of that same runtime (a later `session/new` for the same
+/// workspace, which never migrates) runs it once.
+///
+/// The debt state is asserted directly rather than through a spawned fixture:
+/// the launch a restore makes cannot be recorded while the ledger's lock path
+/// is occupied, so a process-level observable would race its own rollback.
+#[tokio::test]
+async fn a_deferred_workspace_restore_stays_owed_until_the_runtime_is_reused() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp = TempDir::new().expect("create temporary workspace for the deferred-restore test");
+    let launch_workspace = temp.path();
+    let session_workspace = launch_workspace.join("session-workspace");
+    fs::create_dir_all(&session_workspace).expect("create the session workspace");
+    write_background_restore_fixture(&session_workspace);
+    let state_dir = session_workspace.join(diapason_commons::workspace_dir_name()).join("state");
+    fs::create_dir_all(&state_dir).expect("create the background state directory");
+    let ledger_path = state_dir.join("background_subagents.json");
+    let seeded_ledger = serde_json::json!({
+        "records": [{
+            "id": "background-background-demo",
+            "agent_name": "background-demo",
+            "display_label": "background-demo",
+            "description": "background demo",
+            "source": "builtin",
+            "color": null,
+            "session_id": "session-background-demo-deferred",
+            "exec_session_id": "exec-missing",
+            "desired_enabled": true,
+            "status": "stopped",
+            "created_at": "2026-08-28T00:00:00Z",
+            "updated_at": "2026-08-28T00:00:00Z",
+            "started_at": null,
+            "ended_at": "2026-08-28T00:00:00Z",
+            "pid": null,
+            "prompt": "restore me",
+            "summary": null,
+            "error": null,
+            "archive_path": null,
+            "transcript_path": null,
+            "max_turns": null,
+            "model_override": null,
+            "reasoning_override": null,
+            "restart_attempts": 0
+        }]
+    });
+    fs::write(&ledger_path, serde_json::to_vec(&seeded_ledger).expect("serialize the seeded background ledger"))
+        .expect("seed the background ledger");
+    fs::create_dir(state_dir.join("background_subagents.lock")).expect("occupy the ledger lock path with a directory");
+    let mut vt_config = diapason_core::config::DiapasonConfig::default();
+    vt_config.subagents.enabled = true;
+    vt_config.subagents.background.enabled = true;
+    vt_config.subagents.background.auto_restore = true;
+    let agent = build_agent_with_vt_config(launch_workspace, "duck", Some(&vt_config)).await;
+    let session_id = acp::SessionId::new("background-deferred-restore-session");
+    let listing = archived_listing("background-deferred-restore", &session_workspace, "continue");
+
+    let handle = agent
+        .attach_thread_from_listing(
+            &session_id,
+            &AcpSessionWorkspace::from_client_cwd(&session_workspace)
+                .await
+                .expect("build the ACP session workspace from the session directory"),
+            listing,
+        )
+        .await
+        .expect("attach must continue when background owner migration fails");
+    let workspace_runtime = {
+        let data = handle.data.lock().expect("lock the attached session data");
+        data.workspace_runtime
+            .clone()
+            .expect("attach must retain its workspace runtime")
+    };
+
+    // The migration failed and the retry could not take the ledger lock either,
+    // so rows this session launched are still ownerless. The deferred restore
+    // must still be owed and blocked, not dropped.
+    assert!(
+        workspace_runtime.pending_background_restore_is_blocked(),
+        "a restore deferred by a failed migration must stay owed instead of being dropped"
+    );
+
+    // A later acquisition for the same workspace reuses the cached runtime and
+    // never migrates, so `workspace_runtime_for` itself releases the debt and
+    // claims it, running the restore exactly once. By the time it returns, the
+    // debt is already paid, and no later acquisition may pay it again.
+    let workspace = AcpSessionWorkspace::from_client_cwd(&session_workspace)
+        .await
+        .expect("build the reusing ACP session workspace");
+    let reuse = agent
+        .workspace_runtime_for(&workspace, false)
+        .await
+        .expect("a later acquisition must reuse the cached runtime");
+    assert!(
+        Arc::ptr_eq(reuse.runtime(), &workspace_runtime),
+        "the later acquisition must reuse the runtime the attach built, or the debt cannot be paid"
+    );
+    assert!(
+        !workspace_runtime.pending_background_restore_is_blocked(),
+        "the reuse must have released the deferred restore it inherited"
+    );
+    assert!(
+        !workspace_runtime.take_owed_background_restore(),
+        "the reuse must have paid the deferred restore, which must run only once"
+    );
+    drop(reuse);
+}
+
 /// Writes the `background-demo` spec and a script that exits at once.
 ///
 /// The demo agent launches its script directly, so a restore attempt needs both

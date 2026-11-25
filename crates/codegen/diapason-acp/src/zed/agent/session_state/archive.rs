@@ -20,6 +20,7 @@ use crate::zed::session::AcpSessionWorkspace;
 use super::{ZedAgent, safe_internal_error, safe_invalid_params_error};
 
 mod attach;
+mod background_ownership;
 mod checkpoint;
 mod retention;
 

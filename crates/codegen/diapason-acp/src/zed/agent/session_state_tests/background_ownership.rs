@@ -347,9 +347,13 @@ async fn a_new_session_opens_with_the_ledger_lock_unavailable() {
     let vt_config = auto_restore_config();
     let agent = build_agent_with_vt_config(launch_workspace.path(), "duck", Some(&vt_config)).await;
 
-    let (response, events) =
-        capturing_async(LevelFilter::DEBUG, agent.new_session(acp::NewSessionRequest::new(session_workspace.path())))
-            .await;
+    // The session bootstrap carries the whole resumed-session future, which is
+    // too large to keep inline in this test's frame.
+    let (response, events) = Box::pin(capturing_async(
+        LevelFilter::DEBUG,
+        agent.new_session(acp::NewSessionRequest::new(session_workspace.path())),
+    ))
+    .await;
     let response = response.expect("a new session must open even when the ledger lock is unavailable");
 
     let captured = events.join("\n");

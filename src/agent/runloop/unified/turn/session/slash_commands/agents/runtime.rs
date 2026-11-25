@@ -395,14 +395,12 @@ pub(super) async fn show_background_subprocess_inspector(
         // graceful-stop, force-cancel and archive actions from the inspector
         // for a task whose lifecycle is still perfectly controllable.
         let entries = controller.refresh_background_processes().await?;
-        let current_entry = entries
+        let refreshed_entry = entries
             .into_iter()
             .find(|entry| entry.id == record_id)
             .ok_or_else(|| anyhow!("Unknown background subprocess {record_id}"))?;
-        let preview = controller
-            .background_snapshot(TaskOwner::Workspace, &record_id)
-            .await
-            .map(|snapshot| snapshot.preview);
+        let snapshot = controller.background_snapshot(TaskOwner::Workspace, &record_id).await;
+        let (current_entry, preview) = inspector_entry_and_preview(refreshed_entry, snapshot);
         let preview_text = inspector_preview_text(current_entry.status, preview);
         let refresh_after = background_subprocess_refresh_after(
             &current_entry,
@@ -622,6 +620,24 @@ fn background_subprocess_preview_placeholder(status: diapason_core::subagents::B
         }
         diapason_core::subagents::BackgroundSubprocessStatus::Stopped
         | diapason_core::subagents::BackgroundSubprocessStatus::Error => "No recent output yet.".to_string(),
+    }
+}
+
+/// Chooses the entry to display and the preview to render for it.
+///
+/// The refresh and the snapshot are separate reads, taken one after the other.
+/// A successful snapshot is authoritative for both: its entry is the one the
+/// preview describes, so the inspector never shows a status from one read
+/// beside text from another. A failed snapshot leaves the preview unreadable
+/// but the refreshed lifecycle state intact, so the entry the refresh returned
+/// is still the newest one available and is displayed unchanged.
+fn inspector_entry_and_preview(
+    refreshed_entry: BackgroundSubprocessEntry,
+    snapshot: Result<diapason_core::subagents::BackgroundSubprocessSnapshot>,
+) -> (BackgroundSubprocessEntry, Result<String>) {
+    match snapshot {
+        Ok(snapshot) => (snapshot.entry, Ok(snapshot.preview)),
+        Err(error) => (refreshed_entry, Err(error)),
     }
 }
 
@@ -1067,9 +1083,90 @@ pub(super) async fn handle_list_threads_text(ctx: &mut SlashCommandContext<'_>) 
 
 #[cfg(test)]
 mod tests {
-    use super::inspector_preview_text;
+    use super::{inspector_entry_and_preview, inspector_preview_text};
     use anyhow::anyhow;
-    use diapason_core::subagents::BackgroundSubprocessStatus;
+    use chrono::{DateTime, TimeZone, Utc};
+    use diapason_core::subagents::{
+        BackgroundSubprocessEntry, BackgroundSubprocessSnapshot, BackgroundSubprocessStatus,
+    };
+
+    fn timestamp(second: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, second)
+            .single()
+            .expect("valid timestamp")
+    }
+
+    fn entry(status: BackgroundSubprocessStatus, updated_at: DateTime<Utc>) -> BackgroundSubprocessEntry {
+        BackgroundSubprocessEntry {
+            id: "background-1".to_string(),
+            owner_session_id: None,
+            session_id: "session-1".to_string(),
+            exec_session_id: "exec-1".to_string(),
+            agent_name: "default".to_string(),
+            display_label: "default".to_string(),
+            description: "Default agent".to_string(),
+            source: "builtin".to_string(),
+            colour: None,
+            status,
+            desired_enabled: true,
+            created_at: updated_at,
+            updated_at,
+            started_at: None,
+            ended_at: None,
+            pid: None,
+            summary: None,
+            error: None,
+            archive_path: None,
+            transcript_path: None,
+        }
+    }
+
+    /// A successful snapshot read supplies both the displayed entry and the
+    /// preview, so the inspector never shows a cached status beside fresh text.
+    #[test]
+    fn a_successful_snapshot_supplies_the_displayed_entry() {
+        let refreshed = entry(BackgroundSubprocessStatus::Running, timestamp(0));
+        let snapshot = BackgroundSubprocessSnapshot {
+            entry: entry(BackgroundSubprocessStatus::Stopped, timestamp(1)),
+            preview: "finished".to_string(),
+        };
+
+        let (displayed, preview) = inspector_entry_and_preview(refreshed, Ok(snapshot));
+
+        assert_eq!(
+            displayed.status,
+            BackgroundSubprocessStatus::Stopped,
+            "the displayed status must come from the same read as the preview"
+        );
+        assert_eq!(displayed.updated_at, timestamp(1));
+        assert_eq!(preview.expect("the snapshot carries its preview"), "finished");
+    }
+
+    /// A failed preview read keeps the lifecycle state the refresh just read.
+    ///
+    /// Only the preview field failed, so the row still has a usable status,
+    /// pid and paths; falling back to a cached entry would show the operator an
+    /// older lifecycle state than the refresh already established.
+    #[test]
+    fn a_failed_snapshot_keeps_the_refreshed_entry() {
+        let refreshed = entry(BackgroundSubprocessStatus::Running, timestamp(2));
+
+        let (displayed, preview) =
+            inspector_entry_and_preview(refreshed, Err(anyhow!("read archived background output")));
+
+        assert_eq!(
+            displayed.status,
+            BackgroundSubprocessStatus::Running,
+            "a failed preview read must not roll the displayed status back"
+        );
+        assert_eq!(displayed.updated_at, timestamp(2));
+        assert_eq!(displayed.exec_session_id, "exec-1", "the refreshed entry carries the live launch identity");
+        assert_eq!(
+            inspector_preview_text(displayed.status, preview),
+            "Preview unavailable: read archived background output",
+            "the fault stays confined to the preview line"
+        );
+    }
 
     /// A preview fault is rendered as one line instead of aborting the inspector.
     ///

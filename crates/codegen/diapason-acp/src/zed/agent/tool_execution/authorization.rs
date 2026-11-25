@@ -3,7 +3,7 @@
 mod admission;
 mod prompting;
 
-use self::admission::{session_subagent_admission_error, session_subagent_controller_error};
+use self::admission::{AdmissionArguments, session_subagent_admission_error, session_subagent_controller_error};
 use super::super::ZedAgent;
 use super::super::warn_hook_message;
 use super::data::{
@@ -216,7 +216,7 @@ impl ZedAgent {
         let re_admission_rejection =
             if authorization.permission_override.is_none() && !authorization.cancel_after_permission {
                 let final_arguments = dispatched_arguments(resolved, &authorization);
-                session_subagent_admission_error(resolved.tool_name, session_controller, final_arguments.as_str()).await
+                session_subagent_admission_error(resolved.tool_name, session_controller, final_arguments).await
             } else {
                 None
             };
@@ -302,18 +302,28 @@ impl ZedAgent {
     }
 }
 
-/// Renders the arguments the call would actually dispatch.
+/// Borrows the arguments the call would actually dispatch.
 ///
 /// Admission runs before resolution on the call's raw text and again after the
 /// permission stages, where a hook may have replaced the arguments. Both checks
 /// must judge the same input the executor will receive, so the second check
-/// renders the installed `effective_args` rather than re-reading the model's
+/// hands over the installed `effective_args` rather than re-reading the model's
 /// original text.
-fn dispatched_arguments(resolved: &ResolvedToolCall<'_>, authorization: &ToolAuthorization) -> String {
+///
+/// The value is borrowed, not rendered: the executor is handed the parsed value
+/// itself, so a re-serialized copy would only add work — and an allocation — to
+/// every ordinary tool call. A call whose arguments never parsed has no parsed
+/// value to hand over, and is judged on its raw text exactly as before, so the
+/// executor's malformed-argument diagnostic still describes the text the model
+/// sent.
+fn dispatched_arguments<'a>(
+    resolved: &'a ResolvedToolCall<'_>,
+    authorization: &'a ToolAuthorization,
+) -> AdmissionArguments<'a> {
     authorization
         .effective_args
         .as_ref()
-        .map_or_else(|| resolved.raw_arguments.to_owned(), |arguments| arguments.to_string())
+        .map_or(AdmissionArguments::Raw(resolved.raw_arguments), AdmissionArguments::Parsed)
 }
 
 /// Re-reads the session's cancellation after the re-admission lookup.

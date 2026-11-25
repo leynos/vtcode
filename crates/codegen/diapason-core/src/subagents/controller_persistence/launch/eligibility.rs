@@ -59,12 +59,12 @@ pub(super) fn has_ambiguous_launch_identity(record: &PersistedBackgroundRecord, 
 ///
 /// The ownerless base id of a launch is the key its ownerless copy carries, so
 /// an owned and an ownerless copy of one launch compare equal once the owner is
-/// cleared and the id recomputed.
+/// cleared. It is taken from [`PersistedBackgroundRecord::ownerless_base_id`],
+/// which is the same derivation the migration evidence uses, so the two
+/// comparisons cannot drift apart; only the exec session is cloned from the
+/// record.
 fn ownerless_launch(record: &PersistedBackgroundRecord) -> (String, String) {
-    let mut base = record.clone();
-    base.owner_session_id = None;
-    base.canonicalize_id();
-    (base.id, base.exec_session_id)
+    (record.ownerless_base_id(), record.exec_session_id.clone())
 }
 
 /// Collects every launch the inputs attribute to an owner.
@@ -104,13 +104,17 @@ pub(in crate::subagents::controller_persistence) fn is_migrated_alias(
     record: &PersistedBackgroundRecord,
     migrated_launches: &[MigratedBackgroundLaunch],
 ) -> bool {
-    record.owner_session_id.is_none()
-        && !record.exec_session_id.is_empty()
-        && migrated_launches.iter().any(|launch| {
-            launch.base_id == record.ownerless_base_id()
-                && !launch.exec_session_id.is_empty()
-                && launch.exec_session_id == record.exec_session_id
-        })
+    if record.owner_session_id.is_some() || record.exec_session_id.is_empty() {
+        return false;
+    }
+    // The base id is derived from the agent alone, so it is computed once and
+    // compared against every evidence entry instead of per entry.
+    let base_id = record.ownerless_base_id();
+    migrated_launches.iter().any(|launch| {
+        launch.base_id == base_id
+            && !launch.exec_session_id.is_empty()
+            && launch.exec_session_id == record.exec_session_id
+    })
 }
 
 /// Reports whether `record` may compete for its canonical id at all.

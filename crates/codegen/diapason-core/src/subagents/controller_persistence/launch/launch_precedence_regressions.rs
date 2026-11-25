@@ -234,3 +234,60 @@ fn an_identified_launch_survives_empty_launch_rows_under_its_id() {
     assert_eq!(merged.len(), 1, "the save keeps the identified launch");
     assert_eq!(merged[0].exec_session_id, "exec-live");
 }
+
+/// Equal copies of one launch resolve by settlement, not by file order.
+///
+/// The two copies name the same launch, carry the same `updated_at` and agree on
+/// intent; only the status they report differs. Arrival order alone decided
+/// which one a load reported, so reversing the two rows changed the record a
+/// caller saw. The settled copy is the outcome of that launch and must win
+/// whichever row comes first.
+#[test]
+fn equal_launch_copies_resolve_by_settlement_in_either_order() {
+    // Both copies still want the launch, so the intent rule cannot decide them
+    // and only the status each reports is left.
+    let mut settled = launch_copy("worker", Some("session-a"), "exec-tied", true, "2026-08-28T00:00:02Z");
+    settled.status = crate::subagents::BackgroundSubprocessStatus::Stopped;
+    let active = launch_copy("worker", Some("session-a"), "exec-tied", true, "2026-08-28T00:00:02Z");
+
+    for records in [
+        vec![active.clone(), settled.clone()],
+        vec![settled.clone(), active.clone()],
+    ] {
+        let merged = join_by_canonical_id(records, std::iter::empty(), &BTreeMap::new(), &[]);
+        assert_eq!(merged.len(), 1, "the canonical id keeps one copy of the launch");
+        let record = merged.values().next().expect("the surviving copy");
+        assert_eq!(
+            record.status,
+            crate::subagents::BackgroundSubprocessStatus::Stopped,
+            "the settled copy must win whichever row comes first"
+        );
+    }
+}
+
+/// A strictly newer copy still outranks an older settled one.
+///
+/// Settlement only breaks a tie: freshness comes first, so a newer active copy
+/// is not replaced by an older stopped one of the same launch.
+#[test]
+fn a_newer_active_copy_outranks_an_older_settled_copy() {
+    // Both copies still want the launch, so only freshness separates them.
+    let mut older_stopped = launch_copy("worker", Some("session-a"), "exec-tied", true, "2026-08-28T00:00:01Z");
+    older_stopped.status = crate::subagents::BackgroundSubprocessStatus::Stopped;
+    let newer_active = launch_copy("worker", Some("session-a"), "exec-tied", true, "2026-08-28T00:00:09Z");
+
+    for records in [
+        vec![older_stopped.clone(), newer_active.clone()],
+        vec![newer_active.clone(), older_stopped.clone()],
+    ] {
+        let merged = join_by_canonical_id(records, std::iter::empty(), &BTreeMap::new(), &[]);
+        let record = merged.values().next().expect("the surviving copy");
+        assert_eq!(
+            record.updated_at,
+            "2026-08-28T00:00:09Z"
+                .parse::<chrono::DateTime<chrono::Utc>>()
+                .expect("the newer timestamp"),
+            "a strictly newer copy must not lose to an older settled one"
+        );
+    }
+}

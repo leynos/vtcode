@@ -9,9 +9,10 @@
 //! independent ownerless launch of the same agent, which names a different exec
 //! session.
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 /// One launch a legacy migration has already attributed to an owning session.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub(crate) struct MigratedBackgroundLaunch {
     /// The ownerless id the launch carried before the migration.
     pub(crate) base_id: String,
@@ -33,9 +34,14 @@ pub(crate) struct MigratedBackgroundLaunch {
 pub(super) fn retained_migrated_launches(
     launches: impl IntoIterator<Item = MigratedBackgroundLaunch>,
 ) -> Vec<MigratedBackgroundLaunch> {
+    let mut seen: HashSet<MigratedBackgroundLaunch> = HashSet::new();
     let mut retained: Vec<MigratedBackgroundLaunch> = Vec::new();
     for launch in launches {
-        if !retained.contains(&launch) {
+        // `retained` records the encounter order the ledger is written in, while
+        // `seen` answers the duplicate question in constant time. A ledger can
+        // accumulate thousands of launches over its life, and the linear scan
+        // made every save quadratic in that count.
+        if seen.insert(launch.clone()) {
             retained.push(launch);
         }
     }

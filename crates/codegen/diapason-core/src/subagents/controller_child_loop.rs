@@ -42,7 +42,12 @@ use diapason_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
 )]
 use super::*;
 
-struct ChildExecutionContext {
+/// The inputs one child run executes with, captured as the run begins.
+///
+/// Visible to this module's neighbours because
+/// [`SubagentController::begin_child_run`] returns it, and a regression for the
+/// spawn cleanup drives that same entry point.
+pub(super) struct ChildExecutionContext {
     spec: SubagentSpec,
     session_id: String,
     parent_thread_id: String,
@@ -134,7 +139,16 @@ impl SubagentController {
             .children
             .get_mut(child_id)
             .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
-        record.handle = Some(handle);
+        // A resume can reach this point while the previous loop is still
+        // finishing its bookkeeping, and the record then still carries that
+        // loop's handle. Publishing over it would leave that task running with
+        // no handle to abort, so a later close would stop only the new loop and
+        // the old one would go on to clear the new loop's handle. The displaced
+        // loop is aborted instead, so exactly one loop owns the record and the
+        // handle the record carries is the one a close aborts.
+        if let Some(displaced) = record.handle.replace(handle) {
+            displaced.abort();
+        }
         Ok(())
     }
 
@@ -163,7 +177,11 @@ impl SubagentController {
         let record = state.children.get_mut(child_id)?;
         let request = record.dequeue_run();
         if request.is_none() {
-            record.handle = None;
+            // Only the loop that owns this handle may retire it. A superseded
+            // loop that was aborted mid-run still reaches this point, and
+            // clearing the record unconditionally would drop the handle of the
+            // loop that replaced it, leaving that task uncloseable.
+            self.clear_own_handle(record);
             record.updated_at = Utc::now();
         }
         request
@@ -243,12 +261,44 @@ impl SubagentController {
     async fn mark_child_loop_idle(&self, child_id: &str) {
         let mut state = self.state.write().await;
         if let Some(record) = state.children.get_mut(child_id) {
-            record.handle = None;
+            self.clear_own_handle(record);
             record.updated_at = Utc::now();
         }
     }
 
-    async fn begin_child_run(&self, child_id: &str) -> Result<ChildExecutionContext> {
+    /// Clears the record's handle only when it belongs to the running loop.
+    ///
+    /// Every loop runs inside one tokio task, and a task can name itself with
+    /// [`tokio::task::try_id`]. Comparing that id with the published handle's
+    /// id is what tells the owning loop apart from a stale or duplicate one: a
+    /// superseded loop that finished its bookkeeping must not withdraw the
+    /// handle of the loop that replaced it, or a later close would find nothing
+    /// to abort and the replacement would outlive the record.
+    ///
+    /// Every loop runs inside the task `launch_child` spawns, so `try_id` is
+    /// `Some` for every production caller. A caller that cannot name its task
+    /// cannot show that the published handle is its own, so it leaves the
+    /// handle alone: clearing it would strand the loop that really owns it, and
+    /// the only handle it could ever legitimately clear is a finished task's,
+    /// which a later close treats as an abort of an exited task and a later
+    /// launch replaces.
+    fn clear_own_handle(&self, record: &mut ChildRecord) {
+        let owned = match (tokio::task::try_id(), record.handle.as_ref()) {
+            (Some(current), Some(published)) => published.id() == current,
+            (None, Some(_)) => false,
+            (_, None) => true,
+        };
+        if owned {
+            record.handle = None;
+        }
+    }
+
+    /// Reads the context a child run begins with and marks the run as started.
+    ///
+    /// Visible to this module's neighbours so a regression for the spawn
+    /// cleanup can start a run through the same path production uses, rather
+    /// than reproducing the claim bookkeeping by hand.
+    pub(super) async fn begin_child_run(&self, child_id: &str) -> Result<ChildExecutionContext> {
         let context = {
             let mut state = self.state.write().await;
             let record = state
@@ -256,6 +306,11 @@ impl SubagentController {
                 .get_mut(child_id)
                 .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
             record.status = SubagentStatus::Running;
+            // This run now claims the checkout the record carries. A launch
+            // that was refused while this run was starting reads the counter
+            // before it reclaims the directory, so it can tell a checkout no
+            // run ever used from one a resumed child has already used.
+            record.worktree_claim = record.worktree_claim.saturating_add(1);
             record.updated_at = Utc::now();
             ChildExecutionContext {
                 spec: record.spec.clone(),

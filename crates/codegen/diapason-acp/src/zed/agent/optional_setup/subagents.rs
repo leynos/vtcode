@@ -202,6 +202,24 @@ pub(in crate::zed::agent) async fn restore_acp_session_background_subagents(
     OptionalSetupOutcome::attached_with_degradation(failures)
 }
 
+/// Restores the ownerless background records an already-built workspace
+/// controller holds.
+///
+/// A workspace runtime built while a resumed session's owner migration was
+/// unresolved skipped this restore, because the rows that session launched were
+/// still ownerless and would have been relaunched as workspace work. Once
+/// ownership is reconciled the skip is retried through this entry point, which
+/// is the same legacy-only restore the build would have run.
+pub(in crate::zed::agent) async fn restore_workspace_background_subagents(
+    controller: &SubagentController,
+    config: &DiapasonConfig,
+    workspace_root: &std::path::Path,
+) -> OptionalSetupOutcome {
+    OptionalSetupOutcome::attached_with_degradation(
+        restore_legacy_background_subagents(controller, config, workspace_root).await,
+    )
+}
+
 fn configure_acp_subagents(
     vt_cfg: Option<&DiapasonConfig>,
     config: &CoreAgentConfig,

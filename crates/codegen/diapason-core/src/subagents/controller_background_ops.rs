@@ -19,8 +19,8 @@ mod tests;
 use super::*;
 
 pub use self::controller_background_cancel::BackgroundStopOutcome;
-use self::controller_background_cancel::background_stop_close_is_pending;
 pub(in crate::subagents) use self::controller_background_cancel::rekey_pending_background_stop_close;
+use self::controller_background_cancel::{background_record_close_is_unconfirmed, background_stop_close_is_pending};
 use self::controller_background_lifecycle::mark_background_launch_owed;
 use self::controller_background_liveness::exec_session_is_missing;
 use self::controller_background_query::{read_output_tail, read_preview};
@@ -77,9 +77,11 @@ impl SubagentController {
     /// The pre-check before the reservation reads the ledger too, but only
     /// before this lock is taken, so two starts that both saw an empty ledger
     /// could otherwise reserve and spawn; deciding here leaves only one of them
-    /// able to spawn. The claim is then guarded until the launch path takes it
-    /// over, so a caller dropped inside the reservation settles the claim it
-    /// wrote instead of leaving it `Starting` forever.
+    /// able to spawn. A ledger that cannot be locked fails the start outright:
+    /// a memory-only claim would reserve the task without ever reading the row
+    /// another process may hold. The claim is then guarded until the launch path
+    /// takes it over, so a caller dropped inside the reservation settles the
+    /// claim it wrote instead of leaving it `Starting` forever.
     async fn reserve_background_run(&self, plan: &BackgroundRunPlan) -> Result<BackgroundRunReservation> {
         // A record whose ledger write is still owed must not be answered from
         // memory. Reuse would report a `Running` record that a restart or
@@ -96,15 +98,16 @@ impl SubagentController {
         let ledger_guard = if self.config.managed_background_runtime {
             // A nested scope owns no ledger, so it has nothing to read or write.
             None
-        } else if plan.expected_exec_session_id.is_some() {
-            // A bound replacement must be one durable transition with the stop
-            // it reconciles, so a contended or unreadable ledger fails it.
-            Some(lock_background_state(&self.config.workspace_root).await?)
         } else {
-            // An explicit start replaces no observed launch, so an unavailable
-            // ledger cannot make it unsafe; it falls back to the ordinary save,
-            // which retries the owed write, exactly as before.
-            lock_background_state(&self.config.workspace_root).await.ok()
+            // Both kinds of claim are one durable transition with the row they
+            // reconcile, so a contended or unreadable ledger fails them. An
+            // explicit start used to fall back to a memory-only claim, which
+            // reserved the task without ever reading the row another process
+            // may hold: the start then spawned beside a launch the ledger
+            // already named. Propagating the fault leaves the ledger untouched
+            // and the caller free to retry, which is what lets a retry inspect
+            // the winning claim.
+            Some(lock_background_state(&self.config.workspace_root).await?)
         };
         // The ledger is read under the lock that writes the claim. A bound plan
         // compares its observation with the row another process may have
@@ -142,7 +145,7 @@ impl SubagentController {
                 // replace: spawning now would put a second process beside the
                 // migrated record.
                 if !still_owns_launch || launch_moved || competing_claim {
-                    (BackgroundRunReservation::Declined, None, None, None)
+                    (BackgroundRunReservation::Declined, None, false, None)
                 } else {
                     // `adopt_cancellation_into` is the one place that decides
                     // whether a persisted copy is a stop of this launch.
@@ -162,7 +165,7 @@ impl SubagentController {
                         // the record before the close below, and closing
                         // whatever the record names then would close the
                         // replacement instead.
-                        (BackgroundRunReservation::Declined, Some(exec_session_id), None, None)
+                        (BackgroundRunReservation::Declined, Some(exec_session_id), false, None)
                     } else {
                         state
                             .background_children
@@ -183,9 +186,21 @@ impl SubagentController {
                             plan.record_id.as_str(),
                             plan.exec_session_id.as_str(),
                         );
-                        (BackgroundRunReservation::Reserved, None, Some(ledger_guard.is_some()), Some(guard))
+                        (BackgroundRunReservation::Reserved, None, ledger_guard.is_some(), Some(guard))
                     }
                 }
+            } else if persisted.as_ref().is_some_and(|row| {
+                // A failure whose process close is unconfirmed names a process
+                // that may still be live, so its row is not a finished launch
+                // whoever holds it. This check comes before the own-record
+                // exemption below: a controller's own settled row with a close
+                // still owed is exactly the case that must not be replaced.
+                background_record_close_is_unconfirmed(&BackgroundRecord::from_persisted(row.clone()))
+            }) {
+                bail!(
+                    "Background subprocess '{}' still owes the close of its previous launch; refresh the background tasks before starting it",
+                    plan.spec.name
+                );
             } else if persisted.as_ref().is_some_and(|row| {
                 // A desired row naming a launch this controller does not hold is
                 // another process's claim. The explicit-start pre-check reads
@@ -199,9 +214,9 @@ impl SubagentController {
                     .background_children
                     .get(&plan.record_id)
                     .map(|record| record.exec_session_id.as_str());
-                persisted_background_row_is_desired(row)
-                    && Some(row.exec_session_id.as_str()) != own_exec_session_id
+                Some(row.exec_session_id.as_str()) != own_exec_session_id
                     && row.exec_session_id != plan.exec_session_id
+                    && persisted_background_row_is_desired(row)
             }) {
                 bail!(
                     "Background subprocess '{}' already has a launch claimed by another controller; refresh the background tasks before starting it",
@@ -214,7 +229,7 @@ impl SubagentController {
                 // the record now would publish a new launch over a process no
                 // record names, and clear the obligation that a later reconcile
                 // still needs to discharge.
-                (BackgroundRunReservation::Declined, None, None, None)
+                (BackgroundRunReservation::Declined, None, false, None)
             } else {
                 let active = state.background_children.get(&plan.record_id).and_then(|record| {
                     (record.desired_enabled && record.status.is_active()).then(|| {
@@ -245,7 +260,7 @@ impl SubagentController {
                             bail!("A background subprocess with this agent name is already active");
                         }
                         if conflicts.is_empty() {
-                            (BackgroundRunReservation::Reused(Box::new(entry)), None, None)
+                            (BackgroundRunReservation::Reused(Box::new(entry)), false, None)
                         } else {
                             bail!(
                                 "spawn_background_subprocess found active background subprocess '{}' with different {}. Stop or restart the existing subprocess before changing its launch settings.",
@@ -274,7 +289,7 @@ impl SubagentController {
                             plan.record_id.as_str(),
                             plan.exec_session_id.as_str(),
                         );
-                        (BackgroundRunReservation::Reserved, Some(ledger_guard.is_some()), Some(guard))
+                        (BackgroundRunReservation::Reserved, ledger_guard.is_some(), Some(guard))
                     }
                 };
                 (reservation, None, claim_is_durable, guard)
@@ -284,7 +299,7 @@ impl SubagentController {
         // process cannot read the previous row and reserve its own replacement
         // in the window between this decision and its write. The ordinary save
         // would re-lock the ledger, so the row is written directly here.
-        let claim_write_error = if claim_is_durable == Some(true) {
+        let claim_write_error = if claim_is_durable {
             match self
                 .persist_reserved_background_claim(&plan.record_id, &plan.exec_session_id)
                 .await
@@ -336,11 +351,6 @@ impl SubagentController {
                 error = %error,
                 "Failed to persist the background launch claim; the write remains owed"
             );
-        } else if claim_is_durable == Some(false) && !self.config.managed_background_runtime {
-            // The ledger was unavailable, so the claim exists only in memory.
-            // It owes the write from this moment, so reuse cannot answer from a
-            // record no other process could see.
-            mark_background_ledger_write_pending(&self.state);
         }
         // The ledger lock is released before publishing: observers run user
         // code, which must not hold a lock every save in the workspace needs.

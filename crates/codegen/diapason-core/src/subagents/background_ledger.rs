@@ -82,6 +82,30 @@ pub(super) struct LoadedBackgroundLedger {
     pub(super) migrated_launches: Vec<MigratedBackgroundLaunch>,
 }
 
+/// Reports whether two copies name the same launch through its exec session.
+///
+/// A named exec session is the launch identity: two copies of it name the same
+/// process, whatever row they were stored under. An empty session identifies
+/// nothing, so a shared blank value never establishes a launch on its own; the
+/// callers that must still relate a legacy copy to its row apply the canonical
+/// record id themselves.
+fn same_named_launch(exec_session_id: &str, other_exec_session_id: &str) -> bool {
+    !exec_session_id.is_empty() && exec_session_id == other_exec_session_id
+}
+
+/// Reports whether a persisted stop may be adopted onto a record under `id`.
+///
+/// A named exec session is the identity, as above. A legacy row names no
+/// session, so the canonical record id is the identity left: the ledger keeps
+/// one row per id and drops an id whose legacy rows cannot be told apart, so at
+/// most one legacy row survives under it and it describes the cached record
+/// keyed there. A legacy row never matches a record naming a session, and two
+/// legacy ids never match each other.
+fn adoptable_launch_identity(id: &str, exec_session_id: &str, other_id: &str, other_exec_session_id: &str) -> bool {
+    same_named_launch(exec_session_id, other_exec_session_id)
+        || (exec_session_id.is_empty() && other_exec_session_id.is_empty() && !id.is_empty() && id == other_id)
+}
+
 fn ledger_path(workspace_root: &Path) -> PathBuf {
     workspace_root
         .join(diapason_commons::workspace_dir_name())
@@ -166,6 +190,21 @@ impl PersistedBackgroundRecord {
         self.updated_at >= other.updated_at
     }
 
+    /// Reports whether this record is a copy of the same launch as `other`.
+    ///
+    /// The exec session identifies the process a record describes, so two
+    /// records naming the same non-empty session are copies of one launch. An
+    /// empty session identifies nothing: legacy rows predate the field, and two
+    /// of them may describe entirely different child sessions under one
+    /// canonical id. Such a pair is therefore *not* the same launch, which is
+    /// the deliberate policy for legacy rows — a shared blank value must never
+    /// stand in for a launch identity. Nothing here may fall back to the record
+    /// id: a precedence decision between two rows must never be made on intent
+    /// alone, so only [`Self::adopt_cancellation_into`] may apply that fallback.
+    pub(crate) fn shares_launch_identity_with(&self, other: &Self) -> bool {
+        same_named_launch(&self.exec_session_id, &other.exec_session_id)
+    }
+
     /// Whether this record's stop outranks `snapshot` regardless of timestamps.
     ///
     /// A stop is one-way until a restart replaces the launch: an explicit
@@ -174,8 +213,13 @@ impl PersistedBackgroundRecord {
     /// advances `updated_at` without changing intent. Timestamp order alone
     /// therefore cannot decide this case, or a refresh would resurrect a
     /// cancelled task.
+    ///
+    /// The rule only applies to copies of one identified launch. Two legacy
+    /// rows that both name no session are not shown to describe the same
+    /// process, so neither may claim precedence over the other on intent alone;
+    /// adoption is the only transition allowed to fall back to the record id.
     pub(crate) fn cancellation_outranks(&self, snapshot: &Self) -> bool {
-        !self.desired_enabled && snapshot.desired_enabled && self.exec_session_id == snapshot.exec_session_id
+        !self.desired_enabled && snapshot.desired_enabled && self.shares_launch_identity_with(snapshot)
     }
 
     /// Applies this record's stop to a cached copy of the same launch.
@@ -192,8 +236,21 @@ impl PersistedBackgroundRecord {
     /// attempt the close and let it settle `Stopped` on success. Writing the
     /// persisted terminal status here would hide a running process from the
     /// liveness projection, because that projection skips non-active records.
+    ///
+    /// Only a copy of the same launch may be adopted. A named exec session is
+    /// that identity. Legacy rows name none, so the identity falls back to the
+    /// canonical record id both sides are already keyed by: the ledger merges
+    /// one row per canonical id and drops an id whose legacy rows cannot be
+    /// told apart, so at most one legacy row survives under it. A legacy row
+    /// is still never a copy of a launch that names a session, which is what
+    /// keeps a stub from stopping a live process.
     pub(crate) fn adopt_cancellation_into(&self, record: &mut BackgroundRecord) -> bool {
-        if self.desired_enabled || !record.desired_enabled || self.exec_session_id != record.exec_session_id {
+        if self.desired_enabled || !record.desired_enabled {
+            return false;
+        }
+        // `BackgroundRecord` is not `PersistedBackgroundRecord`, so the shared
+        // rule is applied to the ids it carries.
+        if !adoptable_launch_identity(&self.id, &self.exec_session_id, &record.id, &record.exec_session_id) {
             return false;
         }
         record.desired_enabled = false;
@@ -281,6 +338,9 @@ impl BackgroundRecord {
         }
     }
 }
+
+#[cfg(test)]
+mod launch_identity_tests;
 
 #[cfg(test)]
 mod tests {

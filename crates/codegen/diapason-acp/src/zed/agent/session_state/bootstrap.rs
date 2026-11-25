@@ -7,7 +7,7 @@
 //! session-state root keeps to the size budget while the registration path and
 //! its ordering rules stay together.
 
-use super::super::optional_setup::report_optional_setup_outcome;
+use super::super::optional_setup::{OptionalSetupFailure, OptionalSetupOutcome, report_optional_setup_outcome};
 use super::super::{SessionWorkspaceLease, SessionWorkspaceRuntime, ZedAgent};
 use super::metadata::{ACP_SESSION_METADATA_NAMESPACE, migrate_legacy_acp_meta};
 use crate::acp;
@@ -42,6 +42,8 @@ impl ZedAgent {
         session_id: &acp::SessionId,
         defer_background_restore: bool,
     ) -> Option<Arc<diapason_core::subagents::SubagentController>> {
+        // A new session never migrates, so it has no unresolved migration to
+        // report.
         self.build_session_subagent_controller_with_owner_migration(
             runtime,
             session_id,
@@ -49,6 +51,7 @@ impl ZedAgent {
             false,
         )
         .await
+        .0
     }
 
     /// Builds a session controller, deciding separately whether its owner
@@ -59,13 +62,18 @@ impl ZedAgent {
     /// the migration retry, which is needed only when the resume-site migration
     /// failed; retrying after a successful migration would take the ledger's
     /// lock again for rows that already carry their owner.
+    ///
+    /// Reports whether the migration is still unresolved after this build. A
+    /// caller holding back a workspace restore must keep holding it while the
+    /// answer is `true`: rows this session launched are still ownerless, so the
+    /// workspace scope would relaunch them as its own work.
     pub(super) async fn build_session_subagent_controller_with_owner_migration(
         &self,
         runtime: &SessionWorkspaceRuntime,
         session_id: &acp::SessionId,
         defer_background_restore: bool,
         owner_migration_failed: bool,
-    ) -> Option<Arc<diapason_core::subagents::SubagentController>> {
+    ) -> (Option<Arc<diapason_core::subagents::SubagentController>>, bool) {
         let registry = runtime.local_tool_registry.with_subagent_controller(None);
         let mut config = self.config.clone();
         config.workspace = runtime.workspace_root.clone();
@@ -87,7 +95,7 @@ impl ZedAgent {
         // disabled by configuration" for every session, whatever the MCP
         // client's real state is.
         report_optional_setup_outcome("subagent controller", &outcome);
-        registry.subagent_controller()
+        (registry.subagent_controller(), owner_migration_still_unresolved(&outcome, owner_migration_failed))
     }
 
     pub(super) fn build_session_handle(
@@ -266,5 +274,94 @@ impl ZedAgent {
             return Err(error);
         }
         Ok(session_id)
+    }
+}
+
+/// Whether an owner migration is still unresolved after a controller build.
+///
+/// A resumed attach defers the workspace-scope background restore while rows it
+/// launched are still ownerless, because the workspace restore takes ownerless
+/// rows. Only a build that actually attached can have resolved those rows, and
+/// only a build that reports the migration failure has left them unresolved, so
+/// the debt is released on exactly the clean outcomes.
+///
+/// A build that never reached the migration — subagents disabled by
+/// configuration or by policy, or the controller failing to construct — leaves
+/// it unresolved whenever the caller had one outstanding. Without an
+/// outstanding migration there is nothing to resolve, so a fresh session's
+/// disabled build releases the debt like any other clean outcome.
+fn owner_migration_still_unresolved(outcome: &OptionalSetupOutcome, owner_migration_failed: bool) -> bool {
+    match outcome {
+        OptionalSetupOutcome::Attached => false,
+        OptionalSetupOutcome::AttachedWithDegradation(failures) => {
+            failures.contains(&OptionalSetupFailure::BackgroundOwnerMigrationFailed)
+        }
+        OptionalSetupOutcome::Failed(_)
+        | OptionalSetupOutcome::DisabledByConfiguration
+        | OptionalSetupOutcome::DisabledByPolicy => owner_migration_failed,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Only a clean attach releases the deferred workspace restore.
+    ///
+    /// The debt is held while any row this session launched is still ownerless.
+    /// A build that reports the migration failure has left exactly that state,
+    /// so it must keep holding; a clean attach has resolved it, so it must
+    /// release.
+    #[test]
+    fn only_a_clean_attach_resolves_an_outstanding_owner_migration() {
+        assert!(
+            !owner_migration_still_unresolved(&OptionalSetupOutcome::Attached, true),
+            "an attached controller resolved the migration, so the deferred restore is payable"
+        );
+        assert!(
+            !owner_migration_still_unresolved(&OptionalSetupOutcome::Attached, false),
+            "a fresh session never owes a migration"
+        );
+        assert!(
+            owner_migration_still_unresolved(
+                &OptionalSetupOutcome::AttachedWithDegradation(vec![
+                    OptionalSetupFailure::BackgroundOwnerMigrationFailed,
+                ]),
+                true,
+            ),
+            "a reported migration failure leaves ownerless rows the workspace must not restore"
+        );
+        assert!(
+            !owner_migration_still_unresolved(
+                &OptionalSetupOutcome::AttachedWithDegradation(vec![
+                    OptionalSetupFailure::BackgroundSubagentRestoreFailed,
+                ]),
+                true,
+            ),
+            "an unrelated degradation must not keep a resolved migration blocked"
+        );
+    }
+
+    /// A build that never reached the migration leaves the debt as it found it.
+    ///
+    /// Subagents disabled by configuration or policy, and a controller that
+    /// failed to construct, all skip the migration. With one outstanding it is
+    /// still unresolved; with none there is nothing left to hold.
+    #[test]
+    fn a_build_that_never_migrated_keeps_an_outstanding_debt() {
+        for outcome in [
+            OptionalSetupOutcome::DisabledByConfiguration,
+            OptionalSetupOutcome::DisabledByPolicy,
+            OptionalSetupOutcome::Failed(OptionalSetupFailure::SubagentControllerUnavailable),
+        ] {
+            assert!(
+                owner_migration_still_unresolved(&outcome, true),
+                "an outstanding migration stays unresolved when the build skipped it: {outcome:?}"
+            );
+            assert!(
+                !owner_migration_still_unresolved(&outcome, false),
+                "with no outstanding migration the deferred restore is payable: {outcome:?}"
+            );
+        }
     }
 }

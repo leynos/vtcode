@@ -1,6 +1,8 @@
 //! Configuration behaviour for ACP session state.
 use super::super::super::optional_setup::{OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes};
-use super::super::super::session_workspace::{WorkspaceRuntimeLifecycle, WorkspaceRuntimeLifecycleState};
+use super::super::super::session_workspace::{
+    PendingWorkspaceRestore, WorkspaceRuntimeLifecycle, WorkspaceRuntimeLifecycleState,
+};
 use super::*;
 use assert_fs::TempDir;
 use diapason_core::hooks::SessionEndReason;
@@ -189,6 +191,7 @@ async fn session_subagent_controller_stays_with_its_workspace_runtime() {
             active_sessions: 0,
         }),
         lifecycle_changed: tokio::sync::Notify::new(),
+        pending_background_restore: Mutex::new(PendingWorkspaceRestore::NotOwed),
     });
     let thread = agent
         .thread_manager

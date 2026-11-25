@@ -33,11 +33,35 @@ pub(super) use crate::tools::exec_session::is_missing_exec_session as exec_sessi
 /// log next to a task id, so the identifier must not travel with it. Redaction
 /// precedes truncation so a long id cannot be cut in half and survive.
 pub(super) fn bounded_liveness_reason(error: &anyhow::Error, session_id: &str) -> String {
+    bounded_reason_text(&error.to_string(), session_id)
+}
+
+/// Renders the bounded failure a settled launch records.
+///
+/// The record's error reaches a client as the task's `stopReason`, so it is
+/// bounded and has the exec session redacted exactly like a liveness reason.
+/// The outermost message only names the launch that failed, though, and the
+/// intermediate context lines are what name ledger and workspace paths; the
+/// actionable cause is the chain's *root*, which says why the spawn or the
+/// claim write failed without quoting a local path. The context between the two
+/// stays in this process's log.
+pub(super) fn bounded_launch_failure(error: &anyhow::Error, session_id: &str) -> String {
+    let outermost = error.to_string();
+    let root = error.root_cause().to_string();
+    let rendered = if root == outermost {
+        outermost
+    } else {
+        format!("{outermost}: {root}")
+    };
+    bounded_reason_text(&rendered, session_id)
+}
+
+/// Redacts the session id from `rendered`, then truncates it to the budget.
+fn bounded_reason_text(rendered: &str, session_id: &str) -> String {
     const MAX_REASON_CHARS: usize = 160;
     const REDACTED_SESSION: &str = "<session>";
-    let rendered = error.to_string();
     let rendered = if session_id.is_empty() {
-        rendered
+        rendered.to_owned()
     } else {
         rendered.replace(session_id, REDACTED_SESSION)
     };

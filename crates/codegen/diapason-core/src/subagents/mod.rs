@@ -198,6 +198,15 @@ pub struct SubagentController {
     /// controller can adopt the route of the tree it is attached to, even
     /// though attachment only holds a shared `Arc` of it.
     progress_route: controller_observers::ProgressObserverRoute,
+    /// The state of the tree whose record currently lists this controller.
+    ///
+    /// A record stores its controller, never the controller's parent, so the
+    /// downward traversal cannot see which tree already owns a controller. This
+    /// records the owner the link was published into, so a second graft can be
+    /// refused instead of rebinding the route the first owner still depends on.
+    /// Weak, because a tree that has been dropped no longer holds any link and
+    /// must not keep this controller alive.
+    attachment_owner: Arc<Mutex<Weak<RwLock<ControllerState>>>>,
     /// Child task ids allocated anywhere in this controller's tree. A
     /// controller-local check cannot see an id a sibling allocated, so the
     /// root owns one scope and the whole tree shares one slot pointing at it.
@@ -309,6 +318,7 @@ impl SubagentController {
                 shutdown_requested: Arc::new(AtomicBool::new(false)),
                 closing: Arc::new(AtomicBool::new(false)),
                 progress_route: Default::default(),
+                attachment_owner: Arc::new(Mutex::new(Weak::new())),
                 child_id_scope: Arc::new(std::sync::RwLock::new(Arc::new(
                     controller_spawn_run::ChildIdScopeSlot::with_lock_scope(Arc::clone(&lock_scope)),
                 ))),

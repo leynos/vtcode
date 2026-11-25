@@ -108,20 +108,26 @@ async fn a_launch_refused_after_insertion_reclaims_its_worktree() {
         ..SpawnAgentRequest::default()
     });
     tokio::pin!(spawn);
-    let (child_id, checkout) = tokio::select! {
-        result = &mut spawn => panic!("the gated spawn launched before the close landed: {result:?}"),
-        () = entered.notified() => {
+    // The launch checkpoint is the wait this test is about, so it gets its own
+    // bound: an unbounded wait would hang the suite when the checkpoint is
+    // never reached, and the diagnostic has to name the launch checkpoint
+    // rather than whatever the spawn returned.
+    let checkpoint = tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::select! {
+            result = &mut spawn => panic!("the gated spawn launched before the close landed: {result:?}"),
+            () = entered.notified() => {}
+        }
+    });
+    let (child_id, checkout) = match checkpoint.await {
+        Ok(()) => {
             let state = controller.state.read().await;
             let (id, record) = state.children.iter().next().expect("the inserted child");
             assert_eq!(record.status, SubagentStatus::Queued, "the launch published the queued state");
             let checkout = record.worktree_path.clone().expect("the spawn created the isolation worktree");
-            assert!(
-                checkout.is_dir(),
-                "the checkout at {} exists before the close lands",
-                checkout.display()
-            );
+            assert!(checkout.is_dir(), "the checkout at {} exists before the close lands", checkout.display());
             (id.clone(), checkout)
         }
+        Err(_) => panic!("the launch never reached its post-queued launch checkpoint within 10 seconds"),
     };
 
     let closed = controller
@@ -188,6 +194,68 @@ async fn a_refused_launch_keeps_a_checkout_the_resume_reopened() {
     let record = state.children.get(&id).expect("the reopened record survives");
     assert_eq!(record.worktree_path.as_deref(), Some(checkout.as_path()), "the resumed run keeps its checkout");
     assert!(checkout.is_dir(), "the checkout at {} must stay on disk for the resumed run", checkout.display());
+}
+
+/// A resumed run that already settled keeps the checkout the refusal would take.
+///
+/// This is the race the reopen test cannot reach. The resumed run claims the
+/// checkout, executes and settles before the refused launch reaches its
+/// cleanup, so the record is terminal again and looks exactly like one nothing
+/// ever ran in. Removing the directory then deletes the checkout the resumed
+/// run's archive and transcript describe. The claim counter the run bumps as it
+/// begins is what tells the two apart, and it is read under the same state lock
+/// that guards the removal.
+#[tokio::test]
+async fn a_refused_launch_keeps_a_checkout_a_settled_resume_already_used() {
+    let workspace = TempDir::new().expect("workspace");
+    let controller = SubagentController::new(test_config(workspace.path().to_path_buf(), DiapasonConfig::default()))
+        .await
+        .expect("controller");
+    let checkout = workspace.path().join("agent-worker-checkout");
+    std::fs::create_dir_all(&checkout).expect("checkout");
+    let mut record = child_record("agent-worker", SubagentStatus::Closed);
+    record.closed = true;
+    record.worktree_path = Some(checkout.clone());
+    let id = controller
+        .insert_child_with_candidate_id("agent-worker", record)
+        .await
+        .expect("insert child");
+
+    // The resume reopens the record, its run begins and claims the checkout,
+    // and the run then settles once more — all before the refused launch's
+    // cleanup runs.
+    assert!(controller.reopen_single(&id).await.expect("reopen the record"));
+    controller.begin_child_run(&id).await.expect("begin the resumed run");
+    {
+        let state = controller.state.read().await;
+        let record = state.children.get(&id).expect("the resumed record");
+        assert_eq!(
+            record.worktree_path.as_deref(),
+            Some(checkout.as_path()),
+            "the resumed run executes in the checkout the refusal would reclaim"
+        );
+        assert_eq!(record.worktree_claim, 1, "the resumed run claims the checkout as it begins");
+        assert!(record.status == SubagentStatus::Running, "the begun run must be running before it settles");
+    }
+    let settled = {
+        let mut state = controller.state.write().await;
+        let record = state.children.get_mut(&id).expect("the resumed record");
+        // The run dequeues the prompt it was reopened with, as the loop does
+        // before it executes. Without that the result would re-queue the run
+        // instead of settling it.
+        record.dequeue_run().expect("the reopened record has a queued run");
+        record.apply_result(Err(anyhow::anyhow!("the resumed run failed")));
+        record.status
+    };
+    assert!(settled.is_terminal(), "the resumed run must be settled before the cleanup runs");
+
+    let taken = controller.take_unstarted_spawn_worktree(&id, Some(checkout.as_path())).await;
+    assert!(taken.is_none(), "a run has already used the checkout, so the refusal must not reclaim it");
+
+    let state = controller.state.read().await;
+    let record = state.children.get(&id).expect("the settled record survives");
+    assert_eq!(record.worktree_path.as_deref(), Some(checkout.as_path()), "the settled run keeps its checkout");
+    assert!(checkout.is_dir(), "the checkout at {} must stay on disk", checkout.display());
 }
 
 /// A resume whose isolation worktree disappeared is refused.

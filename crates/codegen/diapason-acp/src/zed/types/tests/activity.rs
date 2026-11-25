@@ -1,6 +1,6 @@
 //! Prompt-activity bookkeeping and the close handshake.
 use super::super::{SessionActivity, SessionPromptGuard};
-use super::poll_once;
+use super::{poll_once, poll_with_waker, recording_waker};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -193,28 +193,47 @@ proptest::proptest! {
 /// A waiter registered while prompts are in flight must stay pending across
 /// every intermediate departure and complete only when the last guard drops.
 ///
-/// Polling one waiter throughout is what makes this a regression test for
-/// the final-guard notification: a waiter created after the last drop would
-/// return from the count check without ever waiting.
+/// The waiter is polled with a recording waker, so the final guard drop is
+/// observed as a wake rather than inferred from the next poll. That is the
+/// property the close handshake actually needs: a drop that merely leaves a
+/// zero count would still let a waiter that was never woken hang whenever it is
+/// not polled again, and only the notification rules that out. Polling one
+/// waiter throughout is what makes this a regression test for the
+/// final-guard notification: a waiter created after the last drop would
+/// return from the count check without ever waiting or being woken.
 #[tokio::test]
 async fn final_guard_drop_wakes_the_waiter_that_was_already_registered() {
     let activity = SessionActivity::default();
     let first = activity.try_start_prompt().expect("an open session admits a prompt");
     let second = activity.try_start_prompt().expect("an open session admits a second prompt");
+    let (waker, recorder) = recording_waker();
 
     let mut waiter = std::pin::pin!(activity.wait_for_prompts());
-    assert!(poll_once(waiter.as_mut()).is_pending(), "two in-flight prompts must keep the close waiting");
+    assert!(
+        poll_with_waker(waiter.as_mut(), &waker).is_pending(),
+        "two in-flight prompts must keep the close waiting"
+    );
+    assert_eq!(recorder.count(), 0, "registering the waiter must not wake it");
 
     drop(first);
     assert_eq!(activity.active_prompts.load(Ordering::Acquire), 1);
     assert!(
-        poll_once(waiter.as_mut()).is_pending(),
+        poll_with_waker(waiter.as_mut(), &waker).is_pending(),
         "one remaining prompt must keep the registered waiter pending"
+    );
+    assert_eq!(
+        recorder.count(),
+        0,
+        "an intermediate departure must not wake the registered waiter: only the last one does"
     );
 
     drop(second);
     assert_eq!(activity.active_prompts.load(Ordering::Acquire), 0);
-    assert!(poll_once(waiter.as_mut()).is_ready(), "the final guard drop must wake the registered waiter");
+    assert_eq!(recorder.count(), 1, "dropping the final guard must wake the waiter before it is polled again");
+    assert!(
+        poll_with_waker(waiter.as_mut(), &waker).is_ready(),
+        "the final guard drop must wake the registered waiter"
+    );
 }
 
 /// A guard taken before `begin_close` stays valid and observes the sticky

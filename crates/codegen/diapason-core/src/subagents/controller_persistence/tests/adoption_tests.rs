@@ -401,3 +401,45 @@ async fn migration_evidence_does_not_suppress_an_independent_ownerless_launch() 
         "an independent ownerless launch must not be suppressed by migration evidence: {ledger:?}"
     );
 }
+
+/// An empty exec session cannot make an ownerless copy adopt an owned row.
+///
+/// A legacy ledger can hold both an ownerless row and an owned row for the same
+/// agent that name no exec session at all. Those rows are different child
+/// sessions: a shared empty id is not a launch identity, so the ownerless copy
+/// must not be rekeyed onto the owned record. Adopting it would give the copy
+/// an owner the migration never wrote and, because the owned canonical id is
+/// already taken by the row that really is the owned launch, rekey it over that
+/// row on the next save.
+#[tokio::test]
+async fn adoption_ignores_rows_that_name_no_launch() {
+    let temp = TempDir::new().expect("temporary workspace");
+    let owner = "session-a";
+    let mut ownerless = legacy_row(owner);
+    ownerless.exec_session_id = String::new();
+    let mut owned = legacy_row(owner);
+    owned.owner_session_id = Some(owner.to_string());
+    owned.exec_session_id = String::new();
+    owned.canonicalize_id();
+    persist_background_state(temp.path(), vec![ownerless, owned])
+        .await
+        .expect("seed a ledger with one ownerless and one owned row");
+
+    let workspace_controller = SubagentController::new(ownership_controller_config(temp.path().to_path_buf()))
+        .await
+        .expect("workspace controller");
+    assert_eq!(
+        workspace_controller
+            .adopt_persisted_background_owner(owner)
+            .await
+            .expect("adoption attempt"),
+        0,
+        "a copy that names no launch must not adopt an owned row that names none either"
+    );
+    let entries = workspace_controller.background_status_entries(TaskOwner::Workspace).await;
+    assert_eq!(entries.len(), 2, "both rows survive the adoption pass: {entries:?}");
+    assert!(
+        entries.iter().any(|entry| entry.owner_session_id.is_none()),
+        "the ownerless row keeps the owner the ledger gave it"
+    );
+}

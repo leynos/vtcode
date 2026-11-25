@@ -13,12 +13,13 @@ diapason acp
 ```
 
 The server negotiates protocol version 1 during `initialize`. Its Lody usage
-capability is always advertised as `_meta.lody.usage = { "version": 1 }`. When
-a subagent controller is configured, the handshake also advertises
-`_meta.lody.subagents` version 1 with `lifecycle`, `list`, `cancel`, and
-`output` operations. The
-`_meta.lody.tasks = { "version": 1, "background": true }` capability is
-included only when background subagents are enabled.
+capability is always advertised as
+`result.agentCapabilities._meta.lody.usage = { "version": 1 }`. When a subagent
+controller is configured, the handshake also advertises
+`result.agentCapabilities._meta.lody.subagents` version 1 with `lifecycle`,
+`list`, `cancel`, and `output` operations. The
+`result.agentCapabilities._meta.lody.tasks = { "version": 1, "background": true }`
+capability is included only when background subagents are enabled.
 
 Subagent and background-process progress is sent through standard ACP
 `session/update` tool calls and tool-call updates. The standard task fields

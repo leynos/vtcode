@@ -2,6 +2,7 @@
 
 use super::*;
 
+use super::controller_background_cancel::background_record_close_is_unconfirmed;
 use super::controller_background_lifecycle::clear_background_launch_owed;
 use super::controller_background_query::resolve_background_target;
 use super::controller_background_settlement::{
@@ -232,15 +233,14 @@ impl SubagentController {
     ///
     /// A bound plan replaces a launch it observed, so the reservation compares
     /// it against the expected session directly and this check does not apply.
-    /// A ledger that cannot be locked names no claim; the ordinary save path
-    /// still records the write the start owes.
+    /// A ledger that cannot be locked is a fault, not an absence of claims: the
+    /// reservation below takes the same lock and reports the same failure, so
+    /// the start never spawns without having read the row it might overwrite.
     async fn refuse_explicit_start_over_competing_claim(&self, plan: &BackgroundRunPlan) -> Result<()> {
         if plan.expected_exec_session_id.is_some() || self.config.managed_background_runtime {
             return Ok(());
         }
-        let Some(_ledger_guard) = lock_background_state(&self.config.workspace_root).await.ok() else {
-            return Ok(());
-        };
+        let _ledger_guard = lock_background_state(&self.config.workspace_root).await?;
         let (persisted, _launch_moved) = self
             .persisted_record_for(&plan.record_id, plan.exec_session_id.as_str())
             .await?;
@@ -248,6 +248,16 @@ impl SubagentController {
             return Ok(());
         };
         if !persisted_background_row_is_desired(&row) {
+            // A settled row is not a claim, but a failure whose close is still
+            // owed is not settled either: the process it names may be live. The
+            // cached record carries the obligation, and it is the durable error
+            // text that says so. Refuse the start rather than spawn beside it.
+            if background_record_close_is_unconfirmed(&BackgroundRecord::from_persisted(row.clone())) {
+                bail!(
+                    "Background subprocess '{}' still owes the close of its previous launch; refresh the background tasks before starting it",
+                    plan.spec.name
+                );
+            }
             return Ok(());
         }
         let record_exec_session_id = {

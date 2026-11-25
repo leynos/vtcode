@@ -10,19 +10,26 @@ use rstest::rstest;
 /// The liveness overlay follows the record's restart budget.
 ///
 /// A record that has already spent its one restart is reported as the error a
-/// refresh would settle it as, not as a restart that will never happen. The
-/// restart count is incremented before the replacement exec session is
-/// registered, so a cached `Starting` record with a spent budget is a restart
-/// still in progress and keeps reporting `Starting`. A record that has not yet
-/// spent its allowance is about to be restarted, so an exited process is also
-/// projected as `Starting`. A `Starting` record is preserved regardless of the
-/// restart budget or `auto_restore`: its exec session is not registered yet, so
-/// a failed projection would report a merely starting task as an error.
+/// refresh would settle it as, not as a restart that will never happen. A
+/// record that has not yet spent its allowance is about to be restarted, so an
+/// exited process is also projected as `Starting`.
+///
+/// A cached `Starting` status keeps its task active only while this controller
+/// still owes that launch. These fixtures restore a `Starting` row from the
+/// ledger, so nothing in this process owes it: the claim that would have driven
+/// it belonged to a process that is gone. Refresh resolves such a row from its
+/// accumulated budget rather than waiting for a launch, and the overlay reports
+/// that same answer — a scheduled restart while an allowance remains, and the
+/// `Error` a spent or disabled budget settles it as. A `Starting` row that is
+/// still owed — a claim this controller wrote, or a restart a previous refresh
+/// scheduled — stays `Starting` in every case, which
+/// `abandoned_start_liveness_tests` pins.
 #[rstest]
 #[case::exhausted_budget("running", 1, true, BackgroundSubprocessStatus::Error)]
-#[case::restart_in_progress("starting", 1, true, BackgroundSubprocessStatus::Starting)]
+#[case::abandoned_start_with_spent_budget("starting", 1, true, BackgroundSubprocessStatus::Error)]
 #[case::available_budget("running", 0, true, BackgroundSubprocessStatus::Starting)]
-#[case::starting_without_auto_restore("starting", 0, false, BackgroundSubprocessStatus::Starting)]
+#[case::restart_pending_for_starting("starting", 0, true, BackgroundSubprocessStatus::Starting)]
+#[case::abandoned_start_without_auto_restore("starting", 0, false, BackgroundSubprocessStatus::Error)]
 #[tokio::test]
 async fn liveness_projection_follows_the_restart_budget(
     #[case] cached_status: &str,

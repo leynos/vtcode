@@ -23,13 +23,24 @@ use self::eligibility::{
 /// supersedes the persisted launch under its canonical id only when it names a
 /// different session that began no earlier than the persisted one; a refreshed
 /// copy of an earlier launch is left to yield to the persisted replacement.
+///
+/// A copy that carries no `started_at` proves no launch of its own, so its
+/// `updated_at` alone must not displace a persisted row naming a different exec
+/// session. The one exception is a copy that is still wanted and reports an
+/// active status: that is a claim this snapshot has not finished launching, and
+/// the reservation confirms the claim reached the ledger before it spawns, so
+/// the ordinary moment comparison decides it. A settled copy without a start
+/// instant is an abandoned or failed claim whose settlement describes a launch
+/// that never ran; letting a later `updated_at` carry it over another
+/// controller's replacement would erase a live launch from the ledger under the
+/// name of one that was never started.
 fn launched_by_snapshot(
     persisted: &[PersistedBackgroundRecord],
     snapshot: &[PersistedBackgroundRecord],
 ) -> Vec<(String, String)> {
     let current = reduce_persisted_launches(persisted.iter().cloned())
         .into_iter()
-        .map(|record| (record.id.clone(), (record.exec_session_id.clone(), record.launch_moment())))
+        .map(|record| (record.id.clone(), record))
         .collect::<BTreeMap<_, _>>();
     let mut launched = Vec::new();
     for mut record in snapshot.iter().cloned() {
@@ -40,11 +51,10 @@ fn launched_by_snapshot(
         let supersedes = match current.get(&record.id) {
             // A launch the ledger has never held is this snapshot's own.
             None => true,
-            // A different session that began at least as late as the persisted
-            // one is a replacement this snapshot started. A tie keeps the
-            // launch, matching the merge's snapshot-on-a-tie rule.
-            Some((persisted_exec_session, persisted_moment)) => {
-                record.exec_session_id != *persisted_exec_session && record.launch_moment() >= *persisted_moment
+            Some(persisted) => {
+                record.exec_session_id != persisted.exec_session_id
+                    && names_a_launch_of_its_own(&record)
+                    && record.launch_moment() >= persisted.launch_moment()
             }
         };
         if supersedes {
@@ -52,6 +62,20 @@ fn launched_by_snapshot(
         }
     }
     launched
+}
+
+/// Whether `record` carries evidence of a launch of its own.
+///
+/// A copy that started has a `started_at`. A copy that is still wanted and
+/// reports an active status is a claim whose launch has not finished starting:
+/// the reservation persists that claim before it spawns and confirms the ledger
+/// kept it, so the absent `started_at` there is the launch's current phase
+/// rather than an absence of evidence. Anything else - a settled copy with no
+/// start instant - describes a launch that never ran, and its `updated_at` is
+/// not proof that a replay of it supersedes a launch another controller
+/// persisted.
+fn names_a_launch_of_its_own(record: &PersistedBackgroundRecord) -> bool {
+    record.started_at.is_some() || (record.desired_enabled && record.status.is_active())
 }
 
 /// Collects persisted records by canonical id, keeping one copy per launch.
@@ -362,6 +386,22 @@ fn reduce_persisted_launches(
 }
 
 /// Groups copies of each canonical record by launch, keeping one copy per launch.
+///
+/// Within one launch the survivor is chosen by these rules, in this order:
+///
+/// 1. a copy that no longer wants the launch outranks one that still does, so a
+///    refresh that only advanced `updated_at` cannot resurrect a stopped task;
+/// 2. a copy with a strictly newer `updated_at` outranks an older one;
+/// 3. a copy whose status is settled (`Stopped` or `Error`) outranks one that
+///    reports an active status, because the settled copy records an outcome of
+///    the same launch while the active copy is the pre-settlement snapshot;
+/// 4. a copy the snapshot side carries outranks the persisted copy it equals.
+///
+/// Rule 3 is what breaks a tie deterministically. Two copies of one launch with
+/// equal `updated_at` and agreeing intent used to replace each other, so the
+/// ledger's file order decided which record a load reported; the settled copy is
+/// now chosen whichever of the two is listed first. Rule 2 still comes first, so
+/// a strictly newer copy always wins, whatever status it reports.
 fn reduce_launch_copies(
     candidates: impl IntoIterator<Item = LaunchCandidate>,
 ) -> BTreeMap<String, BTreeMap<String, LaunchCandidate>> {
@@ -372,18 +412,7 @@ fn reduce_launch_copies(
         let sessions = launches.entry(id).or_default();
         match sessions.entry(exec_session_id) {
             std::collections::btree_map::Entry::Occupied(mut entry) => {
-                // Cancellation dominance decides within one launch; freshness
-                // only decides between copies that agree on intent. A stopped
-                // current copy must survive a newer active copy, so it is
-                // checked before freshness. A tie keeps the later entry, which
-                // is the snapshot copy when the two sides agree.
-                let replace = {
-                    let current = entry.get();
-                    !current.record.cancellation_outranks(&candidate.record)
-                        && (candidate.record.cancellation_outranks(&current.record)
-                            || candidate.record.is_at_least_as_new_as(&current.record))
-                };
-                if replace {
+                if copy_replaces(entry.get(), &candidate) {
                     entry.insert(candidate);
                 }
             }
@@ -393,6 +422,57 @@ fn reduce_launch_copies(
         }
     }
     launches
+}
+
+/// Whether `candidate` outranks `current` within one launch.
+///
+/// The order is the one [`reduce_launch_copies`] documents, and the same
+/// sequence decides whichever side a copy came from: a stopped copy outranks an
+/// active copy of its launch, a strictly newer `updated_at` outranks an older
+/// one, and a tie then keeps the snapshot copy over the persisted one.
+fn copy_replaces(current: &LaunchCandidate, candidate: &LaunchCandidate) -> bool {
+    if current.record.cancellation_outranks(&candidate.record) {
+        return false;
+    }
+    if candidate.record.cancellation_outranks(&current.record) {
+        return true;
+    }
+    if candidate.record.updated_at != current.record.updated_at {
+        return candidate.record.updated_at > current.record.updated_at;
+    }
+    if settled_status_outranks(&candidate.record, &current.record) {
+        return true;
+    }
+    if settled_status_outranks(&current.record, &candidate.record) {
+        return false;
+    }
+    // Both copies now agree on intent, freshness and settlement, so only the
+    // side each came from is left to decide.
+    later_arrival_wins(current, candidate)
+}
+
+/// Whether `candidate` beats `current` when every non-arrival rule has tied.
+///
+/// Separated so the same-side case reads explicitly: two copies from one side
+/// are interchangeable, and the later arrival is kept.
+fn later_arrival_wins(current: &LaunchCandidate, candidate: &LaunchCandidate) -> bool {
+    match (current.from_snapshot, candidate.from_snapshot) {
+        // A snapshot copy beats the persisted copy it equals.
+        (false, true) => true,
+        (true, false) => false,
+        // Two copies from one side are interchangeable; keep the later arrival.
+        _ => true,
+    }
+}
+
+/// Whether `candidate` records a settled outcome of a launch `current` reports as active.
+///
+/// `Stopped` and `Error` are outcomes of the same launch, and an active status
+/// is the pre-settlement copy of it, so the settled copy is the later state
+/// whichever row the ledger lists first. Without this, two copies with equal
+/// `updated_at` and agreeing intent replaced each other and file order chose.
+fn settled_status_outranks(candidate: &PersistedBackgroundRecord, current: &PersistedBackgroundRecord) -> bool {
+    !candidate.status.is_active() && current.status.is_active()
 }
 
 #[cfg(test)]

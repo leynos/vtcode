@@ -1,6 +1,7 @@
 //! `wait` returns the first terminal child.
 use super::super::controller_spawn_run::wait_checkpoints;
 use super::*;
+use crate::core::agent::task::TaskOutcome;
 
 // The clock is paused so the 500 ms deadline is virtual. A regression that
 // stops waking the parked waiter through its notification then auto-advances to
@@ -63,11 +64,17 @@ async fn wait_returns_first_terminal_child() {
     {
         let mut state = controller.state.write().await;
         let record = state.children.get_mut("second").expect("second child");
-        record.status = SubagentStatus::Completed;
-        record.summary = Some("done".to_string());
-        record.completed_at = Some(Utc::now());
-        record.updated_at = Utc::now();
-        record.notify.notify_waiters();
+        // The child completes through the same path a finished run takes. That
+        // path stores the result, stamps `completed_at` and notifies the
+        // waiters, so the test proves the waiter wakes on a real completion
+        // rather than on fields this test wrote by hand.
+        let result = ChildRunResult {
+            messages: Vec::new(),
+            summary: "done".to_string(),
+            outcome: TaskOutcome::Success,
+            transcript_path: None,
+        };
+        assert!(!record.apply_result(Ok(result)), "a single run leaves no queued work behind");
     }
     release.notify_one();
 

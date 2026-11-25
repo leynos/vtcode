@@ -199,6 +199,13 @@ impl SubagentController {
     /// and every other field stay as loaded, and it is rekeyed to the
     /// canonical id the new owner gives it.
     ///
+    /// Both sides of the match must name a launch. An empty exec session
+    /// identifies nothing, so an ownerless copy without one cannot be shown to
+    /// be the launch the ledger attributes to this owner: the only key it could
+    /// match is `(canonical id, "")`, which every other empty row of the same
+    /// agent shares. Adoption therefore skips such a copy, and a ledger row
+    /// without an exec session never counts as evidence for one.
+    ///
     /// Returns the number of records adopted. A `managed_background_runtime`
     /// controller owns nothing and adopts nothing, and an empty owner names
     /// none.
@@ -215,6 +222,12 @@ impl SubagentController {
                 record.canonicalize_id();
                 (record.id, record.exec_session_id)
             })
+            // A row that names no exec session identifies no launch, so it is
+            // no evidence that an ownerless copy is the launch it describes.
+            // Recording `(id, "")` would let any ownerless copy of the same
+            // agent adopt onto it, because an empty copy also carries an empty
+            // exec session and the pair would compare equal.
+            .filter(|(_, exec_session_id)| !exec_session_id.is_empty())
             .collect::<BTreeSet<_>>();
         if owned_launches.is_empty() {
             return Ok(0);
@@ -224,6 +237,12 @@ impl SubagentController {
         let mut adopted = 0;
         for mut record in std::mem::take(&mut state.background_children).into_values() {
             let launched_here = record.owner_session_id.is_none()
+                // A copy without a launch identity cannot be shown to be the
+                // launch the ledger attributes to this owner: the only key it
+                // could match on is `(id, "")`, which every other empty row of
+                // the agent shares. Ownership is only inferred from a launch
+                // the row actually names.
+                && !record.exec_session_id.is_empty()
                 && record.parent_session_id == owner_session_id
                 && owned_launches.contains(&(
                     super::background::background_record_id_for_owner(

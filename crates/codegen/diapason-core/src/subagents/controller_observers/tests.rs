@@ -102,13 +102,16 @@ impl Drop for RetiredRouteProbe {
     }
 }
 
-/// A retired route drops its registry and observers outside the write guard.
+/// A retired route drops the observers it cannot carry outside the write guard.
 ///
-/// `adopt` replaces the registry this controller publishes through. The retired
-/// route owns the last reference to the previous registry, so dropping it drops
-/// the observers registered there. `reserve` takes the same route's read guard,
-/// so releasing the retired state under the write guard would block every
-/// lifecycle revision behind observer teardown.
+/// `adopt` replaces the registry this controller publishes through, and it
+/// carries into the adopted registry every registration an adapter still holds
+/// a handle for. A registration whose handle is already gone cannot be carried:
+/// the adopted registry would hold an observer no handle could ever detach, so
+/// it is released with the retired state instead. That release happens only
+/// after the write guard is dropped; `reserve` takes the same route's read
+/// guard, so releasing it under the guard would block every lifecycle revision
+/// behind observer teardown.
 #[test]
 fn a_retired_route_drops_its_observers_outside_the_write_guard() {
     let route = ProgressObserverRoute::default();
@@ -121,12 +124,16 @@ fn a_retired_route_drops_its_observers_outside_the_write_guard() {
         released_outside_guard: Arc::clone(&released_outside_guard),
     });
     {
+        // A registration no handle owns: its location is dropped, which is what
+        // a handle that drops while a swap is in flight leaves behind.
+        let location = RegistrationLocation::new(&registry, 0);
         let mut observers = registry.observers.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         observers.insert(
             0,
             RegisteredProgressObserver {
                 parent_session_id: "parent-session".to_string(),
                 observer: probe,
+                location: Arc::downgrade(&location),
             },
         );
     }
@@ -137,11 +144,11 @@ fn a_retired_route_drops_its_observers_outside_the_write_guard() {
     drop(registry);
     assert!(!dropped.load(Ordering::SeqCst), "the installed observer must stay alive");
 
-    // Retiring this route drops the last reference to the registry and the
-    // observer it owns.
+    // The next swap cannot carry a registration no handle owns, so retiring
+    // this route releases the observer with the retired state.
     route.adopt(Arc::new(ProgressObserverRegistry::default()), None, Arc::new(AtomicU64::new(0)));
 
-    assert!(dropped.load(Ordering::SeqCst), "the retired route must drop its observers");
+    assert!(dropped.load(Ordering::SeqCst), "the retired route must drop the observers it cannot carry");
     assert!(
         released_outside_guard.load(Ordering::SeqCst),
         "the retired route must be dropped after the write guard is released"

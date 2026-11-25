@@ -41,6 +41,12 @@ pub(super) fn plan(
 }
 
 /// Builds one persisted row under an explicit canonical id.
+///
+/// The status the row carries is part of its meaning: `running` with a cleared
+/// desire is a stop whose close is still owed, while `stopped` is a finished
+/// launch an explicit start may replace. Callers that care supply it
+/// explicitly through [`persisted_row_with_status`]; this helper keeps the live
+/// fixture the majority of cases need.
 pub(super) fn persisted_row(
     id: &str,
     owner_session_id: Option<&str>,
@@ -48,7 +54,36 @@ pub(super) fn persisted_row(
     exec_session_id: &str,
     desired_enabled: bool,
 ) -> crate::subagents::PersistedBackgroundRecord {
-    persisted_row_launched_at(id, owner_session_id, agent_name, exec_session_id, desired_enabled, None)
+    persisted_row_with_status(
+        id,
+        owner_session_id,
+        agent_name,
+        exec_session_id,
+        desired_enabled,
+        PERSISTED_RUNNING_STATUS,
+    )
+}
+
+/// The status of a row whose launch may still own a process.
+pub(super) const PERSISTED_RUNNING_STATUS: &str = "running";
+
+/// The status of a row whose launch is confirmed finished.
+pub(super) const PERSISTED_STOPPED_STATUS: &str = "stopped";
+
+/// Builds one persisted row that carries an explicit launch status.
+///
+/// The fixture pins the status because a settlement's meaning depends on it: an
+/// explicit start must replace a stopped row, while a stop whose close is still
+/// owed stays `running` with `desired_enabled` cleared.
+pub(super) fn persisted_row_with_status(
+    id: &str,
+    owner_session_id: Option<&str>,
+    agent_name: &str,
+    exec_session_id: &str,
+    desired_enabled: bool,
+    status: &str,
+) -> crate::subagents::PersistedBackgroundRecord {
+    persisted_row_body(id, owner_session_id, agent_name, exec_session_id, desired_enabled, status, None)
 }
 
 /// Builds one persisted row that records when its launch began.
@@ -64,6 +99,27 @@ pub(super) fn persisted_row_launched_at(
     desired_enabled: bool,
     started_at: Option<&str>,
 ) -> crate::subagents::PersistedBackgroundRecord {
+    persisted_row_body(
+        id,
+        owner_session_id,
+        agent_name,
+        exec_session_id,
+        desired_enabled,
+        PERSISTED_RUNNING_STATUS,
+        started_at,
+    )
+}
+
+/// Builds the row body every fixture above shares.
+fn persisted_row_body(
+    id: &str,
+    owner_session_id: Option<&str>,
+    agent_name: &str,
+    exec_session_id: &str,
+    desired_enabled: bool,
+    status: &str,
+    started_at: Option<&str>,
+) -> crate::subagents::PersistedBackgroundRecord {
     serde_json::from_value(serde_json::json!({
         "id": id,
         "owner_session_id": owner_session_id,
@@ -76,7 +132,7 @@ pub(super) fn persisted_row_launched_at(
         "parent_session_id": "parent-session",
         "exec_session_id": exec_session_id,
         "desired_enabled": desired_enabled,
-        "status": "running",
+        "status": status,
         "created_at": "2026-08-28T00:00:00Z",
         "updated_at": "2026-08-28T00:00:00Z",
         "started_at": started_at,

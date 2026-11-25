@@ -2,7 +2,9 @@
 use super::*;
 use crate::workspace::{WorkspaceTrustSyncOutcome, WorkspaceTrustSynchronizer};
 use crate::zed::agent::optional_setup::{OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes};
-use crate::zed::agent::session_workspace::{WorkspaceRuntimeLifecycle, WorkspaceRuntimeLifecycleState};
+use crate::zed::agent::session_workspace::{
+    PendingWorkspaceRestore, WorkspaceRuntimeLifecycle, WorkspaceRuntimeLifecycleState,
+};
 use assert_fs::TempDir;
 use diapason_core::config::WorkspaceTrustLevel;
 use std::sync::Arc;
@@ -83,6 +85,7 @@ async fn isolated_runtime(managed: bool, workspace: &Path, agent: &ZedAgent) -> 
             active_sessions: 0,
         }),
         lifecycle_changed: tokio::sync::Notify::new(),
+        pending_background_restore: Mutex::new(PendingWorkspaceRestore::NotOwed),
     })
 }
 

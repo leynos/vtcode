@@ -97,9 +97,11 @@ Pinning `reasoning_effort` in a profile implies effort support for that model.
 
 `supports_stream_usage = true` opts custom OpenAI-chat streams into
 `stream_options.include_usage = true`. Enable it only when the endpoint returns
-terminal stream usage. Omitted or `false` preserves the existing request shape;
-per-model profiles override the provider default, including explicit `false`.
-Native OpenAI requests are unaffected.
+terminal stream usage. When the resolved value is omitted or `false` the
+existing request shape is preserved. An omitted profile value inherits the
+provider default, so it resolves to `true` when the provider sets
+`supports_stream_usage = true`; a profile overrides that default, including an
+explicit `false`. Native OpenAI requests are unaffected.
 
 ### Model profiles
 

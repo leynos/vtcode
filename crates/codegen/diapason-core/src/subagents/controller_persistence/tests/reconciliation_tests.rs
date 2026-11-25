@@ -387,3 +387,45 @@ fn owner_merge_keeps_another_sessions_record() {
 
     assert_eq!(tags, vec!["other-session".to_owned(), "owner-record".to_owned()]);
 }
+
+/// Equal copies of one launch must resolve the same way in either order.
+///
+/// Two copies of one launch that agree on intent and carry the same
+/// `updated_at` differ only in the status they report. Arrival order alone used
+/// to decide which one a load reported, so reversing the two rows changed the
+/// record a caller saw. The settled copy is the outcome of the launch, so it
+/// must win whichever row the ledger lists first.
+#[test]
+fn equal_launch_copies_resolve_the_same_way_in_either_order() {
+    // Shape 0 is `worker` owned by `session-a`; both copies name one launch, one
+    // timestamp and the same intent, and differ only in the status they report.
+    let running = merge_launch_record(0, 2, true, "exec-tied", "running-copy");
+    let mut stopped = merge_launch_record(0, 2, true, "exec-tied", "settled-copy");
+    stopped.status = crate::subagents::BackgroundSubprocessStatus::Stopped;
+    stopped.ended_at = Some("2026-08-28T00:00:09Z".parse().expect("the stop instant"));
+
+    let expected = ("settled-copy".to_owned(), true, "stopped".to_owned());
+    for records in [
+        vec![running.clone(), stopped.clone()],
+        vec![stopped.clone(), running.clone()],
+    ] {
+        assert_eq!(
+            merged_state(collect_by_canonical_id(records.clone()).into_values()),
+            expected,
+            "the load collapse must keep the settled copy whichever row comes first: {records:?}"
+        );
+        let merged = merge_background_records(
+            records.clone(),
+            Vec::new(),
+            Some("session-a"),
+            &BTreeSet::new(),
+            &BTreeMap::new(),
+            &[],
+        );
+        assert_eq!(
+            merged_state(merged),
+            expected,
+            "the save merge must keep the settled copy whichever row comes first"
+        );
+    }
+}

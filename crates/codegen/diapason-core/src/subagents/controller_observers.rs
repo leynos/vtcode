@@ -27,6 +27,73 @@ pub(super) struct ProgressObserverRegistry {
     observers: Mutex<BTreeMap<u64, RegisteredProgressObserver>>,
 }
 
+/// Where one registration currently lives, shared by its handle and its entry.
+///
+/// A route swap carries the registrations of the retired registry into the
+/// adopted one, and it files a carried registration under a fresh id because
+/// the two registries each issued their own. The handle therefore cannot
+/// remember a registry and an id from registration time: it removes the
+/// registration from whatever home this cell names.
+///
+/// The handle owns the cell and the registry entry refers to it weakly, so a
+/// swap can tell a registration an adapter still holds from one whose handle
+/// was dropped while the swap was in flight. Carrying the latter would revive
+/// an observer no handle can ever detach, so the swap abandons it instead.
+pub(super) struct RegistrationLocation {
+    home: Mutex<Option<RegistrationHome>>,
+}
+
+/// The registry one registration currently lives in, and the id it is filed
+/// under there.
+struct RegistrationHome {
+    registry: Weak<ProgressObserverRegistry>,
+    id: u64,
+}
+
+impl RegistrationLocation {
+    /// Opens the location of a registration filed under `id` in `registry`.
+    fn new(registry: &Arc<ProgressObserverRegistry>, id: u64) -> Arc<Self> {
+        Arc::new(Self {
+            home: Mutex::new(Some(RegistrationHome { registry: Arc::downgrade(registry), id })),
+        })
+    }
+
+    /// Withdraws the registration from its home, if it still has one.
+    ///
+    /// The guard is never held while the registry named here is locked, so a
+    /// detach cannot deadlock against a swap that holds the adopted registry's
+    /// map and then takes this cell. An empty cell means the handle detached
+    /// first, and a swap that finds it empty abandons the registration rather
+    /// than filing it where no handle can reach it.
+    fn take_home(&self) -> Option<RegistrationHome> {
+        self.home.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take()
+    }
+
+    /// Re-files `registration` under `id` in `registry` and publishes it there.
+    ///
+    /// The caller already holds `registry`'s map. The cell stays locked across
+    /// the insert, so a detach that wins the cell first leaves it empty and the
+    /// registration is handed back for release, while a detach that loses waits
+    /// for the insert and then removes the published entry. Publishing without
+    /// holding the cell would let a detach remove nothing and the registration
+    /// land afterwards, where no handle could ever reach it again.
+    fn relocate(
+        &self,
+        registry: &Arc<ProgressObserverRegistry>,
+        id: u64,
+        registration: RegisteredProgressObserver,
+        observers: &mut BTreeMap<u64, RegisteredProgressObserver>,
+    ) -> Result<(), RegisteredProgressObserver> {
+        let mut home = self.home.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if home.is_none() {
+            return Err(registration);
+        }
+        *home = Some(RegistrationHome { registry: Arc::downgrade(registry), id });
+        observers.insert(id, registration);
+        Ok(())
+    }
+}
+
 /// The registry a controller publishes through, the observer key it
 /// publishes under, and the clock that orders its publications.
 ///
@@ -110,10 +177,22 @@ impl ProgressObserverRoute {
     ///
     /// The retired state is released only after the write guard is dropped. It
     /// owns the last reference to the previous registry when a controller joins
-    /// a tree, and dropping that registry drops the observers registered in it.
-    /// Those observers run user code, and `reserve` takes this route's read
-    /// guard, so dropping the retired state under the write guard would block
-    /// every lifecycle revision the tree hands out behind observer teardown.
+    /// a tree, and releasing it drops that registry together with any
+    /// registration the swap could not carry. Those observers run user code,
+    /// and `reserve` takes this route's read guard, so dropping the retired
+    /// state under the write guard would block every lifecycle revision the
+    /// tree hands out behind observer teardown.
+    ///
+    /// Registrations made against this route before the swap move into the
+    /// adopted registry, so they stay reachable from the registry that now
+    /// dispatches and their handles still detach from the one that holds them.
+    /// A controller can therefore be registered with either before or after it
+    /// joins a tree without silently losing an adapter.
+    ///
+    /// A registration whose handle was dropped while the swap was in flight is
+    /// not carried, because the adopted registry would hold an observer no
+    /// handle could ever remove. It is released with the retired state, after
+    /// the write guard, so observer teardown still cannot block a reservation.
     pub(super) fn adopt(
         &self,
         registry: Arc<ProgressObserverRegistry>,
@@ -133,39 +212,105 @@ impl ProgressObserverRoute {
         let mut route = self.state.write().unwrap_or_else(std::sync::PoisonError::into_inner);
         let own_revision = route.lifecycle_clock.load(Ordering::Relaxed);
         adopted.lifecycle_clock.fetch_max(own_revision, Ordering::Relaxed);
+        let abandoned = Self::carry_registrations(&route.registry, &adopted.registry);
         let retired = std::mem::replace(&mut *route, adopted);
         drop(route);
         drop(retired);
+        drop(abandoned);
+    }
+
+    /// Moves the live registrations of `retired` into `adopted`.
+    ///
+    /// A registration whose handle detached while the swap held the maps is
+    /// skipped, because its location is already empty and filing it in the
+    /// adopted registry would publish an observer no handle can ever remove.
+    ///
+    /// Each carried registration takes a fresh id from the adopted registry's
+    /// own counter. The two registries each issued ids from their own counter,
+    /// so reusing the retired id could collide with an id the adopted registry
+    /// will issue later. Each carried entry updates the location its handle
+    /// reads, so the handle removes the registration from the registry and id
+    /// that actually hold it.
+    ///
+    /// The route being retired and the one being adopted are the same registry
+    /// when a controller re-adopts the route it already publishes through, so
+    /// that case is skipped rather than merged into itself.
+    ///
+    /// Registrations whose handle was dropped in the middle of the swap are not
+    /// carried; they are returned so the caller can release them, like the
+    /// retired route itself, after the write guard is gone.
+    fn carry_registrations(
+        retired: &Arc<ProgressObserverRegistry>,
+        adopted: &Arc<ProgressObserverRegistry>,
+    ) -> Vec<RegisteredProgressObserver> {
+        let mut abandoned = Vec::new();
+        if Arc::ptr_eq(retired, adopted) {
+            return abandoned;
+        }
+        let carried = {
+            let mut observers = retired.observers.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            std::mem::take(&mut *observers)
+        };
+        if carried.is_empty() {
+            return abandoned;
+        }
+        let mut observers = adopted.observers.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        for (_id, registration) in carried {
+            let Some(location) = registration.location.upgrade() else {
+                // The adapter dropped the handle while the maps were being
+                // swapped. The cell is gone, so nothing can ever detach this
+                // entry from the adopted registry; `adopt` releases it with
+                // the retired route instead.
+                abandoned.push(registration);
+                continue;
+            };
+            let id = adopted.next_id.fetch_add(1, Ordering::Relaxed);
+            if let Err(released) = location.relocate(adopted, id, registration, &mut observers) {
+                abandoned.push(released);
+            }
+        }
+        abandoned
     }
 }
 
 pub(super) struct RegisteredProgressObserver {
     parent_session_id: String,
     observer: Arc<dyn SubagentProgressObserver>,
+    /// The handle that owns this registration, if one still does.
+    ///
+    /// Weak because the handle, not the registry, owns the location: a route
+    /// swap carries the registration only while an adapter still holds it.
+    location: Weak<RegistrationLocation>,
 }
 
 /// Keeps a progress observer registered with its subagent controller.
 ///
-/// Dropping the registration detaches the observer. Adapters should retain it
-/// for exactly the lifetime in which they want to receive status snapshots.
+/// Dropping the registration detaches the observer, including after a route
+/// swap has moved it into another registry. Adapters should retain it for
+/// exactly the lifetime in which they want to receive status snapshots.
 #[must_use = "dropping the registration detaches the progress observer"]
 pub struct SubagentProgressObserverRegistration {
-    registry: Weak<ProgressObserverRegistry>,
-    id: u64,
+    location: Arc<RegistrationLocation>,
 }
 
 impl Drop for SubagentProgressObserverRegistration {
     fn drop(&mut self) {
-        if let Some(registry) = self.registry.upgrade() {
-            // Bind the removed handle and release the guard before dropping
-            // it: dropping an observer may run user code, which must not
-            // happen while the registry mutex is held.
-            let removed = {
-                let mut observers = registry.observers.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                observers.remove(&self.id)
-            };
-            drop(removed);
-        }
+        let Some(home) = self.location.take_home() else {
+            // A swap already found the handle gone and released the entry.
+            return;
+        };
+        let Some(registry) = home.registry.upgrade() else {
+            // The registry holding it is gone, and so is the registration.
+            return;
+        };
+        // Bind the removed handle and release the guard before dropping it:
+        // dropping an observer may run user code, which must not happen while
+        // the registry mutex is held.
+        let removed = {
+            let mut observers = registry.observers.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            observers.remove(&home.id)
+        };
+        drop(removed);
     }
 }
 
@@ -225,6 +370,16 @@ impl SubagentController {
         self.progress_route.snapshot()
     }
 
+    /// Returns the observer key this controller dispatches under, if it has
+    /// inherited one.
+    ///
+    /// A controller with no inherited key resolves its key per publication, so
+    /// `None` says nothing about which session its existing records belong to:
+    /// only an adopted key is a claim of ownership.
+    pub(super) fn inherited_observer_key(&self) -> Option<String> {
+        self.progress_route.snapshot().scope
+    }
+
     /// Publishes this controller's snapshots through `route`.
     ///
     /// The route's own key wins over `fallback_scope`: a controller that has
@@ -269,9 +424,17 @@ impl SubagentController {
         let parent_session_id = parent_session_id.into();
         let registry = self.progress_route.snapshot().registry;
         let id = registry.next_id.fetch_add(1, Ordering::Relaxed);
+        let location = RegistrationLocation::new(&registry, id);
         let mut observers = registry.observers.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        observers.insert(id, RegisteredProgressObserver { parent_session_id, observer });
-        SubagentProgressObserverRegistration { registry: Arc::downgrade(&registry), id }
+        observers.insert(
+            id,
+            RegisteredProgressObserver {
+                parent_session_id,
+                observer,
+                location: Arc::downgrade(&location),
+            },
+        );
+        SubagentProgressObserverRegistration { location }
     }
 
     fn with_progress_observers(&self, parent_session_id: &str, notify: impl Fn(&dyn SubagentProgressObserver)) {

@@ -134,7 +134,7 @@ pub(super) fn write_ledger(
 /// gated with its callers. Without the gate a Windows test build compiles it
 /// unused and fails the workspace's `-D warnings` dead-code check.
 #[cfg(unix)]
-pub(super) fn write_background_demo_agent(workspace_root: &Path) {
+pub(crate) fn write_background_demo_agent(workspace_root: &Path) {
     let agent_dir = workspace_root.join(diapason_commons::workspace_dir_name()).join("agents");
     std::fs::create_dir_all(&agent_dir).expect("agent dir");
     std::fs::write(
@@ -172,7 +172,7 @@ Run the managed background demo.
 /// Rewrites the demo launch script so the subprocess stays alive while a test
 /// examines the record it produced.
 #[cfg(unix)]
-pub(super) fn write_sleeping_demo_script(workspace_root: &Path) {
+pub(crate) fn write_sleeping_demo_script(workspace_root: &Path) {
     use std::os::unix::fs::PermissionsExt;
 
     let script_path = workspace_root.join("scripts").join("demo-background-subagent.sh");
@@ -208,11 +208,18 @@ pub(super) async fn start_sleep_session(controller: &SubagentController, exec_se
 }
 
 /// Reports whether the exec session is gone rather than unreadable.
+///
+/// Only the typed "session missing" cause is an exit. Any other read fault
+/// leaves the process's fate unknown, so reporting it as gone would let a test
+/// pass on evidence the production path deliberately refuses to act on. Such a
+/// fault therefore fails the call with its own details rather than returning a
+/// misleading boolean.
 #[cfg(unix)]
 pub(super) async fn session_is_gone(controller: &SubagentController, exec_session_id: &str) -> bool {
     match controller.config.exec_sessions.snapshot_session(exec_session_id).await {
         Ok(_) => false,
-        Err(error) => exec_session_is_missing(&error),
+        Err(error) if exec_session_is_missing(&error) => true,
+        Err(error) => panic!("exec session '{exec_session_id}' could not be read, so its state is unknown: {error:#}"),
     }
 }
 

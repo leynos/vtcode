@@ -21,7 +21,7 @@ pub(in crate::zed::agent) use outcomes::{
 pub(in crate::zed::agent) use subagents::{
     AcpSubagentControllerAttacher, AcpSubagentControllerSetup, DefaultAcpSubagentControllerAttacher,
     attach_acp_subagent_controller, effective_acp_subagent_concurrency, migrate_resumed_session_background_owners,
-    restore_acp_session_background_subagents,
+    restore_acp_session_background_subagents, restore_workspace_background_subagents,
 };
 
 /// Operation label for every optional-component log event.

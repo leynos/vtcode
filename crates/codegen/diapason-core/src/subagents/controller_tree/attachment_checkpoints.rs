@@ -6,6 +6,7 @@
 //! attachment waits rather than passing its own check.
 
 use super::*;
+use crate::subagents::ControllerState;
 use std::sync::{Mutex, OnceLock, Weak};
 
 /// The point inside an attachment's critical section a test can park it at.

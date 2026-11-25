@@ -332,19 +332,26 @@ fn confirm_background_stop_close_attempt(
     });
 }
 
-/// Reports whether a confirmed close overtook the attempt identified by `token`.
+/// Reports whether any confirmed close for this stop makes a failure stale.
+///
+/// A confirmed close says the process is gone, which no later attempt can
+/// contradict. Comparing tokens left a hole: a second attempt that started
+/// after the first was confirmed takes a higher token, so its own failure was
+/// not stale by that test and it rewound `Stopped` to `Running`, re-armed an
+/// obligation the confirmed close had discharged, and reported a stopped task
+/// as running again. The token ordering is therefore not consulted here — the
+/// confirmation alone decides. An attempt that fails before any confirmation
+/// still follows the ordinary retry path.
 fn background_stop_close_failure_is_stale(
     state: &Arc<RwLock<ControllerState>>,
     record_id: &str,
     exec_session_id: &str,
-    token: u64,
 ) -> bool {
     with_stop_close_attempts(|attempts| {
         attempts
             .iter()
             .find(|entry| stop_close_attempt_matches(entry, state, record_id, exec_session_id))
-            .and_then(|entry| entry.confirmed_token)
-            .is_some_and(|confirmed| token < confirmed)
+            .is_some_and(|entry| entry.confirmed_token.is_some())
     })
 }
 
@@ -489,6 +496,20 @@ const BACKGROUND_STOPPING_SUMMARY: &str = "Background subagent is stopping";
 
 /// The summary a settled stop carries once its close is confirmed.
 const BACKGROUND_STOPPED_SUMMARY: &str = "Background subagent stopped";
+
+/// Reports whether a settled record still owes the close of a live process.
+///
+/// A settlement only writes the close fault onto an `Error` record, so the fault
+/// is the durable evidence that the process it names may still be running. A
+/// caller deciding whether a terminal row is safe to replace consults this: a
+/// failure whose close is unconfirmed is not a finished launch.
+pub(super) fn background_record_close_is_unconfirmed(record: &BackgroundRecord) -> bool {
+    record.status == BackgroundSubprocessStatus::Error
+        && record
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains(BACKGROUND_CLOSE_FAULT_PREFIX))
+}
 
 /// Records a stop's close fault without discarding a terminal outcome.
 ///
@@ -638,6 +659,11 @@ impl SubagentController {
             // failure arriving during this save bumps the generation and
             // survives the clear.
             let owed_generation = pending_background_ledger_write_generation(&self.state);
+            // The same window the ordinary stop exposes: the cleared intent and
+            // the settled outcome exist only in memory from here until the save
+            // commits, so a test parks here to prove the obligation covers it.
+            #[cfg(test)]
+            pass_background_cancellation_save_gate(&self.state).await;
             self.save_background_state().await?;
             if let Some(generation) = owed_generation {
                 clear_background_ledger_write_pending(&self.state, generation);
@@ -772,7 +798,7 @@ impl SubagentController {
                     .await,
             ),
             Err(error) => (
-                self.settle_background_stop_close_failed(record_id, exec_session_id, attempt.token(), &error)
+                self.settle_background_stop_close_failed(record_id, exec_session_id, &error)
                     .await,
                 None,
             ),
@@ -855,15 +881,14 @@ impl SubagentController {
     /// session, and acting on it would undo `Stopped`, re-arm an obligation the
     /// confirmed close discharged, and report a stopped task as running again.
     ///
-    /// Returns whether the close is nevertheless confirmed: `true` when a
-    /// newer attempt's confirmed close overtook this failure. A caller that
-    /// answers a stop request reports that as a completed stop, because the
-    /// process it names is gone even though this attempt did not close it.
+    /// Returns whether the close is nevertheless confirmed: `true` when any
+    /// attempt's confirmed close overtook this failure. A caller that answers a
+    /// stop request reports that as a completed stop, because the process it
+    /// names is gone even though this attempt did not close it.
     async fn settle_background_stop_close_failed(
         &self,
         record_id: &str,
         exec_session_id: &str,
-        token: u64,
         error: &anyhow::Error,
     ) -> bool {
         let close_confirmed = {
@@ -882,10 +907,11 @@ impl SubagentController {
                 clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
                 return false;
             }
-            if background_stop_close_failure_is_stale(&self.state, record_id, exec_session_id, token) {
-                // A newer attempt already confirmed the close. Leave the record
-                // and the obligation that close settled untouched; a newer
-                // attempt that has since re-armed the obligation owns it.
+            if background_stop_close_failure_is_stale(&self.state, record_id, exec_session_id) {
+                // The close is already confirmed, by this attempt's successor or
+                // by any attempt overlapping it. Leave the record and the
+                // obligation that close settled untouched; a later attempt that
+                // has since re-armed the obligation owns it.
                 true
             } else {
                 record_background_close_fault(record, error);
@@ -1056,11 +1082,20 @@ impl SubagentController {
             // and error text. The owner still asked to stop it, though, and
             // restore selection reads only `desired_enabled`, so clear the
             // flag to keep a settled record from being relaunched on resume.
+            let intent_changed = record.desired_enabled;
             record.desired_enabled = false;
             record.updated_at = Utc::now();
             let record_id = record.id.clone();
             let agent_name = record.agent_name.clone();
             let exec_session_id = record.exec_session_id.clone();
+            // The cleared intent exists only in memory until a save reaches the
+            // ledger, and restore selects on it: a caller dropped before that
+            // save would relaunch the cancelled task on the next resume. The
+            // obligation is raised under this lock, so the window opens only
+            // once the intent is already recorded as owed.
+            if intent_changed {
+                mark_background_ledger_write_pending(&self.state);
+            }
             // A terminal record's session can still be live, so the stop still
             // owes its close. Raising the obligation here makes an interrupt
             // between this intent and the close retryable by the next reconcile.
@@ -1114,7 +1149,19 @@ impl SubagentController {
             .unwrap_or_else(|| mark_background_ledger_write_pending(&self.state));
         #[cfg(test)]
         pass_background_cancellation_save_gate(&self.state).await;
-        self.refresh_background_archive_metadata(target).await?;
+        // The archive refresh only attaches projection paths; it does not
+        // decide the stop's outcome. Returning its fault here would skip the
+        // save and the publication below, losing a stop the close already
+        // confirmed and leaving the process's record unsaved for as long as the
+        // archive stays unreadable. Refresh treats the same fault the same way:
+        // report it against the record and carry on.
+        if let Err(error) = self.refresh_background_archive_metadata(target).await {
+            tracing::warn!(
+                record_id = target,
+                error = %error,
+                "Could not refresh the background archive metadata; leaving the stop as settled"
+            );
+        }
         self.save_background_state().await?;
         clear_background_ledger_write_pending(&self.state, generation);
         self.publish_settled_background_stop(target, settled).await

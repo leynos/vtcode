@@ -1,6 +1,5 @@
 //! Pins the phase check that discards an absence observed before a commit.
 
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 use tempfile::TempDir;
@@ -12,39 +11,8 @@ use crate::tools::registry::PtySessionManager;
 
 use super::super::BackgroundRunRequest;
 use super::super::controller_background_run::gate_next_background_commit;
+use super::super::tests::support::{write_background_demo_agent, write_sleeping_demo_script};
 use super::*;
-
-/// Writes the demo agent and a script that keeps its process alive.
-fn write_demo_agent(workspace_root: &std::path::Path) {
-    let agent_dir = workspace_root.join(diapason_commons::workspace_dir_name()).join("agents");
-    std::fs::create_dir_all(&agent_dir).expect("agent dir");
-    std::fs::write(
-        agent_dir.join("background-demo.md"),
-        r#"---
-name: background-demo
-description: Minimal demo agent for the managed background subprocess flow.
-tools:
-  - command_session
-background: true
-maxTurns: 2
-initialPrompt: Report readiness once.
----
-
-Run the managed background demo.
-"#,
-    )
-    .expect("write background agent");
-
-    let scripts_dir = workspace_root.join("scripts");
-    std::fs::create_dir_all(&scripts_dir).expect("scripts dir");
-    let script_path = scripts_dir.join("demo-background-subagent.sh");
-    std::fs::write(&script_path, "#!/bin/sh\nsleep 30\n").expect("write background script");
-    let mut permissions = std::fs::metadata(&script_path)
-        .expect("background script metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&script_path, permissions).expect("background script permissions");
-}
 
 fn test_config(workspace_root: PathBuf, vt_cfg: DiapasonConfig) -> SubagentControllerConfig {
     let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
@@ -81,7 +49,8 @@ fn test_config(workspace_root: PathBuf, vt_cfg: DiapasonConfig) -> SubagentContr
 #[tokio::test]
 async fn a_missing_observation_from_before_the_commit_does_not_settle_the_launch() {
     let temp = TempDir::new().expect("tempdir");
-    write_demo_agent(temp.path());
+    write_background_demo_agent(temp.path());
+    write_sleeping_demo_script(temp.path());
     let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.subagents.background.enabled = true;
     vt_cfg.subagents.background.auto_restore = true;

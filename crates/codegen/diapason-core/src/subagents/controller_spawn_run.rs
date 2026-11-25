@@ -975,13 +975,22 @@ impl SubagentController {
     ///
     /// A launch that fails after its record became visible leaves a checkout no
     /// run will use, so the caller reclaims it. The record is only the launch's
-    /// own while it is still the record this spawn inserted, still settled and
-    /// still carries the path this spawn created: a close settles the record but
-    /// leaves it in place, so a resume that reopened it between the insertion
-    /// and the refusal has already claimed the checkout for the resumed run.
-    /// Reclaiming it then would remove the directory out from under that run.
-    /// Anything that does not match this launch's record is therefore left
-    /// untouched, and only an exact match is taken and cleared.
+    /// own while it is still the record this spawn inserted, still settled,
+    /// still carries the path this spawn created and has never had a run
+    /// start in it: a close settles the record but leaves it in place, so a
+    /// resume that reopened it between the insertion and the refusal has
+    /// already claimed the checkout for the resumed run. Reclaiming it then
+    /// would remove the directory out from under that run.
+    ///
+    /// The status alone is not enough. A resumed run that starts, executes and
+    /// settles before this cleanup is reached is terminal again, and looks
+    /// exactly like a record nothing ever ran in; removing the checkout then
+    /// deletes a directory that run's archive and transcript describe. The
+    /// claim counter the run bumps as it begins is what separates the two.
+    ///
+    /// Anything that does not match this launch's record is left untouched, and
+    /// only an exact match is taken and cleared. The check runs under the state
+    /// lock, so no run can begin between it and the path being cleared.
     ///
     /// The path is cleared as it is taken, so a later resume cannot be handed a
     /// directory that is about to be removed.
@@ -994,6 +1003,11 @@ impl SubagentController {
         // `Running`: either state means the resumed run has claimed the
         // checkout and is about to execute in it.
         if !record.status.is_terminal() {
+            return None;
+        }
+        // A run has started in the checkout, so it is no longer unused even
+        // though the record is terminal again.
+        if record.worktree_claim > 0 {
             return None;
         }
         let path = record.worktree_path.as_ref()?;
@@ -1122,6 +1136,9 @@ impl SubagentController {
             handle: None,
             notify,
             worktree_path,
+            // No run has started in the checkout this spawn created, which is
+            // what lets a refused launch reclaim it.
+            worktree_claim: 0,
             child_controller: None,
             closed: false,
         };
@@ -1245,15 +1262,16 @@ fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync:
     waiters
 }
 
-/// A test-only rendezvous inside the child-wait path.
-///
-/// `wait_for_child_change` creates its notification futures and rechecks the
-/// target statuses before it selects. A test that must prove the wakeup
-/// travelled through those futures parks the waiter after the recheck: a
-/// completion published from there can no longer be observed by the recheck,
-/// so only a notification can end the wait.
 #[cfg(test)]
 pub(super) mod wait_checkpoints {
+    //! A test-only rendezvous inside the child-wait path.
+    //!
+    //! `wait_for_child_change` creates its notification futures and rechecks
+    //! the target statuses before it selects. A test that must prove the wakeup
+    //! travelled through those futures parks the waiter after the recheck: a
+    //! completion published from there can no longer be observed by the
+    //! recheck, so only a notification can end the wait. Declared by
+    //! `mod wait_checkpoints;` in this file's parent module.
     use std::sync::{Mutex, OnceLock, Weak};
 
     use tokio::sync::Notify;

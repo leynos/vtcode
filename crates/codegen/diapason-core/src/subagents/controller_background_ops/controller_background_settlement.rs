@@ -6,6 +6,7 @@ use super::controller_background_cancel::background_stop_close_is_pending;
 use super::controller_background_lifecycle::{
     background_launch_is_owed, clear_background_launch_owed, mark_background_launch_owed,
 };
+use super::controller_background_liveness::bounded_launch_failure;
 
 /// Reports whether a background record may still be given another attempt.
 ///
@@ -49,13 +50,29 @@ pub(super) fn failed_launch_still_owns_record(record: &BackgroundRecord, plan_ex
         && record.desired_enabled
 }
 
-/// Reports whether a persisted row still wants the launch it names.
+/// Reports whether a persisted row still claims a launch of its own.
 ///
 /// A ledger row naming another exec session is only a competing launch while it
-/// is still desired; a stopped copy of an older launch must not block a
-/// replacement.
+/// still wants one. Two settled states are not claims:
+///
+/// - A stopped row is the empty slot an explicit start fills again.
+/// - An `Error` row is a launch that is confirmed not to be running: its
+///   process either never started or has been observed to exit. Refusing the
+///   start would leave a task that failed permanently unstartable, which is the
+///   opposite of what a start request is for.
+///
+/// A failure is only confirmed, though, when nothing still owes a close for it.
+/// A stop whose close faulted leaves an `Error` row whose process may still be
+/// live, so the reservation checks [`background_record_close_is_unconfirmed`]
+/// against the persisted row before it treats that row as free. That check runs
+/// ahead of every exemption below, including the one for a row naming this
+/// controller's own launch: a close this process still owes is exactly the case
+/// that must keep the row unstartable.
+///
+/// An active row - `Starting` or `Running` - is still a claim, because a process
+/// may own it.
 pub(super) fn persisted_background_row_is_desired(record: &PersistedBackgroundRecord) -> bool {
-    record.desired_enabled
+    record.desired_enabled && record.status.is_active()
 }
 
 /// Controller trees whose last background-ledger write failed.
@@ -216,6 +233,12 @@ impl SubagentController {
     /// refresh retries instead of a failure only this process can see. The
     /// marker is discharged only once the save succeeds; the original launch
     /// error is still what the caller receives.
+    ///
+    /// `record.error` reaches a client as the task's `stopReason`, so it carries
+    /// a bounded failure category rather than the error chain: a spawn fault's
+    /// chain names ledger and workspace paths, which are local diagnostic detail
+    /// and must not travel to a remote peer. The full chain still reaches this
+    /// process's log, where a maintainer can read it.
     async fn settle_background_launch_error(
         &self,
         record_id: &str,
@@ -242,7 +265,17 @@ impl SubagentController {
                 return;
             }
             record.status = BackgroundSubprocessStatus::Error;
-            record.error = Some(format!("Failed to start background subagent '{}': {error:#}", record.agent_name));
+            // The record's error becomes a client's `stopReason`, so it carries
+            // the outermost cause together with the chain's root: the root says
+            // why the spawn or the claim write failed, which is what a caller
+            // can act on. The context lines in between name ledger and
+            // workspace paths, which are local diagnostic detail; the full
+            // chain is logged below, where it stays inside this process.
+            record.error = Some(format!(
+                "Failed to start background subagent '{}': {}",
+                record.agent_name,
+                bounded_launch_failure(error, exec_session_id)
+            ));
             record.summary = Some("Background subagent failed to start".to_string());
             record.updated_at = Utc::now();
             record.ended_at.get_or_insert(Utc::now());
@@ -253,6 +286,14 @@ impl SubagentController {
             // refresh to retry.
             mark_background_ledger_write_pending(&self.state)
         };
+        // The record carries only the bounded category, so the chain that names
+        // the ledger and workspace paths is kept here for local diagnosis.
+        tracing::warn!(
+            record_id,
+            exec_session_id,
+            error = %error,
+            "Background subagent launch failed"
+        );
         self.publish_background_status(record_id).await;
         // The caller receives the original spawn error, so a persistence
         // failure must not replace it. The obligation raised above stays owed,
@@ -408,7 +449,7 @@ impl SubagentController {
         record.updated_at = Utc::now();
 
         let Some(snapshot) = snapshot else {
-            let respawn = Self::handle_missing_background_snapshot(record, &self.config)?;
+            let respawn = self.handle_missing_background_snapshot(record)?;
             if let Some((agent_name, _, restart_attempts)) = respawn.as_ref() {
                 // The restart is recorded before the caller awaits its ledger
                 // pre-check, so a dropped refresh can be driven by the next
@@ -468,7 +509,7 @@ impl SubagentController {
                     );
                     return Ok(Some((record.agent_name.clone(), record.id.clone(), next_restart_attempt)));
                 }
-                Self::mark_background_record_stopped_or_error(record, &snapshot, &self.config);
+                self.mark_background_record_stopped_or_error(record, &snapshot);
             }
         }
 
@@ -476,8 +517,8 @@ impl SubagentController {
     }
 
     fn handle_missing_background_snapshot(
+        &self,
         record: &mut BackgroundRecord,
-        config: &SubagentControllerConfig,
     ) -> Result<Option<(String, String, u8)>> {
         // A `Starting` record that still owes a launch is exempted by the
         // caller before it reaches here. Getting here means nothing is left to
@@ -487,7 +528,11 @@ impl SubagentController {
         if !record.desired_enabled {
             record.status = BackgroundSubprocessStatus::Stopped;
             record.ended_at.get_or_insert(Utc::now());
-        } else if restart_allowed(config.vt_cfg.subagents.background.auto_restore, record.restart_attempts) {
+            // Refresh skips a terminal record on every later pass, so this
+            // outcome exists only in memory until it is written. Register the
+            // write under the lock that stores it.
+            mark_background_ledger_write_pending(&self.state);
+        } else if restart_allowed(self.config.vt_cfg.subagents.background.auto_restore, record.restart_attempts) {
             let next_restart_attempt = record.restart_attempts.saturating_add(1);
             record.restart_attempts = next_restart_attempt;
             record.status = BackgroundSubprocessStatus::Starting;
@@ -510,14 +555,24 @@ impl SubagentController {
             record.status = BackgroundSubprocessStatus::Error;
             record.error = Some("Background subprocess is not running".to_string());
             record.ended_at.get_or_insert(Utc::now());
+            mark_background_ledger_write_pending(&self.state);
         }
         Ok(None)
     }
 
+    /// Settles a record whose exec session has exited.
+    ///
+    /// Both arms write a terminal status and an end instant, and both are
+    /// reached from a refresh: the record then exists only in memory, because
+    /// refresh skips a terminal record on every later pass and restore filters
+    /// it out. The outcome must therefore reach the ledger, so the write
+    /// obligation is raised under the same lock that stores it. Without that,
+    /// the durable row kept saying `Running` for a task that had ended, and a
+    /// resumed session restored a run that could never come back.
     fn mark_background_record_stopped_or_error(
+        &self,
         record: &mut BackgroundRecord,
         snapshot: &crate::tools::types::DiapasonExecSession,
-        _config: &SubagentControllerConfig,
     ) {
         if record.desired_enabled {
             record.status = BackgroundSubprocessStatus::Error;
@@ -528,11 +583,16 @@ impl SubagentController {
         } else {
             record.status = BackgroundSubprocessStatus::Stopped;
         }
+        record.ended_at.get_or_insert(Utc::now());
+        mark_background_ledger_write_pending(&self.state);
     }
 }
 
 #[cfg(all(test, unix))]
 mod stale_observation_tests;
+
+#[cfg(test)]
+mod terminal_refresh_persistence_tests;
 
 #[cfg(test)]
 mod terminal_failure_write_tests {
@@ -659,11 +719,15 @@ mod terminal_failure_write_tests {
             let state = controller.state.read().await;
             let record = state.background_children.get(WORKER).expect("record");
             assert_eq!(record.status, BackgroundSubprocessStatus::Error);
+            // The record's error becomes a client's `stopReason`, so it carries
+            // the bounded outermost cause rather than the chain: the chain's
+            // context names the workspace and ledger paths, which stay in this
+            // process's log. The category is what a caller sees.
             assert!(
                 record
                     .error
                     .as_deref()
-                    .is_some_and(|error| error.contains("spawn transport fault")),
+                    .is_some_and(|error| error.contains("Failed to start background subagent")),
                 "{:?}",
                 record.error
             );

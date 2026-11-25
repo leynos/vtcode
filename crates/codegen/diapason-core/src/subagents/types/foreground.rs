@@ -50,6 +50,16 @@ pub struct ChildRecord {
     /// Optional worktree path for isolated subagents. When set, the child
     /// agent runs in this worktree instead of the parent workspace root.
     pub(crate) worktree_path: Option<PathBuf>,
+    /// The generation of the run that last claimed [`Self::worktree_path`].
+    ///
+    /// A launch that is refused must reclaim the checkout it created, but only
+    /// while no later run has used it. Status alone cannot tell the two apart:
+    /// a resumed run that executes and settles is terminal again by the time
+    /// the refused launch cleans up, so it would look exactly like a record
+    /// nothing ever ran in. This counter is bumped whenever a run begins, so
+    /// the launch that created the checkout can see that a later run claimed
+    /// it. Zero means no run has ever started in it.
+    pub(crate) worktree_claim: u64,
     /// Child-scoped subagent controller used to enable nested delegation.
     /// Created once on the first nested-capable run and reused across resumes
     /// so grandchildren spawned by this child remain reachable for the child's

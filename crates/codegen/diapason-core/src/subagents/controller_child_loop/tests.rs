@@ -2,32 +2,18 @@
 //!
 //! These cases pin one ordering contract: a record that was settled before a
 //! launch or a publication reached the state lock must not be treated as if it
-//! were still live, and a child link published during a graft must adopt the
-//! route the graft published.
+//! were still live. The graft window's own regression lives in
+//! [`graft_publication`], which this module declares.
 
 use super::*;
 use crate::core::threads::ThreadManager;
 use crate::subagents::controller_tree::ChildRuntimePublication;
-use crate::subagents::controller_tree::attachment_checkpoints::{AttachmentStage, arm};
 use crate::subagents::types::ChildRunRequest;
 use crate::tools::registry::PtySessionManager;
-use std::sync::Mutex;
 use std::time::Duration;
 use tempfile::TempDir;
 
-/// Records the child snapshots a controller publishes through one observer key.
-#[derive(Default)]
-struct RecordingObserver {
-    children: Mutex<Vec<SubagentStatusEntry>>,
-}
-
-impl SubagentProgressObserver for RecordingObserver {
-    fn subagent_status_changed(&self, entry: SubagentStatusEntry) {
-        self.children.lock().expect("children lock").push(entry);
-    }
-
-    fn background_status_changed(&self, _entry: BackgroundSubprocessEntry) {}
-}
+mod graft_publication;
 
 /// The built-in explorer spec a child record needs.
 fn explorer_spec() -> SubagentSpec {
@@ -105,6 +91,7 @@ fn child_record(
         handle: None,
         notify: Arc::new(Notify::new()),
         worktree_path: None,
+        worktree_claim: 0,
         child_controller: None,
         closed: false,
     }
@@ -312,107 +299,96 @@ async fn a_close_between_the_queued_publication_and_the_launch_stops_the_start()
     assert_eq!(record.queued_prompts.len(), 1, "a refused launch must leave the queued prompt for a later resume");
 }
 
-/// A child link published while this controller is being grafted adopts the
-/// grafted route, and waits for the graft rather than publishing inside it.
+/// A superseded child loop cannot withdraw the handle of the loop replacing it.
 ///
-/// A graft snapshots the subtree it will move before it adopts the parent
-/// controller's route. A child link published in that window is not in the
-/// snapshot, so unless the link re-adopts the route under the same attachment
-/// guard, the child keeps publishing to the pre-graft registry and the tree's
-/// observers never see its lifecycle updates.
+/// A resume can start a new loop while the previous one is still finishing, and
+/// the record still carries the old handle until that loop goes idle. Two
+/// things must hold: publishing the new handle must abort the displaced task
+/// rather than overwrite it, and the displaced loop's own idle bookkeeping must
+/// leave the new handle in place. Otherwise a later close finds no handle to
+/// abort and the replacement outlives the record it belongs to.
 #[tokio::test]
-async fn a_child_link_published_during_a_graft_adopts_the_grafted_route() {
+async fn a_superseded_child_loop_cannot_clear_the_handle_that_replaced_it() {
     let temp = TempDir::new().expect("tempdir");
-    let workspace_root = temp.path().to_path_buf();
-    let scope = Arc::new(SubagentLockScope::new());
-    let mut root_config = test_controller_config(workspace_root.clone());
-    root_config.lock_scope = Some(Arc::clone(&scope));
-    let root = Arc::new(SubagentController::new(root_config).await.expect("root controller"));
-    let mut middle_config = nested_controller_config(workspace_root.clone(), "middle-session");
-    middle_config.lock_scope = Some(Arc::clone(&scope));
-    let middle = Arc::new(SubagentController::new(middle_config).await.expect("middle controller"));
-    let leaf = {
-        let mut leaf = SubagentController::new(nested_controller_config(workspace_root, "leaf-session"))
+    let controller = Arc::new(
+        SubagentController::new(test_controller_config(temp.path().to_path_buf()))
             .await
-            .expect("leaf controller");
-        // The production creator is `child_controller_for`, which inherits the
-        // observers, the child-id scope and the lock scope as one unit. Building
-        // the leaf any other way would let this regression pass while a scope
-        // the production path also shares is left behind.
-        leaf.inherit_tree_context(&middle, "middle-session").await;
-        Arc::new(leaf)
-    };
+            .expect("controller"),
+    );
     let spec = explorer_spec();
-    middle
-        .state
-        .write()
-        .await
-        .children
-        .insert("leaf".to_string(), child_record("leaf", "middle-session", &spec, SubagentStatus::Running, 2));
-    root.state
-        .write()
-        .await
-        .children
-        .insert("middle".to_string(), child_record("middle", "parent-session", &spec, SubagentStatus::Running, 1));
+    let mut record = child_record("child", "parent-session", &spec, SubagentStatus::Running, 1);
+    // The loop that is finishing: its task is alive and its handle is on the
+    // record, exactly as it is between a run returning and the loop going idle.
+    let (superseded_alive_tx, superseded_alive_rx) = tokio::sync::oneshot::channel::<()>();
+    record.handle = Some(tokio::spawn(async move {
+        let _alive = superseded_alive_tx;
+        std::future::pending::<()>().await;
+    }));
+    controller.state.write().await.children.insert("child".to_string(), record);
 
-    // Park the graft immediately before it publishes the link, after it has
-    // snapshotted the subtree and adopted its route: the child link below is
-    // therefore in exactly the window that would otherwise strand it.
-    let (entered, release) = arm(&root.state, AttachmentStage::BeforePublication);
-    let graft = tokio::spawn({
-        let root = Arc::clone(&root);
-        let middle = Arc::clone(&middle);
-        async move { root.attach_child_controller("middle", middle).await }
-    });
-    tokio::time::timeout(Duration::from_secs(5), entered.notified())
-        .await
-        .expect("the graft must reach the checkpoint immediately before it publishes");
+    // The replacement loop is a real task that stays alive, so the handle the
+    // record carries names a task that can still be aborted. Its own idle
+    // bookkeeping is gated so the stale loop's attempt below cannot race it.
+    let gate = Arc::new(Notify::new());
+    let replacement = {
+        let controller = Arc::clone(&controller);
+        let gate = Arc::clone(&gate);
+        tokio::spawn(async move {
+            gate.notified().await;
+            controller.mark_child_loop_idle("child").await;
+            std::future::pending::<()>().await;
+        })
+    };
+    let replacement_id = replacement.id();
+    {
+        let mut state = controller.state.write().await;
+        let record = state.children.get_mut("child").expect("the record");
+        // The replacement publishes its handle the way `launch_child` does.
+        if let Some(displaced) = record.handle.replace(replacement) {
+            displaced.abort();
+        }
+    }
+    let displaced = tokio::time::timeout(Duration::from_secs(5), superseded_alive_rx).await;
+    assert!(
+        matches!(displaced, Ok(Err(_))),
+        "publishing a replacement handle must abort the displaced loop, got {displaced:?}"
+    );
 
-    let mut publication = std::pin::pin!(middle.publish_child_runtime_guarded(
-        "leaf",
-        ChildRuntimePublication {
-            archive_metadata: build_subagent_archive_metadata(
-                Path::new("/workspace"),
-                "test-model",
-                "openai",
-                "default",
-                "medium",
-                "middle-session",
-                false,
-            ),
-            archive_path: PathBuf::from("leaf-archive.json"),
-            effective_config: DiapasonConfig::default(),
-            thread_handle: ThreadManager::new().start_thread_with_identifier("leaf", ThreadBootstrap::new(None)),
-            child_controller: Some(Arc::clone(&leaf)),
-        },
-        "middle-session",
-    ));
-    let blocked = tokio::time::timeout(Duration::from_millis(100), &mut publication).await;
-    assert!(blocked.is_err(), "the child link must wait for the attachment guard the graft holds");
+    // Bookkeeping that cannot show the handle is its own cannot clear it. The
+    // test body is driven by `block_on` rather than a spawned task, so it has no
+    // task identity to compare and is the strictest form of the stale or
+    // duplicate caller the guard must refuse.
+    controller.mark_child_loop_idle("child").await;
+    let published = {
+        let state = controller.state.read().await;
+        state
+            .children
+            .get("child")
+            .expect("the record")
+            .handle
+            .as_ref()
+            .map(tokio::task::JoinHandle::id)
+    };
+    assert_eq!(published, Some(replacement_id), "a loop that does not own the handle must leave it published");
 
-    release.notify_one();
-    graft
-        .await
-        .expect("the graft task must not panic")
-        .expect("the graft publishes");
-    publication
-        .await
-        .expect("the child link publishes once the graft releases the guard");
-
-    let observer = Arc::new(RecordingObserver::default());
-    let _registration = root.register_progress_observer("parent-session", observer.clone());
-
-    let record = child_record("leaf-task", "leaf-session", &spec, SubagentStatus::Running, 3);
-    leaf.state.write().await.children.insert("leaf-task".to_string(), record);
-    leaf.publish_child_status("leaf-task").await;
-
-    let observed = observer.children.lock().expect("children lock").clone();
-    let ids = observed.iter().map(|entry| entry.id.as_str()).collect::<Vec<_>>();
-    assert_eq!(ids, ["leaf-task"], "a child linked during the graft must publish through the tree observer");
-
-    // Shutdown publishes terminal snapshots into the same observer, so the
-    // assertion above must release the lock first.
-    root.signal_shutdown().await;
-    middle.signal_shutdown().await;
-    leaf.signal_shutdown().await;
+    // The owning loop does retire it, so the guard above cannot make a handle
+    // permanently uncloseable.
+    gate.notify_one();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if controller
+                .state
+                .read()
+                .await
+                .children
+                .get("child")
+                .is_some_and(|record| record.handle.is_none())
+            {
+                return;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the owning loop must retire its own handle");
 }

@@ -63,10 +63,15 @@ pub(super) fn read_ledger_by_id(path: &std::path::Path) -> std::collections::Has
     let persisted: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).expect("read persisted background_subagents state"))
             .expect("persisted state");
-    persisted["records"]
-        .as_array()
-        .expect("records array")
-        .iter()
-        .map(|record| (record["id"].as_str().expect("record id").to_string(), record.clone()))
-        .collect()
+    let records = persisted["records"].as_array().expect("records array").iter();
+    let mut by_id = std::collections::HashMap::new();
+    for record in records {
+        let id = record["id"].as_str().expect("record id").to_string();
+        // A duplicate id would silently replace the earlier entry, so a test
+        // asserting on that id would read the wrong record. The ledger keys one
+        // record per canonical id, so a repeat means the merge wrote two.
+        let previous = by_id.insert(id.clone(), record.clone());
+        assert!(previous.is_none(), "the ledger must not hold two records under id {id}");
+    }
+    by_id
 }

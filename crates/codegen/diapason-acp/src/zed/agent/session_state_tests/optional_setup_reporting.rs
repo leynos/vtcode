@@ -1,6 +1,8 @@
 //! Reporting of the optional components a session sets up for itself.
 use super::super::super::optional_setup::{OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes};
-use super::super::super::session_workspace::{WorkspaceRuntimeLifecycle, WorkspaceRuntimeLifecycleState};
+use super::super::super::session_workspace::{
+    PendingWorkspaceRestore, WorkspaceRuntimeLifecycle, WorkspaceRuntimeLifecycleState,
+};
 use super::*;
 use crate::zed::agent::test_log_capture::capturing_async;
 use assert_fs::TempDir;
@@ -43,6 +45,7 @@ async fn session_controller_setup_reports_only_the_controller_outcome() {
             active_sessions: 0,
         }),
         lifecycle_changed: tokio::sync::Notify::new(),
+        pending_background_restore: Mutex::new(PendingWorkspaceRestore::NotOwed),
     };
     let session_id = acp::SessionId::new("session-controller-reporting");
 
