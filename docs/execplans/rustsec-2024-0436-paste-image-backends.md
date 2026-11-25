@@ -86,14 +86,18 @@ the unused `image` declaration, then apply it through the existing
   `Cargo.lock` deleted rather than pruned. The lockfile has no effect on a path
   dependency; deleting it keeps the vendored tree free of a stale `image`-only
   resolution instead of hand-editing 311 packages.
-- Only the crate payload was vendored. Upstream's `demo/`, `docs/`,
-  `javascript/`, `python/`, Python test, `.github/`, `AGENTS.md`,
-  `pyproject.toml` and shell scripts were not copied; none is referenced by the
-  Rust build. `README.md` was reflowed by `mdtablefix` so the workspace
-  `check-fmt` gate accepts the vendored tree; prose, fences and links are
-  unchanged.
+- Only the crate payload was vendored. Upstream's `demo/`, `javascript/`,
+  `python/`, Python test `tests/test_harmony.py`, `.github/`, `AGENTS.md`,
+  `pyproject.toml` and shell scripts were not copied. None is referenced by the
+  Rust build, and the Python test cannot run without the excluded Python
+  wrapper. `docs/` **is** vendored, because `README.md` links to
+  `docs/python.md` and `docs/rust.md`.
+- `README.md` and the three `docs/*.md` files were reflowed by `mdtablefix` so
+  the workspace `check-fmt` gate accepts the vendored tree; prose, fences and
+  links are unchanged. Those four documents and the two manifests carry a
+  "MODIFIED by Diapason" notice, as Apache-2.0 section 4(b) requires.
 - Everything the build uses is unchanged: `version = "0.0.8"`, `LICENSE`,
-  `src/` and `test-data/`.
+  `src/`, `test-data/` and `docs/header.png`.
 - Upstream fix: [openai/harmony#115](https://github.com/openai/harmony/pull/115)
   (commit `fc7e8837a348c8248087cef6b956695b8f0782c5`) makes the same removal.
   It was still open and unmerged when this record was written, and
@@ -230,6 +234,46 @@ When a released `openai-harmony` drops `image` or disables its default features:
 4. regenerate `Cargo.lock`,
 5. confirm `cargo tree --locked -i paste` stays empty and
    `cargo audit --file Cargo.lock` still reports no `RUSTSEC-2024-0436`.
+
+## Review triage
+
+A `coderabbit review --agent` pass raised 38 findings. They fall into three
+groups, and only the first produced code changes:
+
+**Acted on (this change's own vendoring decisions).**
+
+- Broken documentation links: `README.md` links to `docs/python.md` and
+  `docs/rust.md`, so the upstream `docs/` tree is vendored after all. The
+  Python test was dropped instead; it cannot run without the excluded Python
+  wrapper, and keeping it would ship a test that only ever fails.
+- `VTCODE-PATCH.md` described a `demo/` directory that is not vendored, and
+  claimed the archive checksum verified the local tree. Both corrected: the
+  checksum identifies the archive only, and the verification procedure is to
+  diff an extracted archive against this tree.
+- Apache-2.0 section 4(b): every modified file now carries a prominent
+  "MODIFIED by Diapason" notice — the two manifests and the README. The delta
+  list was updated to match.
+
+**Deferred: upstream defects in `openai-harmony 0.0.8`.** These are real, and
+many are confirmed present in the published crate. They are out of scope here:
+the whole point of the patch is that the vendored source stays byte-identical
+to the published archive apart from the removed dependency. Fixing them would
+turn a scoped RustSec remediation into an unrequested fork of a third-party
+crate. They belong upstream, and the exit criterion below removes the fork
+entirely once a release ships. Examples raised: a `wasm32` struct literal that
+does not compile, a missing `.await` in the WASM loader, duplicate-rank panics
+in the tokenizer, non-atomic cache publication, thread-ID transmute soundness,
+and several parser round-trip bugs.
+
+**Noted: first-party policy applied to vendored code.** Module doc comments,
+400-line limits and `#[allow]` bans are Diapason's first-party rules. Applying
+them to vendored sources is covered by the scoped `--exclude` documented above,
+not by editing the vendor tree.
+
+The patch record itself stays under `patches/openai-harmony/` rather than
+`docs/`, because its exit criterion is "delete this directory"; primary
+provenance living inside the thing it describes is what makes the deletion
+complete. The durable decision record is this file.
 
 ## Outcomes & retrospective
 

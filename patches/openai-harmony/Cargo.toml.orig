@@ -1,3 +1,6 @@
+# MODIFIED by Diapason: the unused `image` dependency was removed. See
+# VTCODE-PATCH.md and docs/execplans/rustsec-2024-0436-paste-image-backends.md.
+
 [package]
 name = "openai-harmony"
 version = "0.0.8"

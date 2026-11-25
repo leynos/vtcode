@@ -6,6 +6,11 @@ href="https://cookbook.openai.com/topic/gpt-oss">Learn more</a> | <a
 href="https://openai.com/index/gpt-oss-model-card/">Model card</a> </p>  
 </center>
 
+> **MODIFIED by Diapason.** This file was reflowed by the repository Markdown
+> formatter. The vendored crate also removes the unused `image` dependency; see
+> [VTCODE-PATCH.md](VTCODE-PATCH.md). The upstream project is
+> [openai/harmony](https://github.com/openai/harmony).
+
 The [gpt-oss models][gpt-oss] were trained on the
 [harmony response format][harmony-format] for defining conversation structures,
 generating reasoning output and structuring function calls. If you are not
