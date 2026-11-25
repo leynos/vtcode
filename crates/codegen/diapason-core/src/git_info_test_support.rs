@@ -50,6 +50,19 @@ const GIT_ENV_OVERRIDES: [&str; 25] = [
     "GIT_TEMPLATE_DIR",
     "GIT_WORK_TREE",
 ];
+/// Git configuration variables the clean child receives as explicit
+/// isolating replacements.
+///
+/// Removing a Git variable only restores its default lookup: with
+/// `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM` merely inherited-removed, the
+/// child would read the user's global and system configuration. These names
+/// stay in `GIT_ENV_OVERRIDES` so inherited adversarial values are scrubbed,
+/// and the child verification below requires the replacement values rather
+/// than their absence.
+const GIT_CONFIG_ISOLATION_ENV: [&str; 3] = ["GIT_CONFIG_COUNT", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"];
+/// Name of the global Git config file that isolation points at and never
+/// creates, so Git finds no user configuration to read.
+const FIXTURE_GLOBAL_GIT_CONFIG_FILE: &str = "fixture-global-git-config";
 const CHILD_OUTPUT_LIMIT: usize = 4096;
 // This bounds a hung libtest child without making normal test duration an
 // assertion. The child is polled infrequently enough to avoid busy-waiting
@@ -63,6 +76,20 @@ pub(crate) struct GitFixture {
     pub(crate) short_head: String,
 }
 
+/// Apply the isolating Git configuration a fixture or clean child must use.
+///
+/// `GIT_CONFIG_GLOBAL` points at a path inside `cwd` that is never created, so
+/// Git has no user configuration to read, and `GIT_CONFIG_COUNT=0` keeps any
+/// indexed `GIT_CONFIG_KEY_*`/`GIT_CONFIG_VALUE_*` pairs from applying even if
+/// the caller set them. Both fixture commands and the clean child call this
+/// so their isolation cannot drift apart.
+fn apply_isolating_git_config(command: &mut Command, cwd: &Path) {
+    command
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", cwd.join(FIXTURE_GLOBAL_GIT_CONFIG_FILE))
+        .env("GIT_CONFIG_COUNT", "0");
+}
+
 fn fixture_git_command(cwd: &Path) -> Command {
     let mut command = Command::new("git");
     command.current_dir(cwd);
@@ -71,11 +98,9 @@ fn fixture_git_command(cwd: &Path) -> Command {
     for variable in GIT_ENV_OVERRIDES {
         command.env_remove(variable);
     }
+    apply_isolating_git_config(&mut command, cwd);
     command
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_CONFIG_GLOBAL", cwd.join("fixture-global-git-config"))
         .env("GIT_TEMPLATE_DIR", cwd)
-        .env("GIT_CONFIG_COUNT", "0")
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_AUTHOR_NAME", FIXTURE_AUTHOR_NAME)
         .env("GIT_AUTHOR_EMAIL", FIXTURE_AUTHOR_EMAIL)
@@ -163,11 +188,34 @@ fn reap_after_child_error<T>(
     )
 }
 
+/// Verify the child really received the isolated Git environment.
+///
+/// Every redirect override must be absent, and the three configuration
+/// variables the parent replaces must carry the isolating values instead of
+/// the caller's. Checking only for absence would accept a child that fell
+/// back to the user's global and system configuration.
 fn verify_clean_test_environment(test_name: &str) -> Result<()> {
-    for variable in GIT_ENV_OVERRIDES {
+    for variable in GIT_ENV_OVERRIDES
+        .iter()
+        .filter(|variable| !GIT_CONFIG_ISOLATION_ENV.contains(variable))
+    {
         if std::env::var_os(variable).is_some() {
             bail!("clean Git test child {test_name:?} received inherited override {variable:?}");
         }
+    }
+    let config_count = std::env::var_os("GIT_CONFIG_COUNT");
+    if config_count.as_deref() != Some(OsStr::new("0")) {
+        bail!("clean Git test child {test_name:?} must report GIT_CONFIG_COUNT=0, got {config_count:?}");
+    }
+    if std::env::var_os("GIT_CONFIG_NOSYSTEM").as_deref() != Some(OsStr::new("1")) {
+        bail!("clean Git test child {test_name:?} must report GIT_CONFIG_NOSYSTEM=1");
+    }
+    let global_config = std::env::var_os("GIT_CONFIG_GLOBAL");
+    let Some(global_config) = global_config.filter(|value| !value.is_empty()) else {
+        bail!("clean Git test child {test_name:?} must receive an isolating GIT_CONFIG_GLOBAL path");
+    };
+    if Path::new(&global_config).exists() {
+        bail!("clean Git test child {test_name:?} GIT_CONFIG_GLOBAL must not exist, found {global_config:?}");
     }
     Ok(())
 }
@@ -185,7 +233,12 @@ fn is_child_sentinel(test_name: &str) -> Result<bool> {
 }
 
 /// Child stdout and stderr captures kept open for reporting after the wait.
+///
+/// The capture also owns a private directory for the child's nonexistent
+/// global Git config path, so concurrent children cannot share a fixed
+/// location that one of them might create.
 struct CleanTestChildCapture {
+    isolated_config_dir: TempDir,
     stdout: NamedTempFile,
     stderr: NamedTempFile,
 }
@@ -193,6 +246,7 @@ struct CleanTestChildCapture {
 impl CleanTestChildCapture {
     fn create() -> Result<Self> {
         Ok(Self {
+            isolated_config_dir: TempDir::new().context("create child Git configuration isolation directory")?,
             stdout: NamedTempFile::new().context("create child stdout capture")?,
             stderr: NamedTempFile::new().context("create child stderr capture")?,
         })
@@ -219,6 +273,11 @@ where
     for variable in GIT_ENV_OVERRIDES {
         command.env_remove(variable);
     }
+    // Removing a variable only restores Git's default lookup, so scrubbing
+    // `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM` alone would leave the
+    // child reading the user's global and system configuration. Isolation
+    // therefore needs an explicit replacement, not just the removals above.
+    apply_isolating_git_config(&mut command, captures.isolated_config_dir.path());
     command.env(CLEAN_TEST_CHILD_ENV, test_name);
     command
         .stdout(Stdio::from(captures.stdout.reopen().context("open child stdout capture")?))
@@ -267,25 +326,17 @@ fn spawn_child_with_watchdog(
 /// Number of tests libtest reported as passed in its final summary.
 ///
 /// libtest prints `running N tests` before the run and
-/// `test result: ok. N passed; …` afterwards. The result line is preferred
-/// because it is the authoritative outcome; the running line is a fallback
-/// for a child that exited before printing a summary.
+/// `test result: ok. N passed; …` afterwards. Only the result line is
+/// authoritative: it reports the outcome of a completed run, while the
+/// running line merely announces intent. A child that exits successfully
+/// before printing its result line therefore returns `None` rather than being
+/// accepted on the strength of the pre-run announcement.
 fn reported_passed_test_count(stdout: &str) -> Option<usize> {
-    stdout
-        .lines()
-        .rev()
-        .find_map(|line| {
-            let summary = line.trim().strip_prefix("test result:")?;
-            let passed = summary.split(';').next()?.trim().split_once(" passed")?.0;
-            passed.rsplit('.').next()?.trim().parse().ok()
-        })
-        .or_else(|| {
-            stdout.lines().find_map(|line| {
-                let count = line.trim().strip_prefix("running ")?;
-                let count = count.strip_suffix(" tests").or_else(|| count.strip_suffix(" test"))?;
-                count.trim().parse().ok()
-            })
-        })
+    stdout.lines().rev().find_map(|line| {
+        let summary = line.trim().strip_prefix("test result:")?;
+        let passed = summary.split(';').next()?.trim().split_once(" passed")?.0;
+        passed.rsplit('.').next()?.trim().parse().ok()
+    })
 }
 
 pub(crate) fn no_command_configuration(_: &mut Command) {}
@@ -373,4 +424,41 @@ pub(crate) fn isolated_git_repository_with(remote_url: &str, commit_message: &st
     }
 
     Ok(GitFixture { _temp_dir: temp_dir, repo_root, short_head })
+}
+
+#[cfg(test)]
+mod tests {
+    //! Verifies the clean-child harness itself, independently of Git fixtures.
+
+    use super::reported_passed_test_count;
+
+    /// A pre-run announcement alone must not satisfy the parent.
+    ///
+    /// A child that exits successfully before libtest prints its result line
+    /// leaves only `running N tests` in the capture. Accepting that line
+    /// would let a crashed or truncated run pass as a full one, so the helper
+    /// must report no summary at all.
+    #[test]
+    fn missing_result_line_reports_no_summary() {
+        let stdout = "running 1 test\n";
+
+        assert_eq!(
+            reported_passed_test_count(stdout),
+            None,
+            "stdout with only a running line must not report a passed-test count"
+        );
+    }
+
+    /// The completed-run result line remains authoritative.
+    #[test]
+    fn result_line_reports_passed_count() {
+        let stdout =
+            "running 2 tests\ntest one ... ok\ntest two ... ok\ntest result: ok. 2 passed; 0 failed; 0 ignored\n";
+
+        assert_eq!(
+            reported_passed_test_count(stdout),
+            Some(2),
+            "the final result line must report its passed-test count"
+        );
+    }
 }

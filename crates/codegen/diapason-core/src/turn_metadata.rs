@@ -131,7 +131,24 @@ mod tests {
     use crate::git_info::test_support::{
         FIXTURE_REMOTE_URL, isolated_git_repository, no_command_configuration, run_in_clean_test_process,
     };
-    use anyhow::Result;
+    use anyhow::{Context, Result};
+    use diapason_commons::canonicalize;
+    use std::path::Path;
+
+    /// Compare a reported Git repository root against a fixture root as paths.
+    ///
+    /// `git rev-parse --show-toplevel` renders separators for its host
+    /// platform, so string equality is not portable. Canonicalizing both
+    /// sides compares the same location instead.
+    fn assert_repo_root_matches(reported: Option<&str>, expected: &Path, message: &str) -> Result<()> {
+        let reported = reported.with_context(|| format!("{message}: reported repository root is missing"))?;
+        let reported = canonicalize(Path::new(reported))
+            .with_context(|| format!("{message}: canonicalize reported repository root {reported:?}"))?;
+        let expected =
+            canonicalize(expected).with_context(|| format!("{message}: canonicalize fixture repository root"))?;
+        assert_eq!(reported, expected, "{message}");
+        Ok(())
+    }
 
     #[test]
     fn test_build_turn_metadata_header() {
@@ -159,11 +176,11 @@ mod tests {
             Some(fixture.short_head.as_str()),
             "metadata header must retain the fixture short HEAD"
         );
-        assert_eq!(
+        assert_repo_root_matches(
             parsed.workspace.repo_root.as_deref(),
-            fixture.repo_root.to_str(),
-            "metadata header must retain the fixture repository root"
-        );
+            &fixture.repo_root,
+            "metadata header must retain the fixture repository root",
+        )?;
         Ok(())
     }
 
@@ -193,11 +210,11 @@ mod tests {
             Some(fixture.short_head.as_str()),
             "metadata value must retain the fixture short HEAD"
         );
-        assert_eq!(
+        assert_repo_root_matches(
             parsed.workspace.repo_root.as_deref(),
-            fixture.repo_root.to_str(),
-            "metadata value must retain the fixture repository root"
-        );
+            &fixture.repo_root,
+            "metadata value must retain the fixture repository root",
+        )?;
         Ok(())
     }
 
