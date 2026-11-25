@@ -160,7 +160,10 @@ impl FindExecSyntaxClassifier {
         let previous_was_placeholder = self.after_placeholder;
         self.after_placeholder = literal.contains("{}");
 
-        if matches!(literal.as_ref(), "-exec" | "-execdir") {
+        // Only the expression context starts an action. In an argument
+        // position, `env -u '-exec'` consumes the token as an operand, and a
+        // quoted `'-exec'` reaches the program as an ordinary argument.
+        if self.context == FindCommandContext::Expression && matches!(literal.as_ref(), "-exec" | "-execdir") {
             self.context = FindCommandContext::ExecProgram;
             return false;
         }
@@ -1138,9 +1141,22 @@ mod tests {
     fn find_exec_placeholder_hidden_by_mixed_quoting_stays_dynamic() {
         // The placeholder is split across a double-quoted segment that ends in
         // an escaped space and a single-quoted segment, so the raw token has
-        // no `{}` and Bash still forms one after quote removal.
-        assert!(contains_dynamic_find_syntax("find . -exec sh -c \"echo \\n \"'{''}'\" \\;"));
+        // no `{}` and Bash still forms one after quote removal. The script is
+        // balanced, so the classifier runs instead of the raw fallback.
+        let script = "find . '-exec' sh -c \"echo \\n \"'{''}' \\;";
+        assert!(parse_shell_commands_tree_sitter(script).is_ok(), "script must parse: {script}");
+        assert!(contains_dynamic_find_syntax(script));
         assert!(!contains_dynamic_find_syntax("find . -exec sh -c 'printf %s' {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_action_token_in_an_operand_position_does_not_start_an_exec() {
+        // `env -u '-exec'` consumes the quoted token as an operand, so the
+        // following `X=value` is still an env assignment and the program
+        // position it guards stays dynamic.
+        assert!(contains_dynamic_find_syntax("find . -exec env -u '-exec' X=value {} \\;"));
+        // A real action after a genuine terminator still starts an exec.
+        assert!(contains_dynamic_find_syntax("find . -exec printf %s \\; '-exec' sh -c {} \\;"));
     }
 
     #[test]
