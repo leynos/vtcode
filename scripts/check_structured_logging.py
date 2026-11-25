@@ -86,6 +86,8 @@ def is_ignored_path(path: Path) -> bool:
     return (
         rel == "build.rs"
         or rel.startswith("src/")
+        # Vendored third-party trees keep upstream logging unchanged.
+        or rel.startswith("patches/")
         or rel.endswith("/build.rs")
         or rel.endswith("/src/main.rs")
         or "/src/bin/" in rel

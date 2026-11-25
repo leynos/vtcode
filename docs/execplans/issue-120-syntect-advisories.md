@@ -1,7 +1,7 @@
 # Remediate syntect's unmaintained transitive dependencies
 
-Status: COMPLETE — implementation, affected-crate gates, and the
-workspace-wide locked gate run all pass. This prerequisite addresses issue
+Status: COMPLETE — implementation, affected-crate gates, and the workspace-wide
+locked gate run all pass. This prerequisite addresses issue
 [#120](https://github.com/leynos/vtcode/issues/120).
 
 ## Purpose and constraints
@@ -30,14 +30,14 @@ Two independent causes need two independent fixes:
   uses the bundled dumps plus regex highlighting, so narrowing the feature list
   removes the path outright, with no source change.
 - The `bincode` path is unavoidable while syntect 5.3.0 is the dependency:
-  `dump-create` and `dump-load` both list `bincode` as their codec. Upstream has
-  not released a replacement. PR
-  [trishume/syntect#694](https://github.com/trishume/syntect/pull/694) swaps the
-  codec for `serde-wincode` but has sat unreviewed since June 2026, and the
-  `syntect 6.0.0` milestone it targets is still open. Diapason therefore vendors
-  syntect 5.3.0 through the root `[patch.crates-io]` table and changes only the
-  codec, to `bincode-next 3.1.2` in its `legacy()` configuration, which
-  reproduces bincode 1.3's wire format.
+  `dump-create` and `dump-load` both list `bincode` as their codec. Upstream
+  has not released a replacement. PR
+  [trishume/syntect#694](https://github.com/trishume/syntect/pull/694) swaps
+  the codec for `serde-wincode` but has sat unreviewed since June 2026, and the
+  `syntect 6.0.0` milestone it targets is still open. Diapason therefore
+  vendors syntect 5.3.0 through the root `[patch.crates-io]` table and changes
+  only the codec, to `bincode-next 3.1.2` in its `legacy()` configuration,
+  which reproduces bincode 1.3's wire format.
 
 Hard invariants for this work:
 
@@ -62,26 +62,27 @@ Syntax highlighting lives in one module,
 process-global `SyntaxSet` built by `SyntaxSet::load_defaults_newlines()` and a
 `ThemeSet` built by `ThemeSet::load_defaults()`, both of which decode dumps
 embedded in syntect's own binary. The module then highlights with
-`syntect::easy::HighlightLines` and converts `syntect::highlighting::Style`
-into `anstyle` and `ratatui` styles. Consumers are
+`syntect::easy::HighlightLines` and converts `syntect::highlighting::Style` into
+`anstyle` and `ratatui` styles. Consumers are
 `src/agent/runloop/unified/tool_summary.rs` (bash command preview),
 `src/agent/runloop/unified/tool_pipeline/pty_stream/segments.rs` (PTY output),
 `src/agent/runloop/tool_output/streams.rs` (diff prose), and the in-crate
 `tui::ui::markdown` and `tui::core_tui::log` renderers.
 
-The dependency is declared once, at
-`crates/codegen/diapason-ui/Cargo.toml:48`:
+The dependency is declared once, at `crates/codegen/diapason-ui/Cargo.toml:48`:
 
 ```toml
 syntect = { version = "5.2", default-features = false, features = ["default-fancy"] }
 ```
 
-`crates/codegen/diapason-ui/Cargo.toml:5` already pins `rust-version = "1.93.0"`,
-as does the workspace. `bincode-next 3.1.2` declares `rust-version = "1.90.0"`,
-which is below that floor, so no MSRV change is implied by the fork.
+`crates/codegen/diapason-ui/Cargo.toml:5` already pins
+`rust-version = "1.93.0"`, as does the workspace. `bincode-next 3.1.2` declares
+`rust-version = "1.90.0"`, which is below that floor, so no MSRV change is
+implied by the fork.
 
-The root `Cargo.toml` already carries a `[patch.crates-io]` table that redirects
-the workspace's own crates to their paths, plus one true third-party patch:
+The root `Cargo.toml` already carries a `[patch.crates-io]` table that
+redirects the workspace's own crates to their paths, plus one true third-party
+patch:
 
 ```toml
 simdutf = { path = "patches/simdutf" }
@@ -160,9 +161,9 @@ Propositions traced through the plan:
 ## Tolerances (exception triggers)
 
 - Code: at most 40 net changed lines outside `patches/syntect/`, excluding
-  ExecPlan and generated-notice files. The fork's own tree is capped at 120
-  net changed lines relative to the published 5.3.0 archive, because only the
-  codec changes.
+  ExecPlan and generated-notice files. The fork's own tree is capped at 120 net
+  changed lines relative to the published 5.3.0 archive, because only the codec
+  changes.
 - Configuration: at most 120 net changed lines, of which `Cargo.lock` may
   account for at most 100. A larger lockfile delta means the resolution moved
   more than this change should justify — stop and inspect.
@@ -189,8 +190,7 @@ Propositions traced through the plan:
 - Downstream publication. `[patch.crates-io]` does not travel to consumers of a
   published crate; a published `diapason-ui` would build against upstream
   syntect again. This is acceptable because the advisory is informational and
-  the workspace is the delivery vehicle, but it is recorded rather than
-  glossed.
+  the workspace is the delivery vehicle, but it is recorded rather than glossed.
 - Upstream drift. When syntect publishes a release that replaces the codec, the
   fork should be deleted. Recorded as an exit path rather than a permanent
   commitment.
@@ -205,10 +205,10 @@ Invariants and their discharge:
    codec, in both syntect dump formats. Method: a one-shot verification program
    (`/tmp/issue120-probe`) outside the repository, decoding every asset through
    the vendored syntect and re-encoding it with both the vendored codec and
-   stock bincode 1.3.3, then comparing bytes. Non-vacuity: the same program also
-   asserts that a byte-truncated dump fails to decode, so a codec that accepted
-   everything could not pass. Discharged: `WIRE COMPATIBILITY: PASS`, 82
-   checks, transcript below.
+   stock bincode 1.3.3, then comparing bytes. Non-vacuity: the same program
+   also asserts that a byte-truncated dump fails to decode, so a codec that
+   accepted everything could not pass. Discharged: `WIRE COMPATIBILITY: PASS`,
+   82 checks, transcript below.
 2. Every bundled syntax's nested lazy-context blob decodes; every syntax
    highlights a sample; the decoded grammar assigns the scopes the theme
    expects; every bundled theme decodes into usable scope rules. Method: three
@@ -224,13 +224,13 @@ Invariants and their discharge:
    that characters were not dropped, so
    `bundled_rust_grammar_assigns_expected_colours` pins the actual
    base16-ocean.dark foregrounds for a Rust keyword, a numeric literal, a plain
-   identifier, and a comment, and asserts they are mutually distinct. That
-   test was checked against a deliberately wrong expected colour and failed
-   (exit 100), which is the negative control for scopes and colours rather than
-   for text. `every_bundled_theme_loads_by_name` asserts each theme is present
-   in the decoded dump and carries a non-empty rule list: `load_theme`
-   silently falls back on an unknown name, so the name alone was not evidence,
-   and an earlier draft comparing a value with itself was vacuous.
+   identifier, and a comment, and asserts they are mutually distinct. That test
+   was checked against a deliberately wrong expected colour and failed (exit
+   100), which is the negative control for scopes and colours rather than for
+   text. `every_bundled_theme_loads_by_name` asserts each theme is present in
+   the decoded dump and carries a non-empty rule list: `load_theme` silently
+   falls back on an unknown name, so the name alone was not evidence, and an
+   earlier draft comparing a value with itself was vacuous.
 
    Discharged: 3/3 for the new tests, 19/19 for the whole
    `test(syntax_highlight)` filter.
@@ -270,8 +270,8 @@ Milestone 3 — prove compatibility. Run the byte-identical dump check, then add
 the bundled-asset regression test.
 
 Milestone 4 — validate and record. Run the affected UI tests and the locked
-check/lint gates, regenerate notices, remove now-stale scanner baseline entries,
-run `cargo audit`, and finish the documentation.
+check/lint gates, regenerate notices, remove now-stale scanner baseline
+entries, run `cargo audit`, and finish the documentation.
 
 Each milestone ends in a state that can be committed and continued from.
 
@@ -282,24 +282,24 @@ Both advisory paths are gone and no advisory is suppressed.
 `cargo audit --file Cargo.lock` (cargo-audit 0.22.2, 1566 advisories) went from
 12 allowed warnings to 10. The two that disappeared are exactly
 `RUSTSEC-2025-0141` and `RUSTSEC-2024-0320`; nothing new appeared.
-`cargo tree -i bincode` and `cargo tree -i yaml-rust` now both fail with
-"did not match any packages". `cargo tree -i bincode-next` shows a single path:
+`cargo tree -i bincode` and `cargo tree -i yaml-rust` now both fail with "did
+not match any packages". `cargo tree -i bincode-next` shows a single path:
 `bincode-next -> syntect -> diapason-ui`.
 
 The lockfile delta is 22 insertions and 37 deletions, and every hunk is one of
-four expected kinds: `bincode 1.3.3` replaced by `bincode-next 3.1.2`; `syntect`
-losing its registry source and checksum and gaining `bincode-next` while losing
-`bincode`, `plist`, `serde_json`, and `yaml-rust`; the three crates that only
-existed for syntect's dropped features (`plist`, `yaml-rust`,
-`linked-hash-map`) removed; and the three new `bincode-next` dependencies
-added (`rapidhash`, `unty-next`, and the already-present `pastey 0.2.3`). No
-other package changed version.
+four expected kinds: `bincode 1.3.3` replaced by `bincode-next 3.1.2`;
+`syntect` losing its registry source and checksum and gaining `bincode-next`
+while losing `bincode`, `plist`, `serde_json`, and `yaml-rust`; the three
+crates that only existed for syntect's dropped features (`plist`, `yaml-rust`,
+`linked-hash-map`) removed; and the three new `bincode-next` dependencies added
+(`rapidhash`, `unty-next`, and the already-present `pastey 0.2.3`). No other
+package changed version.
 
 Syntax highlighting behaviour is preserved by construction and by test. The
 bundled assets are the published ones, unchanged, and `diapason-ui`'s public
-types (`SyntaxSet`, `ThemeSet`, `Style`, `Theme`) are syntect's own. The two new
-tests walk all 75 bundled grammars and all seven bundled themes through the real
-code that renders them.
+types (`SyntaxSet`, `ThemeSet`, `Style`, `Theme`) are syntect's own. The two
+new tests walk all 75 bundled grammars and all seven bundled themes through the
+real code that renders them.
 
 ### Assessment against the acceptance criteria
 
@@ -307,12 +307,13 @@ code that renders them.
 `legacy()` configuration, recorded in `patches/syntect/PROVENANCE.txt` with the
 archive checksum, upstream commit, licence, and the compatibility constraints
 (endianness, fixed-int encoding, no fingerprint, trailing-byte tolerance).
-Release notes searched: syntect 5.3.0 is still newest; upstream PR #694 is
-open. `EP120-REQ-2` — the change is one manifest line, one new patch entry,
-one vendored tree, one test, and generated bookkeeping; no unrelated upgrade is
+Release notes searched: syntect 5.3.0 is still newest; upstream PR #694 is open.
+`EP120-REQ-2` — the change is one manifest line, one new patch entry, one
+vendored tree, one test, and generated bookkeeping; no unrelated upgrade is
 included. `EP120-REQ-3` — met, with the evidence above. `EP120-REQ-4` — the
-`diapason-ui` syntax-highlighting tests pass 18/18, `cargo check --locked
--p diapason-ui --all-targets` with `RUSTFLAGS="-D warnings"` exits 0, and
+`diapason-ui` syntax-highlighting tests pass 18/18,
+`cargo check --locked -p diapason-ui --all-targets` with
+`RUSTFLAGS="-D warnings"` exits 0, and
 `cargo clippy --locked -p diapason-ui --all-targets -- -D warnings` exits 0.
 `EP120-REQ-5` — behaviour and locked builds are covered above; the supported UI
 paths are unchanged because no call site changed.
@@ -320,9 +321,9 @@ paths are unchanged because no call site changed.
 ### Lessons
 
 - The two advisories had different causes, and only one needed a code change.
-  Checking *why* `yaml-rust` was in the graph first turned half the problem into
-  a feature-flag fix. Starting from "we must fork syntect" would have vendored
-  more than necessary.
+  Checking *why* `yaml-rust` was in the graph first turned half the problem
+  into a feature-flag fix. Starting from "we must fork syntect" would have
+  vendored more than necessary.
 - A vendored crate must not inherit the workspace's rustfmt settings, or its
   sources stop being comparable with upstream. `patches/syntect/rustfmt.toml`
   pins upstream's defaults, and the vendored tree is now byte-identical to the
@@ -344,22 +345,23 @@ paths are unchanged because no call site changed.
 - [x] 2026-11-24: captured the audit baseline with `cargo-audit-audit 0.22.2`
   against advisory database revision 1566 advisories. The run reports 12
   allowed warnings, including `bincode 1.3.3` (RUSTSEC-2025-0141),
-  `yaml-rust 0.4.5` (RUSTSEC-2024-0320), `chrono 0.4.45`
-  (RUSTSEC-2026-0543), `humantime 2.4.0` (RUSTSEC-2026-0542), `paste 1.0.15`
-  (RUSTSEC-2024-0436), `zbus_names`/`zvariant`/`zvariant_derive` 5.13.1, two
-  `unsound` findings (`rustix 1.1.4`, `tokio 1.53.1`), and two yanked
-  packages (`async-executor 1.14.0`, `clipboard-win 5.4.1`).
+  `yaml-rust 0.4.5` (RUSTSEC-2024-0320), `chrono 0.4.45` (RUSTSEC-2026-0543),
+  `humantime 2.4.0` (RUSTSEC-2026-0542), `paste 1.0.15` (RUSTSEC-2024-0436),
+  `zbus_names`/`zvariant`/`zvariant_derive` 5.13.1, two `unsound` findings
+  (`rustix 1.1.4`, `tokio 1.53.1`), and two yanked packages
+  (`async-executor 1.14.0`, `clipboard-win 5.4.1`).
 - [x] 2026-11-24: confirmed both inverse dependency trees are
   `diapason-ui -> syntect 5.3.0 -> {bincode 1.3.3, yaml-rust 0.4.5}` and
   nothing else.
 - [x] 2026-11-24: checked the "MSRV Check (1.88)" CI job. It installs rustc
   1.88.0, but `rust-toolchain.toml` overrides it to 1.93.0, and the job log
-  says so: `info: note that the toolchain '1.93.0-x86_64-unknown-linux-gnu' is
+  says so:
+  `info: note that the toolchain '1.93.0-x86_64-unknown-linux-gnu' is
   currently in use (overridden by
-  '/home/runner/work/vtcode/vtcode/rust-toolchain.toml')`. The job therefore
-  builds with 1.93.0, matches the workspace's declared MSRV, and is not
-  evidence about a 1.88 floor. It does not constrain `bincode-next`'s 1.90
-  requirement (see Decision log).
+  '/home/runner/work/vtcode/vtcode/rust-toolchain.toml')`.
+  The job therefore builds with 1.93.0, matches the workspace's declared MSRV,
+  and is not evidence about a 1.88 floor. It does not constrain
+  `bincode-next`'s 1.90 requirement (see Decision log).
 - [x] 2026-11-24: confirmed no published `syntect` release removes either
   advisory. crates.io's newest stable release is 5.3.0 (2025-09-27).
   `cargo update --dry-run -p syntect` has nothing to move to. Upstream PR #694
@@ -377,13 +379,15 @@ paths are unchanged because no call site changed.
   reformat of the vendored tree. Transcript below.
 - [x] 2026-11-24: `cargo check --locked -p diapason-ui --all-targets` with
   `RUSTFLAGS="-D warnings"` exits 0 with no diagnostics.
-- [x] 2026-11-24: `cargo clippy --locked -p diapason-ui --all-targets --
-  -D warnings` exits 0.
+- [x] 2026-11-24:
+      `cargo clippy --locked -p diapason-ui --all-targets -- -D warnings` exits
+      0.
 - [x] 2026-11-24: the vendored fork compiles warning-free as an ordinary path
   dependency under `RUSTFLAGS="-D warnings"` (standalone probe, exit 0, 20m46s
   in the shared compile queue). No `#[allow(...)]` was added.
-- [x] 2026-11-24: `cargo nextest run --locked -p diapason-ui -E
-  'test(syntax_highlight)'` passes 18/18, including the two new tests.
+- [x] 2026-11-24:
+      `cargo nextest run --locked -p diapason-ui -E 'test(syntax_highlight)'`
+      passes 18/18, including the two new tests.
 - [x] 2026-11-24: `THIRD-PARTY-NOTICES` regenerated with cargo-about 0.9.2 and
   `scripts/generate-notices.sh --check` reports it up to date. `bincode` and
   `yaml-rust` are gone, `bincode-next`, `rapidhash`, and `unty-next` are added,
@@ -397,11 +401,13 @@ paths are unchanged because no call site changed.
   `docs/execplans/ci-prerequisites.md`.
 - [x] 2026-11-25: workspace-wide locked gates complete, all exit 0 —
   `cargo check --locked --workspace --all-targets --all-features` with
-  `RUSTFLAGS="-D warnings"` (37m53s), `cargo clippy --locked --workspace
-  --all-targets --all-features -- -D warnings` (12m05s), `cargo nextest run
-  -p diapason-ui` 85/85, `-p diapason-core` 21/21, and the `diapason` binary
-  171/171. `cargo audit --file Cargo.lock` against 1567 advisories exits 0 with
-  10 allowed warnings and neither target advisory.
+  `RUSTFLAGS="-D warnings"` (37m53s),
+  `cargo clippy --locked --workspace
+  --all-targets --all-features -- -D warnings`
+  (12m05s), `cargo nextest run -p diapason-ui` 85/85, `-p diapason-core`
+  21/21, and the `diapason` binary 171/171. `cargo audit --file Cargo.lock`
+  against 1567 advisories exits 0 with 10 allowed warnings and neither target
+  advisory.
 
 ### Gate evidence
 
@@ -414,10 +420,33 @@ cargo nextest run --locked -p diapason (bin)  171 passed, 2363 skipped  EXIT_STA
 cargo audit --file Cargo.lock   10 allowed warnings, neither target ID   EXIT_STATUS=0
 ```
 
-The workspace check was retried once by the gate runner after the first
-attempt reached the runner's own time limit; the retry log is the
+The workspace check was retried once by the gate runner after the first attempt
+reached the runner's own time limit; the retry log is the
 `.attempt-1-partial.out` sibling and the completed run is the one quoted. No
 compiler diagnostic appeared in either attempt.
+
+### First hosted CI round
+
+The first hosted run was green for the gates that matter to this change —
+`Check RustSec Advisories`, `Cargo nextest`, `Check Windows (warm cache)`,
+`Check License Notices`, `MSRV Check (1.88)`, `Check Markdown`, `Check Typos`,
+`Check Custom Invariants`, `Workflow Security Policy`, `Zen Governance`,
+`Code coverage`, and both `codecov` contexts — and red for three, all fixed:
+
+- `Check Formatting`: `make check-fmt` runs `mdtablefix` with
+  `--wrap --renumber --breaks --ellipsis --fences`, which I had not passed when
+  checking locally, so the vendored `Readme.md`, `CHANGELOG.md`, and
+  `src/highlighting/Readme.md` were reported as needing reflow. Fixed by
+  excluding `patches/` from the `Makefile` selection and formatting the
+  ExecPlan.
+- `Check Clippy`: the job runs `make lint`, and `lint_structured_logging.sh`
+  flagged upstream's `println!` debug helpers in the vendored tree. Fixed by
+  adding `patches/` to that scanner's ignore list.
+- `Unwrap/Expect Enforcement`: flagged upstream's `unwrap()`/`expect()` calls
+  across the vendored tree. Fixed by teaching that scanner about vendored paths.
+
+Both scanners now report zero findings, and `make check-fmt`,
+`make lint-policies`, and `make advisory` all exit 0 locally.
 
 ### Wire-compatibility transcript
 
@@ -436,9 +465,9 @@ WIRE COMPATIBILITY: PASS
 
 The probe prints the theme names on one line; that line is shortened to
 `7 loaded` above to respect the prose line limit. The seven names, in the
-probe's order, are `InspiredGitHub`, `Solarized (dark)`,
-`Solarized (light)`, `base16-eighties.dark`, `base16-mocha.dark`,
-`base16-ocean.dark`, and `base16-ocean.light`.
+probe's order, are `InspiredGitHub`, `Solarized (dark)`, `Solarized (light)`,
+`base16-eighties.dark`, `base16-mocha.dark`, `base16-ocean.dark`, and
+`base16-ocean.light`.
 
 The probe asserts, per asset, that stock bincode 1.3.3 re-encodes the decoded
 value to the original bytes *and* that the vendored codec re-encodes the same
@@ -455,8 +484,8 @@ round-trip assertions are not vacuous.
   loader. Narrowing features removes it with no source change.
 - Upstream fix in flight: PR #694 replaces bincode with `serde-wincode` and
   claims byte compatibility with bincode 1.3, and a commenter reports using the
-  branch successfully with `regex-fancy` and the bundled dumps. It is
-  unmerged, so the plan still vendors.
+  branch successfully with `regex-fancy` and the bundled dumps. It is unmerged,
+  so the plan still vendors.
 - `bincode-next`'s `legacy()` configuration is documented as "the default
   config that was present in bincode 1.0: little endian, fixed int length
   encoding". The remaining legacy behaviours (fingerprint disabled, bit packing
@@ -499,8 +528,8 @@ round-trip assertions are not vacuous.
     API rather than in a compatibility layer.
 - Decision: pin `bincode-next` to `=3.1.2` rather than to `3.1` or to the
   newest `3.2.0`. Rationale: the vendored manifest must not drift with a
-  registry update, and 3.2.0 landed two days before this change and rewrote
-  the decoder internals. 3.1.2 is the newest patch on the line the wire
+  registry update, and 3.2.0 landed two days before this change and rewrote the
+  decoder internals. 3.1.2 is the newest patch on the line the wire
   compatibility was actually proven against.
 - Decision: expose `syntect::dumps::DumpError` rather than keep
   `bincode::Result`. Rationale: `bincode`'s error type was the last bincode
@@ -548,14 +577,37 @@ round-trip assertions are not vacuous.
   that was about *this* change — that the four assets were missing — was wrong,
   and was reported as `critical` in both review passes. Checked four ways:
   `git rev-parse HEAD:patches/syntect/assets/<file>` resolves a blob for each,
-  each `HEAD` blob hashes equal to its worktree file, each file is byte-equal to
-  the crates.io archive, and all four are present in the pushed `origin` branch.
-  The crate also compiles with `dump-load`, `default-syntaxes`, and
-  `default-themes` enabled and the tests decode all four, which is only possible
-  if the paths resolve. Nothing to fix; do not "restore" the assets.
+  each `HEAD` blob hashes equal to its worktree file, each file is byte-equal
+  to the crates.io archive, and all four are present in the pushed `origin`
+  branch. The crate also compiles with `dump-load`, `default-syntaxes`, and
+  `default-themes` enabled and the tests decode all four, which is only
+  possible if the paths resolve. Nothing to fix; do not "restore" the assets.
 
   Reassess if Diapason ever starts loading grammars or themes from files, which
   would bring `yaml_load` into the build and make its findings live.
+- Decision: make every repository-wide prose and style scanner skip
+  `patches/**`, rather than change vendored upstream code to satisfy them.
+  Rationale: the vendored trees are upstream's, and CI caught three scanners
+  that would otherwise force edits to them. Each is a one-line exclusion in the
+  scanner, matching the existing `typos.toml` and `.markdownlint-cli2.jsonc`
+  policy:
+
+  - `mdtablefix` has no exclude flag, so the `Makefile` computes its input from
+    `--list-files` and filters `patches/`. Nothing else consumes that variable,
+    and it expands only in `fmt` and `check-fmt`.
+  - `scripts/check_no_unwrap_expect_prod.py` gains `is_vendored_path`;
+    otherwise upstream's `unwrap()` calls in `patches/syntect` fail the
+    unwrap/expect job, even though upstream's own sources cannot be "fixed"
+    without forking them.
+  - `scripts/check_structured_logging.py` adds `patches/` to
+    `is_ignored_path`; otherwise upstream's `println!` debug helpers fail the
+    structured-logging policy.
+
+  This is not a loosening of policy for repository code: the vendored crates
+  still compile under `RUSTFLAGS="-D warnings"` and workspace clippy, which is
+  where compiler and lint problems in them would surface. Fixing the scanners
+  also keeps the vendored tree byte-comparable with the archive, which is the
+  whole point of vendoring this way.
 
 ## Revision note
 
@@ -567,3 +619,10 @@ details, and the falsified assumptions recorded under
 `Surprises & discoveries`. The `Verification plan` now records discharge
 evidence per invariant rather than the planned method alone. Remaining work is
 the workspace-wide gate run and the pull request.
+
+2026-11-25: second revision after the first hosted CI run. Added the
+`First hosted CI round` record, a decision-log entry for the vendored-tree
+scanner exclusions, and the evidence that the asset-missing finding is a false
+positive. Changed behaviour: `Makefile` computes the `mdtablefix` input so
+`patches/**` is excluded, and two policy scanners now skip vendored paths.
+Remaining work is a green hosted run.

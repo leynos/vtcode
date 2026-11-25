@@ -61,6 +61,19 @@ def list_tracked_rust_files() -> list[Path]:
     return [REPO_ROOT / Path(rel) for rel in raw.split("\0") if rel]
 
 
+def is_vendored_path(path: Path) -> bool:
+    """Return whether the path belongs to a vendored third-party tree.
+
+    ``patches/`` holds upstream sources kept byte-comparable with their
+    published archives. Their style is upstream's, not this repository's, so
+    repository-wide policy scans skip them; the vendored crates still build
+    under the workspace deny-warnings settings, which catches compiler and
+    clippy problems.
+    """
+    rel = path.relative_to(REPO_ROOT).as_posix()
+    return rel.startswith("patches/")
+
+
 def is_test_path(path: Path) -> bool:
     rel = path.relative_to(REPO_ROOT).as_posix()
     path_parts = rel.split("/")
@@ -205,7 +218,7 @@ def main() -> int:
 
     scanned = 0
     for path in files:
-        if is_test_path(path):
+        if is_test_path(path) or is_vendored_path(path):
             continue
         scanned += 1
         findings.extend(scan_file(path, allow_rules))

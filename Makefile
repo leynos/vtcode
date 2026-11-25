@@ -17,6 +17,12 @@ NEXTEST_PROFILE ?= default
 MDTABLEFIX ?= mdtablefix
 MDTABLEFIX_SELECT = --git --include-untracked
 MDTABLEFIX_RULES = --wrap --renumber --breaks --ellipsis --fences
+# Vendored third-party trees keep upstream prose. `typos.toml` and
+# `.markdownlint-cli2.jsonc` already exclude `patches/**`, and the vendored Rust
+# sources carry their own `rustfmt.toml`; mdtablefix has no exclude flag, so the
+# selection drops those paths explicitly.
+MDTABLEFIX_EXCLUDE = patches/
+MDTABLEFIX_INPUT = $(filter-out $(MDTABLEFIX_EXCLUDE)%,$(shell $(MDTABLEFIX) $(MDTABLEFIX_SELECT) --list-files))
 MDLINT ?= $(shell command -v markdownlint-cli2 2>/dev/null || printf '%s' "$$HOME/.bun/bin/markdownlint-cli2")
 
 .NOTPARALLEL:
@@ -31,12 +37,12 @@ check: check-fmt lint build test test-harness check-ast-grep advisory
 
 check-fmt:
 	$(CARGO) fmt --all -- --check
-	$(MDTABLEFIX) --check $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
+	$(MDTABLEFIX) --check $(MDTABLEFIX_RULES) $(MDTABLEFIX_INPUT)
 
 # Apply the formatters check-fmt verifies.
 fmt:
 	$(CARGO) fmt --all
-	$(MDTABLEFIX) --in-place $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
+	$(MDTABLEFIX) --in-place $(MDTABLEFIX_RULES) $(MDTABLEFIX_INPUT)
 	$(MDLINT) --fix "**/*.md"
 
 spelling:
