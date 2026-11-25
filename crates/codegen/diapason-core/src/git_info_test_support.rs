@@ -380,11 +380,24 @@ where
     // The child runs with `--exact`, so a renamed or removed test makes
     // libtest execute zero tests and still exit successfully.
     let stdout = bounded_child_tail_capture(&mut captures.stdout)?;
-    match reported_passed_test_count(&stdout) {
+    verify_child_reported_one_pass(test_name, &stdout)
+}
+
+/// Confirm the child ran the one test its exact filter names.
+///
+/// The filter is a single hard-coded name, so exactly one test must pass.
+/// Zero means the name drifted and the body never ran; more than one means
+/// the filter or the harness changed shape. Both are failures, and so is a
+/// capture with no result line at all.
+fn verify_child_reported_one_pass(test_name: &str, stdout: &str) -> Result<()> {
+    match reported_passed_test_count(stdout) {
+        Some(1) => Ok(()),
         Some(0) => bail!(
             "clean Git test child {test_name:?} ran zero tests; the exact filter no longer matches a test: stdout={stdout:?}"
         ),
-        Some(_) => Ok(()),
+        Some(count) => bail!(
+            "clean Git test child {test_name:?} ran {count} tests; the exact filter must select exactly one: stdout={stdout:?}"
+        ),
         None => bail!("clean Git test child {test_name:?} did not report a libtest summary: stdout={stdout:?}"),
     }
 }
@@ -441,7 +454,9 @@ pub(crate) fn isolated_git_repository_with(remote_url: &str, commit_message: &st
 mod tests {
     //! Verifies the clean-child harness itself, independently of Git fixtures.
 
-    use super::{bounded_child_capture, bounded_child_tail_capture, reported_passed_test_count};
+    use super::{
+        bounded_child_capture, bounded_child_tail_capture, reported_passed_test_count, verify_child_reported_one_pass,
+    };
     use proptest::prelude::*;
     use std::io::Write;
     use tempfile::NamedTempFile;
@@ -473,6 +488,55 @@ mod tests {
             reported_passed_test_count(stdout),
             Some(2),
             "the final result line must report its passed-test count"
+        );
+    }
+
+    /// The exactly-one contract accepts a single passing test.
+    #[test]
+    fn one_passed_test_is_accepted() {
+        let stdout = "running 1 test\ntest the_one ... ok\ntest result: ok. 1 passed; 0 failed; 0 ignored\n";
+
+        assert!(
+            verify_child_reported_one_pass("the_one", stdout).is_ok(),
+            "a captured run with exactly one passing test must be accepted"
+        );
+    }
+
+    /// A drifted exact filter runs nothing and must not be accepted.
+    #[test]
+    fn zero_passed_tests_are_rejected() {
+        let stdout = "running 0 tests\ntest result: ok. 0 passed; 0 failed; 0 ignored\n";
+
+        let error = verify_child_reported_one_pass("the_one", stdout)
+            .expect_err("a capture with no passing tests must be rejected");
+        assert!(
+            error.to_string().contains("ran zero tests"),
+            "the rejection must name the zero-test case, got {error}"
+        );
+    }
+
+    /// A filter that selected more than the named test must not be accepted.
+    #[test]
+    fn more_than_one_passed_test_is_rejected() {
+        let stdout =
+            "running 2 tests\ntest one ... ok\ntest two ... ok\ntest result: ok. 2 passed; 0 failed; 0 ignored\n";
+
+        let error = verify_child_reported_one_pass("the_one", stdout)
+            .expect_err("a capture with two passing tests must be rejected");
+        assert!(
+            error.to_string().contains("ran 2 tests"),
+            "the rejection must report the observed count, got {error}"
+        );
+    }
+
+    /// A successful exit with no result line must not be accepted.
+    #[test]
+    fn missing_summary_is_rejected() {
+        let error = verify_child_reported_one_pass("the_one", "running 1 test\n")
+            .expect_err("a capture without a result line must be rejected");
+        assert!(
+            error.to_string().contains("did not report a libtest summary"),
+            "the rejection must name the missing summary, got {error}"
         );
     }
 
