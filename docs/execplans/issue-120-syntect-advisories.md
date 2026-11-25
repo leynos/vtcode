@@ -1,8 +1,8 @@
 # Remediate syntect's unmaintained transitive dependencies
 
-Status: COMPLETE — implementation, affected-crate gates, and the workspace-wide
-locked gate run all pass. This prerequisite addresses issue
-[#120](https://github.com/leynos/vtcode/issues/120).
+Status: COMPLETE — implementation, affected-crate gates, the workspace-wide
+locked gate run, and every hosted CI check pass. This prerequisite addresses
+issue [#120](https://github.com/leynos/vtcode/issues/120).
 
 ## Purpose and constraints
 
@@ -447,6 +447,14 @@ The first hosted run was green for the gates that matter to this change —
 
 Both scanners now report zero findings, and `make check-fmt`,
 `make lint-policies`, and `make advisory` all exit 0 locally.
+
+The second hosted run is fully green: 20 of 20 checks pass, including
+`Check RustSec Advisories`, `Check Unmaintained Dependencies`,
+`Check Formatting`, `Check Clippy`, `Unwrap/Expect Enforcement`,
+`Cargo nextest`, `Check Windows (warm cache)`, `Check License Notices`, and
+`MSRV Check (1.88)`. The cross-platform and nightly jobs are skipped by their
+own schedule guard, as on `main`. The pull request reports `MERGEABLE` and
+`CLEAN`.
 
 ### Wire-compatibility transcript
 
