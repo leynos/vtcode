@@ -169,6 +169,11 @@ exercises a real file of that format.
 - Locked `cargo check`/`clippy` with `RUSTFLAGS="-D warnings"`, the
   `diapason-ui` clipboard nextest filter, the `diapason-llm` Harmony tests and
   the repository gates run clean.
+- `THIRD-PARTY-NOTICES` was regenerated with the pinned `cargo-about 0.9.2`.
+  It drops the 42 crates that left the graph and
+  `scripts/generate-notices.sh --check` passes.
+- `scripts/lint_changed_markdown.mjs`, `scripts/check_markdown_location.py`,
+  `scripts/check_docs_links.py` and `scripts/check_large_files.py` pass.
 - `cargo tree --locked --target x86_64-pc-windows-msvc -e features -i image`
   shows the same codec set, plus `bmp` from `arboard`'s Windows codec, and no
   `avif` or `exr`. A local `cargo check --target x86_64-pc-windows-msvc` cannot
@@ -180,8 +185,8 @@ exercises a real file of that format.
 ## First-party policy gates and vendored code
 
 Vendoring registry sources puts third-party Rust under `patches/`, where the
-first-party gates would otherwise judge it. Two gates needed a scope decision,
-and in both cases the exclusion names the vendored tree rather than silencing a
+first-party gates would otherwise judge it. Three gates needed a scope
+decision, and each exclusion names the vendored tree rather than silencing a
 finding about Diapason:
 
 - `scripts/check_no_unwrap_expect_prod.py` gained a repeatable `--exclude`
@@ -192,8 +197,14 @@ finding about Diapason:
   behavioural gain, which is exactly what the patch refuses to do everywhere
   else. First-party scanning is unchanged: the run still covers 2000 files and
   reports zero findings.
-- `mdtablefix` reflows every tracked Markdown file, so the vendored `README.md`
-  is reflowed as described above. No other gate flags the vendored tree.
+- `.markdownlint-cli2.jsonc` ignores `patches/**`, alongside the existing
+  `typos.toml` exclusion for the same directory. Structural rules such as
+  `MD022`, `MD031` and `MD041` would otherwise require restyling upstream
+  documentation, and the vendored README legitimately opens with an HTML
+  banner. The CI `Check Markdown` job now lints only the two first-party
+  documents and reports zero issues.
+- `mdtablefix` has no exclusion option and reflows every tracked Markdown file,
+  so the vendored `README.md` and `docs/*.md` are reflowed as described above.
   `scripts/check_rust_file_length.py` lists `patches/simdutf/src/generated.rs`
   in warn mode only, which predates this work, and the large-file gate needed
   no new allowlist entry.

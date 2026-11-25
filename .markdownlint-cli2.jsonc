@@ -47,6 +47,10 @@
     // snapshots, not documentation.
     "crates/codegen/diapason-core/src/utils/fixtures/*.md",
     // Model prompt templates compiled into the binary, not documentation.
-    "src/agent/runloop/unified/auto_permission/prompts/*.md"
+    "src/agent/runloop/unified/auto_permission/prompts/*.md",
+    // Vendored dependency sources applied through `[patch.crates-io]`. Their
+    // Markdown is upstream documentation, not this repository's; restyling it
+    // would put the vendor tree out of sync with the published archive.
+    "patches/**"
   ]
 }
