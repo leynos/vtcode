@@ -1,4 +1,15 @@
 //! Test-only Git fixtures and clean-child execution support.
+//!
+//! [`isolated_git_repository`] and [`isolated_git_repository_with`] create
+//! temporary repositories that ignore inherited Git redirects, and
+//! [`run_in_clean_test_process`] re-runs one named test in a child process
+//! with those overrides removed, global and system configuration replaced,
+//! and a watchdog. The parent accepts the child only after libtest prints a
+//! `test result:` summary.
+//!
+//! `git_info.rs` includes this file through `#[path]` under `cfg(test)`, and
+//! `turn_metadata.rs` consumes the same fixtures and child runner in its
+//! tests.
 
 use anyhow::{Context, Result, bail};
 use diapason_commons::canonicalize;
@@ -430,7 +441,10 @@ pub(crate) fn isolated_git_repository_with(remote_url: &str, commit_message: &st
 mod tests {
     //! Verifies the clean-child harness itself, independently of Git fixtures.
 
-    use super::reported_passed_test_count;
+    use super::{bounded_child_capture, bounded_child_tail_capture, reported_passed_test_count};
+    use proptest::prelude::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
     /// A pre-run announcement alone must not satisfy the parent.
     ///
@@ -460,5 +474,180 @@ mod tests {
             Some(2),
             "the final result line must report its passed-test count"
         );
+    }
+
+    /// Arbitrary Unicode text of at most twice the capture limit in bytes.
+    fn arbitrary_text() -> impl Strategy<Value = String> {
+        let limit = super::CHILD_OUTPUT_LIMIT;
+        proptest::collection::vec(any::<char>(), 0..(2 * limit)).prop_map(move |characters| {
+            let mut text: String = characters.into_iter().collect();
+            if text.len() > 2 * limit {
+                let mut end = 2 * limit;
+                while !text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                text.truncate(end);
+            }
+            text
+        })
+    }
+
+    /// Noise lines that cannot be read as a valid libtest result summary.
+    fn non_result_noise() -> impl Strategy<Value = String> {
+        proptest::collection::vec(any::<String>(), 0..8).prop_map(|parts| {
+            let mut noise = String::new();
+            for part in parts {
+                let line = part.replace('\n', " ");
+                let line = line.trim();
+                if !line.starts_with("test result:") {
+                    noise.push_str(line);
+                    noise.push('\n');
+                }
+            }
+            noise
+        })
+    }
+
+    /// A `running N tests` announcement of the kind libtest prints.
+    fn running_announcement() -> impl Strategy<Value = String> {
+        (0usize..1000).prop_map(|count| format!("running {count} tests\n"))
+    }
+
+    /// A noise line that may resemble a malformed result summary.
+    fn result_like_noise_line() -> impl Strategy<Value = String> {
+        prop_oneof![
+            any::<String>().prop_map(|part| part.replace('\n', " ")),
+            Just("test result:".to_string()),
+            Just("test result: ok.".to_string()),
+            Just("test result: ok. many passed; 0 failed; 0 ignored".to_string()),
+            Just("test result: ok. . passed; 0 failed; 0 ignored".to_string()),
+            Just("test result:  passed; 0 failed; 0 ignored".to_string()),
+        ]
+    }
+
+    /// Report whether `line` is a result summary carrying `count` as its
+    /// passed-test total.
+    fn line_carries_passed_count(line: &str, count: usize) -> bool {
+        let Some(summary) = line.trim().strip_prefix("test result:") else {
+            return false;
+        };
+        summary.split(';').next().is_some_and(|passed| {
+            passed.contains("passed")
+                && passed
+                    .split(|character: char| !character.is_ascii_digit())
+                    .any(|digits| digits.parse::<usize>().ok() == Some(count))
+        })
+    }
+
+    /// Write `text` to a fresh capture file positioned at the start.
+    fn capture_file(text: &str) -> NamedTempFile {
+        let mut file = NamedTempFile::new().expect("create child output capture");
+        file.write_all(text.as_bytes()).expect("write child output capture");
+        file.flush().expect("flush child output capture");
+        file
+    }
+
+    proptest! {
+        #[test]
+        fn running_announcements_without_results_report_no_summary(
+            announcements in proptest::collection::vec(running_announcement(), 0..4),
+            noise in non_result_noise(),
+        ) {
+            let mut stdout = noise;
+            for announcement in announcements {
+                stdout.push_str(&announcement);
+            }
+            prop_assert_eq!(
+                reported_passed_test_count(&stdout),
+                None,
+                "stdout without a result line must not report a passed-test count: {:?}",
+                stdout
+            );
+        }
+
+        #[test]
+        fn appended_result_line_reports_its_count(
+            noise in proptest::collection::vec(result_like_noise_line(), 0..8),
+            passed in 0usize..10_000,
+        ) {
+            let mut stdout = noise.join("\n");
+            stdout.push('\n');
+            stdout.push_str(&format!("test result: ok. {passed} passed; 0 failed; 0 ignored\n"));
+            prop_assert_eq!(
+                reported_passed_test_count(&stdout),
+                Some(passed),
+                "the appended result line must report its count: {:?}",
+                stdout
+            );
+        }
+
+        #[test]
+        fn reported_count_is_grounded_in_a_result_line(text in arbitrary_text()) {
+            if let Some(count) = reported_passed_test_count(&text) {
+                prop_assert!(
+                    text.lines().any(|line| line_carries_passed_count(line, count)),
+                    "reported {} without a matching result line: {:?}",
+                    count,
+                    text
+                );
+            }
+        }
+
+        #[test]
+        fn bounded_capture_returns_the_expected_head(text in arbitrary_text()) {
+            let mut file = capture_file(&text);
+            let bytes = text.as_bytes();
+            let captured = bounded_child_capture(&mut file).expect("capture child output");
+            if bytes.len() <= super::CHILD_OUTPUT_LIMIT {
+                prop_assert_eq!(
+                    captured.as_str(),
+                    text.as_str(),
+                    "a capture within the limit must return the text unchanged"
+                );
+                // A marker may only follow a truncated window. Arbitrary text
+                // can itself contain the marker, so check the appended form
+                // rather than membership.
+                if let Some(prefix) = captured.strip_suffix(" [truncated]") {
+                    prop_assert_eq!(
+                        prefix,
+                        text.as_str(),
+                        "a capture within the limit must not append a truncation marker"
+                    );
+                }
+            } else {
+                let expected = format!(
+                    "{} [truncated]",
+                    String::from_utf8_lossy(&bytes[..super::CHILD_OUTPUT_LIMIT])
+                );
+                prop_assert_eq!(
+                    captured,
+                    expected,
+                    "a capture past the limit must truncate to the byte window"
+                );
+            }
+        }
+
+        #[test]
+        fn bounded_tail_capture_returns_the_expected_window(text in arbitrary_text()) {
+            let mut file = capture_file(&text);
+            let bytes = text.as_bytes();
+            let offset = bytes.len().saturating_sub(super::CHILD_OUTPUT_LIMIT);
+            let expected = String::from_utf8_lossy(&bytes[offset..]).into_owned();
+            let captured = bounded_child_tail_capture(&mut file).expect("capture child output tail");
+            prop_assert_eq!(
+                captured.as_str(),
+                expected.as_str(),
+                "the tail capture must decode the trailing byte window"
+            );
+            // Decoding is lossy, so a window that splits a multi-byte
+            // sequence expands each stray byte into one replacement
+            // character. The bound therefore holds in characters, not bytes.
+            prop_assert!(
+                captured.chars().count() <= super::CHILD_OUTPUT_LIMIT,
+                "the tail capture must decode at most {} source bytes, got {}",
+                super::CHILD_OUTPUT_LIMIT,
+                captured.chars().count()
+            );
+        }
     }
 }

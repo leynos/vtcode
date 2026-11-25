@@ -1,3 +1,8 @@
+//! Lifecycle hook approval tests.
+//!
+//! These tests exercise the workspace-hook approval gate, including the
+//! marker-writing hook commands that consume standard input.
+
 #![allow(
     missing_docs,
     reason = "Intentional compatibility, platform, or test-only suppression."
