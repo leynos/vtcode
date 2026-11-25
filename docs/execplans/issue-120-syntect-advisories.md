@@ -518,6 +518,38 @@ round-trip assertions are not vacuous.
   the fork would rewrite every file and destroy comparability with upstream.
 - Rejected: switching `regex-fancy` to `regex-onig`. Rationale: unrelated to
   the advisories, and `onig` adds a C build dependency.
+- Decision: do not fix the upstream syntect defects CodeRabbit reports against
+  the vendored tree; record them here instead. Rationale: they are pre-existing
+  upstream behaviour in files this change did not touch, and the vendored tree
+  is meant to be byte-comparable with the published archive apart from the
+  codec. Screening them:
+
+  - `html` (9 findings), `yaml_load` (7), and `metadata` (3) are not compiled
+    at all in this build: `src/lib.rs` gates `html` on `feature = "html"`,
+    `src/parsing/mod.rs` gates `yaml_load` on `yaml-load` and `metadata` on
+    `metadata`, and none of those features is enabled. A defect there cannot
+    affect the shipped binary.
+  - The `util.rs` LaTeX findings concern `as_latex_escaped`, which no Diapason
+    code calls.
+  - The remainder are reachable only by feeding syntect a hand-crafted or
+    malformed grammar. Diapason highlights with the grammars bundled inside
+    syntect's own binary, which are fixed at build time, and never loads a
+    grammar or theme from a file or from user input. The one path that does
+    parse untrusted text is `highlight_line` over agent output, and the
+    reported defects there are behavioural edges (a non-advancing transition, a
+    missing main context) on a grammar Diapason itself supplies, not memory
+    unsafety.
+  - None is a memory-safety or soundness issue, so none interacts with the
+    codec change this plan is accountable for.
+
+  Fixing them in the vendored copy would silently fork syntect's behaviour and
+  make the next upstream sync a merge exercise. They belong upstream, and the
+  exit path already routes them there. The one finding in the vendored tree
+  that was about *this* change — that the four assets were missing — was wrong:
+  all four are committed, in `HEAD`, and loaded by the passing tests.
+
+  Reassess if Diapason ever starts loading grammars or themes from files, which
+  would bring `yaml_load` into the build and make its findings live.
 
 ## Revision note
 
