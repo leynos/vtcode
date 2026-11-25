@@ -88,9 +88,18 @@ async fn concurrent_reserves_across_a_clock_handoff_never_repeat_a_revision() {
 /// The stress loop above can pass without ever exercising a handoff: every
 /// reservation may finish before an adoption starts, so the test would not
 /// notice a handoff that stopped excluding the reservation window. This case
-/// parks one reservation inside the route's read guard, so the handoff must
-/// wait for the write guard, and then checks that the adopted clock carries the
-/// parked revision forward instead of handing it out a second time.
+/// parks one reservation inside the route's read guard and then probes the
+/// write guard the handoff needs.
+///
+/// Waiting for the handoff task to report that it started proves nothing about
+/// the lock: a worker that signals before it calls `adopt` can be descheduled
+/// for the whole parked window, and a worker that is merely slow looks the
+/// same as one that is excluded. The probe therefore takes the write lock
+/// itself, without waiting for it, from the test's own thread. While the gate
+/// is parked the attempt must be refused, and after the release the same
+/// attempt must succeed, so the refusal is the parked reservation's read guard
+/// and nothing else. The revision assertions then pin that the handoff copied
+/// the parked revision rather than handing it out a second time.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_parked_reservation_excludes_the_clock_handoff() {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -119,35 +128,38 @@ async fn a_parked_reservation_excludes_the_clock_handoff() {
         .expect("the reservation must reach the parked checkpoint before the handoff starts");
     assert!(!rendezvous.expired(), "the reservation gate expired before the handoff started");
 
-    // The handoff needs the write guard the parked reservation holds. "It had
-    // not finished after 100 ms" is weak evidence on its own: a descheduled
-    // thread looks the same. Three facts together are decisive. The gate is
-    // still parked, so no lock timeout released the reservation early; the
-    // handoff has not returned, so it cannot have taken the guard; and once
-    // released the handoff's `fetch_max` carries the parked revision, which it
-    // can only copy by acquiring the guard after that reservation recorded it.
+    // The parked reservation holds the read guard, so the write guard the
+    // handoff needs cannot be taken. This attempt does not wait for the lock
+    // and does not depend on the handoff task having been scheduled: it asks
+    // the route itself, on the test's thread, whether the write guard is free.
+    assert!(
+        !controller.progress_route.write_guard_available(),
+        "a reservation parked in its read window must exclude the handoff's write guard"
+    );
+    assert!(!rendezvous.expired(), "the reservation gate must still be parked while the probe is refused");
+
+    // The handoff blocks on that same guard. Its completion is recorded so the
+    // test can prove it had not finished while the reservation was parked,
+    // but the probe above, not this counter, is the evidence of exclusion.
     let registry = Arc::new(ProgressObserverRegistry::default());
     let adopted_clock = Arc::new(AtomicU64::new(0));
     let completed = Arc::new(AtomicU64::new(0));
-    let (attempted_tx, mut attempted_rx) = tokio::sync::mpsc::unbounded_channel();
     let (adopted_tx, mut adopted_rx) = tokio::sync::mpsc::unbounded_channel();
     let handoff = {
         let controller = Arc::clone(&controller);
         let clock = Arc::clone(&adopted_clock);
         let completed = Arc::clone(&completed);
         tokio::task::spawn_blocking(move || {
-            let _ = attempted_tx.send(());
             controller.progress_route.adopt(Arc::clone(&registry), None, clock);
             let _ = completed.fetch_add(1, Ordering::SeqCst);
             let _ = adopted_tx.send(());
         })
     };
-    attempted_rx.recv().await.expect("the handoff must start");
     assert!(
         tokio::time::timeout(Duration::from_millis(100), adopted_rx.recv())
             .await
             .is_err(),
-        "the handoff must block while a reservation holds the route's read guard"
+        "the handoff must not finish while a reservation holds the route's read guard"
     );
     assert!(!rendezvous.expired(), "the reservation gate must still be parked while the handoff waits");
     assert_eq!(
@@ -158,6 +170,24 @@ async fn a_parked_reservation_excludes_the_clock_handoff() {
 
     rendezvous.release();
     let parked = reserver.await.expect("the reservation must finish");
+
+    // The same probe that was refused while parked must now be accepted. Were
+    // the earlier refusal a scheduling artefact rather than the read guard,
+    // this attempt could still be refused; were the guard available while
+    // parked, the earlier assertion would already have failed.
+    let available = tokio::time::timeout(Duration::from_secs(5), async {
+        let mut available = controller.progress_route.write_guard_available();
+        while !available {
+            tokio::task::yield_now().await;
+            available = controller.progress_route.write_guard_available();
+        }
+    })
+    .await;
+    assert!(
+        available.is_ok(),
+        "the write guard must become available once the parked reservation records its revision"
+    );
+
     adopted_rx
         .recv()
         .await

@@ -175,7 +175,7 @@ impl SubagentController {
                 .map(|record| BackgroundLivenessCapture {
                     entry: record.build_status_entry(),
                     active: record.status.is_active(),
-                    driven: self.background_record_restart_is_authorised(record),
+                    driven: self.background_record_restart_is_authorized(record),
                     exec_session_id: record.exec_session_id.clone(),
                     observed_status: record.status,
                     desired_enabled: record.desired_enabled,
@@ -269,17 +269,23 @@ impl SubagentController {
             // failure the settlement will write.
             let launch_owed =
                 background_launch_is_owed(&self.state, capture.entry.id.as_str(), capture.exec_session_id.as_str());
-            // A refresh settles an exited process as `Error` once its single
-            // restart allowance is spent. A cached `Starting` status with a
-            // launch still owed means the process is still coming up: either
-            // its first exec session is not registered yet, or the restart
-            // counter has been incremented but the replacement exec session is
-            // not registered yet. It must stay `Starting` rather than be
-            // projected as a failure, even when `auto_restore` is disabled,
-            // because nothing has failed yet.
-            capture.entry.status = if capture.desired_enabled
-                && ((capture.entry.status == BackgroundSubprocessStatus::Starting && launch_owed)
-                    || restart_allowed(self.config.vt_cfg.subagents.background.auto_restore, capture.restart_attempts))
+            // An orphaned `Starting` claim is handled apart from a missing
+            // `Running` record. A claim nothing owes a launch for has no driver:
+            // its reservation was abandoned, and only a later refresh can
+            // schedule a replacement. This read starts nothing, so it must not
+            // report the claim as an active task merely because the restart
+            // budget would allow one. A missing `Running` record is different:
+            // its process is observed gone, and `restart_allowed` then predicts
+            // the replacement refresh will schedule.
+            let orphaned_starting_claim = capture.entry.status == BackgroundSubprocessStatus::Starting && !launch_owed;
+            capture.entry.status = if orphaned_starting_claim {
+                if capture.desired_enabled {
+                    BackgroundSubprocessStatus::Error
+                } else {
+                    BackgroundSubprocessStatus::Stopped
+                }
+            } else if capture.desired_enabled
+                && restart_allowed(self.config.vt_cfg.subagents.background.auto_restore, capture.restart_attempts)
             {
                 BackgroundSubprocessStatus::Starting
             } else if capture.desired_enabled {

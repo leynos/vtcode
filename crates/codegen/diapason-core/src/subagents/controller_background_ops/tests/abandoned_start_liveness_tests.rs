@@ -151,3 +151,70 @@ async fn a_running_record_is_untouched_by_the_launch_obligation_rule() {
 
     controller.signal_shutdown().await;
 }
+
+/// An orphaned claim stays inactive even while automatic restore is enabled.
+///
+/// The restart budget is not a driver. With `auto_restore` enabled and an
+/// unspent attempt, the projection used to report an obligation-free
+/// `Starting` claim as active because `restart_allowed` was consulted for every
+/// status. This read starts nothing, so it must leave the orphan to the refresh
+/// path and not claim it is alive in the meantime.
+#[tokio::test]
+async fn an_orphaned_claim_is_not_active_when_auto_restore_is_enabled() {
+    let temp = TempDir::new().expect("tempdir");
+    let mut config = DiapasonConfig::default();
+    config.subagents.background.auto_restore = true;
+    let controller = background_test_controller(temp.path(), config).await;
+    let record = background_record(WORKER, None, WORKER_AGENT, EXEC, BackgroundSubprocessStatus::Starting, true);
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(WORKER.to_string(), record);
+    }
+
+    let entries = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
+    let entry = entries
+        .iter()
+        .find(|entry| entry.entry.id == WORKER)
+        .expect("the record is listed");
+
+    assert_eq!(
+        entry.entry.status,
+        BackgroundSubprocessStatus::Error,
+        "an orphaned claim must not be projected as active merely because a restart is allowed"
+    );
+
+    controller.signal_shutdown().await;
+}
+
+/// A missing `Running` record still predicts the restart its budget allows.
+///
+/// The separation the orphan rule needs: a process observed gone with an
+/// unspent allowance is a launch refresh will replace, so it keeps projecting
+/// `Starting`. Only an obligation-free `Starting` claim is left to settlement.
+#[tokio::test]
+async fn a_missing_running_record_predicts_its_permitted_restart() {
+    let temp = TempDir::new().expect("tempdir");
+    let mut config = DiapasonConfig::default();
+    config.subagents.background.auto_restore = true;
+    let controller = background_test_controller(temp.path(), config).await;
+    let record =
+        background_record(WORKER, None, WORKER_AGENT, "exec-vanished", BackgroundSubprocessStatus::Running, true);
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(WORKER.to_string(), record);
+    }
+
+    let entries = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
+    let entry = entries
+        .iter()
+        .find(|entry| entry.entry.id == WORKER)
+        .expect("the record is listed");
+
+    assert_eq!(
+        entry.entry.status,
+        BackgroundSubprocessStatus::Starting,
+        "a permitted restart is still predicted for an exited launch"
+    );
+
+    controller.signal_shutdown().await;
+}

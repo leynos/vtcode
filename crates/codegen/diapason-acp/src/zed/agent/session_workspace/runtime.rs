@@ -33,20 +33,24 @@ pub(in crate::zed) struct SessionWorkspaceRuntime {
 
 /// What a runtime still owes of the workspace-scope background restore.
 ///
-/// A runtime built while a resumed session's owner migration was unresolved
-/// skips restoring ownerless records, because the rows that session launched
-/// are still ownerless and a restore would relaunch them as workspace work. The
-/// skip must not be permanent, though: the restore is owed once ownership is
-/// reconciled, and a later acquisition of the same runtime is the only place
-/// that can still perform it.
+/// A runtime built for a resumed attach skips restoring ownerless records,
+/// because the rows that session launched may still be ownerless and a restore
+/// would relaunch them as workspace work. The skip must not be permanent: the
+/// restore is owed once ownership is reconciled, and only a caller that
+/// establishes reconciliation may release it. The debt is discharged only by a
+/// restore that ran, so a failed pass is retried by a later acquisition instead
+/// of being lost.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::zed::agent) enum PendingWorkspaceRestore {
     /// Nothing is owed: the build either restored at once or never deferred.
     NotOwed,
-    /// Owed, but a resumed session's owner migration is unresolved, so a
-    /// restore could relaunch a row that session may yet adopt.
+    /// Owed, but not yet payable: the resumed attach that deferred it has not
+    /// both passed its required checkpoint and established that the rows it
+    /// launched carry their owner, so a restore could relaunch work a session
+    /// may still adopt.
     BlockedByOwnerMigration,
-    /// Owed and safe to run: no owner migration is unresolved.
+    /// Owed and safe to run: a resumed attach reconciled ownership after its
+    /// required checkpoint.
     Ready,
 }
 
@@ -60,40 +64,96 @@ impl PendingWorkspaceRestore {
     ///
     /// Only a blocked restore changes: a runtime that never deferred has
     /// nothing to run, and one already payable is not re-armed, so the restore
-    /// still runs at most once.
+    /// still runs at most once at a time.
     fn released(self) -> Self {
         if self.is_blocked() { Self::Ready } else { self }
     }
 
-    /// The state after a caller claims the owed restore, and whether it ran.
+    /// The state after a caller claims the owed restore, and whether it runs.
     ///
     /// A claim clears the debt in the same step that reports it, so a runtime
-    /// hands its restore to exactly one caller however many sessions acquire it.
+    /// hands its restore to exactly one caller however many sessions acquire it
+    /// afterwards. The caller reports the outcome through
+    /// [`SessionWorkspaceRuntime::complete_background_restore`].
     fn claimed(self) -> (Self, bool) {
         match self {
             Self::Ready => (Self::NotOwed, true),
             Self::NotOwed | Self::BlockedByOwnerMigration => (self, false),
         }
     }
+
+    /// The state after a claimed restore did not complete.
+    ///
+    /// A failure discharges nothing: the ownerless rows the pass would have
+    /// restored are still unrestored, so the debt becomes payable again and a
+    /// later acquisition retries it.
+    fn reinstated(self) -> Self {
+        match self {
+            Self::NotOwed => Self::Ready,
+            Self::BlockedByOwnerMigration | Self::Ready => self,
+        }
+    }
+}
+
+/// A claimed workspace restore that reinstates its debt unless it succeeds.
+///
+/// The claim clears the debt under one lock so a concurrent acquisition cannot
+/// run the same restore twice. Dropping the claim before [`Self::confirm`] — a
+/// failed pass, or a caller cancelled while the pass runs — puts the debt back
+/// for a later acquisition instead of losing the obligation.
+pub(in crate::zed::agent) struct OwedBackgroundRestore<'a> {
+    runtime: &'a SessionWorkspaceRuntime,
+    confirmed: bool,
+}
+
+impl OwedBackgroundRestore<'_> {
+    /// Records that the restore ran, discharging the debt.
+    pub(in crate::zed::agent) fn confirm(mut self) {
+        self.runtime.complete_background_restore(true);
+        self.confirmed = true;
+    }
+}
+
+impl Drop for OwedBackgroundRestore<'_> {
+    fn drop(&mut self) {
+        if !self.confirmed {
+            self.runtime.complete_background_restore(false);
+        }
+    }
 }
 
 impl SessionWorkspaceRuntime {
-    /// Records that a blocked restore is now safe to run.
+    /// Records that ownership is reconciled and a blocked restore may run.
     pub(in crate::zed::agent) fn release_background_restore(&self) {
         let mut pending = self.pending_restore_guard();
         *pending = pending.released();
     }
 
-    /// Claims the owed restore, leaving nothing owed.
+    /// Claims the owed restore, leaving nothing owed until its result is known.
     ///
     /// The claim and the clear happen under one lock, so a runtime whose
     /// restore is owed hands it to exactly one caller however many sessions
-    /// acquire the runtime afterwards.
-    pub(in crate::zed::agent) fn take_owed_background_restore(&self) -> bool {
+    /// acquire the runtime afterwards. The returned guard must be confirmed
+    /// once the restore succeeds; dropping it first reinstates the debt.
+    pub(in crate::zed::agent) fn claim_owed_background_restore(&self) -> Option<OwedBackgroundRestore<'_>> {
         let mut pending = self.pending_restore_guard();
         let (state, claimed) = pending.claimed();
         *pending = state;
-        claimed
+        claimed.then_some(OwedBackgroundRestore { runtime: self, confirmed: false })
+    }
+
+    /// Records the outcome of a claimed restore.
+    ///
+    /// A successful pass discharges the debt. A failed one restores it, so a
+    /// later acquisition retries the restore rather than reporting work that
+    /// never ran as done.
+    pub(in crate::zed::agent) fn complete_background_restore(&self, restored: bool) {
+        let mut pending = self.pending_restore_guard();
+        *pending = if restored {
+            PendingWorkspaceRestore::NotOwed
+        } else {
+            pending.reinstated()
+        };
     }
 
     /// Whether a deferred restore is still owed and held back.
@@ -103,6 +163,12 @@ impl SessionWorkspaceRuntime {
     #[cfg(test)]
     pub(in crate::zed::agent) fn pending_background_restore_is_blocked(&self) -> bool {
         self.pending_restore_guard().is_blocked()
+    }
+
+    /// Whether a released restore is owed and waiting for a caller.
+    #[cfg(test)]
+    pub(in crate::zed::agent) fn pending_background_restore_is_payable(&self) -> bool {
+        *self.pending_restore_guard() == PendingWorkspaceRestore::Ready
     }
 
     /// Locks the pending-restore state.
@@ -491,7 +557,7 @@ mod pending_restore_tests {
         let ready = PendingWorkspaceRestore::BlockedByOwnerMigration.released().released();
         assert_eq!(ready, PendingWorkspaceRestore::Ready, "two releases leave one payable debt");
 
-        // `claimed` is a pure transition and `take_owed_background_restore`
+        // `claimed` is a pure transition and `claim_owed_background_restore`
         // stores the state it returns, so a second claim must be taken against
         // the state the first one left behind.
         let (paid, ran) = ready.claimed();
@@ -500,6 +566,30 @@ mod pending_restore_tests {
             paid.claimed(),
             (PendingWorkspaceRestore::NotOwed, false),
             "the second release must not create a second debt"
+        );
+    }
+
+    /// A restore that did not run leaves the debt payable for a later attempt.
+    ///
+    /// The claim clears the debt so a concurrent acquisition cannot run the
+    /// same restore twice, but a failed pass has restored nothing: reinstating
+    /// the debt is what lets the next acquisition retry instead of reporting
+    /// the unrestored rows as done.
+    #[test]
+    fn a_failed_restore_is_payable_again() {
+        let (claimed, ran) = PendingWorkspaceRestore::Ready.claimed();
+        assert_eq!((claimed, ran), (PendingWorkspaceRestore::NotOwed, true), "the released debt is claimed once");
+        let owed_again = claimed.reinstated();
+        assert_eq!(owed_again, PendingWorkspaceRestore::Ready, "a failed pass must leave the restore payable again");
+        assert_eq!(
+            owed_again.claimed(),
+            (PendingWorkspaceRestore::NotOwed, true),
+            "the retry claims the reinstated debt exactly as the first attempt did"
+        );
+        assert_eq!(
+            PendingWorkspaceRestore::BlockedByOwnerMigration.reinstated(),
+            PendingWorkspaceRestore::BlockedByOwnerMigration,
+            "reinstating must not release a debt ownership still blocks"
         );
     }
 }

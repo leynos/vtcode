@@ -86,24 +86,63 @@ pub(super) struct LoadedBackgroundLedger {
 ///
 /// A named exec session is the launch identity: two copies of it name the same
 /// process, whatever row they were stored under. An empty session identifies
-/// nothing, so a shared blank value never establishes a launch on its own; the
-/// callers that must still relate a legacy copy to its row apply the canonical
-/// record id themselves.
+/// nothing, so a shared blank value never establishes a launch on its own.
 fn same_named_launch(exec_session_id: &str, other_exec_session_id: &str) -> bool {
     !exec_session_id.is_empty() && exec_session_id == other_exec_session_id
+}
+
+/// Reports whether two legacy copies name the same child session.
+///
+/// A legacy row predates the exec-session field, but it still records the child
+/// session it was launched for, and every launch mints a fresh one. Two legacy
+/// rows therefore describe one launch only when they name the same non-empty
+/// child session; a shared blank value is not an identity.
+fn same_legacy_launch(session_id: &str, other_session_id: &str) -> bool {
+    !session_id.is_empty() && session_id == other_session_id
+}
+
+/// Reports whether two copies describe the same launch, named or legacy.
+///
+/// The exec session is the launch identity when one is named. When neither copy
+/// names one, the child session each carries is the identity left. This is the
+/// rule a cancellation is compared under and the rule the save merge groups
+/// copies under, so the two cannot disagree about whether a stop governs a
+/// refresh.
+fn same_launch_identity(
+    exec_session_id: &str,
+    session_id: &str,
+    other_exec_session_id: &str,
+    other_session_id: &str,
+) -> bool {
+    same_named_launch(exec_session_id, other_exec_session_id)
+        || (exec_session_id.is_empty()
+            && other_exec_session_id.is_empty()
+            && same_legacy_launch(session_id, other_session_id))
 }
 
 /// Reports whether a persisted stop may be adopted onto a record under `id`.
 ///
 /// A named exec session is the identity, as above. A legacy row names no
-/// session, so the canonical record id is the identity left: the ledger keeps
-/// one row per id and drops an id whose legacy rows cannot be told apart, so at
-/// most one legacy row survives under it and it describes the cached record
-/// keyed there. A legacy row never matches a record naming a session, and two
-/// legacy ids never match each other.
-fn adoptable_launch_identity(id: &str, exec_session_id: &str, other_id: &str, other_exec_session_id: &str) -> bool {
+/// session, so the identity falls back to the canonical record id together with
+/// the child session the row names: the ledger keeps one row per id, but that
+/// row may describe a different legacy launch than the cached record under the
+/// id. A legacy row is therefore adopted only when its id and its child session
+/// both agree with the cached record; a blank child session proves nothing. A
+/// legacy row never matches a record naming an exec session.
+fn adoptable_launch_identity(
+    id: &str,
+    exec_session_id: &str,
+    session_id: &str,
+    other_id: &str,
+    other_exec_session_id: &str,
+    other_session_id: &str,
+) -> bool {
     same_named_launch(exec_session_id, other_exec_session_id)
-        || (exec_session_id.is_empty() && other_exec_session_id.is_empty() && !id.is_empty() && id == other_id)
+        || (exec_session_id.is_empty()
+            && other_exec_session_id.is_empty()
+            && !id.is_empty()
+            && id == other_id
+            && same_legacy_launch(session_id, other_session_id))
 }
 
 fn ledger_path(workspace_root: &Path) -> PathBuf {
@@ -193,16 +232,15 @@ impl PersistedBackgroundRecord {
     /// Reports whether this record is a copy of the same launch as `other`.
     ///
     /// The exec session identifies the process a record describes, so two
-    /// records naming the same non-empty session are copies of one launch. An
-    /// empty session identifies nothing: legacy rows predate the field, and two
-    /// of them may describe entirely different child sessions under one
-    /// canonical id. Such a pair is therefore *not* the same launch, which is
-    /// the deliberate policy for legacy rows — a shared blank value must never
-    /// stand in for a launch identity. Nothing here may fall back to the record
-    /// id: a precedence decision between two rows must never be made on intent
-    /// alone, so only [`Self::adopt_cancellation_into`] may apply that fallback.
+    /// records naming the same non-empty session are copies of one launch. A
+    /// legacy row names none, and two of them may describe entirely different
+    /// child sessions under one canonical id; the child session each names is
+    /// then the identity left, and a shared blank value never stands in for
+    /// one. Nothing here falls back to the record id: a precedence decision
+    /// between two rows must never be made on intent alone, so only
+    /// [`Self::adopt_cancellation_into`] may apply that fallback.
     pub(crate) fn shares_launch_identity_with(&self, other: &Self) -> bool {
-        same_named_launch(&self.exec_session_id, &other.exec_session_id)
+        same_launch_identity(&self.exec_session_id, &self.session_id, &other.exec_session_id, &other.session_id)
     }
 
     /// Whether this record's stop outranks `snapshot` regardless of timestamps.
@@ -239,18 +277,26 @@ impl PersistedBackgroundRecord {
     ///
     /// Only a copy of the same launch may be adopted. A named exec session is
     /// that identity. Legacy rows name none, so the identity falls back to the
-    /// canonical record id both sides are already keyed by: the ledger merges
-    /// one row per canonical id and drops an id whose legacy rows cannot be
-    /// told apart, so at most one legacy row survives under it. A legacy row
-    /// is still never a copy of a launch that names a session, which is what
-    /// keeps a stub from stopping a live process.
+    /// canonical record id both sides are keyed by *and* to the child session
+    /// each names: the ledger keeps one row per canonical id, but that row may
+    /// describe a different legacy launch than the cached record. A blank
+    /// child session proves nothing. A legacy row is still never a copy of a
+    /// launch that names a session, which is what keeps a stub from stopping a
+    /// live process.
     pub(crate) fn adopt_cancellation_into(&self, record: &mut BackgroundRecord) -> bool {
         if self.desired_enabled || !record.desired_enabled {
             return false;
         }
         // `BackgroundRecord` is not `PersistedBackgroundRecord`, so the shared
         // rule is applied to the ids it carries.
-        if !adoptable_launch_identity(&self.id, &self.exec_session_id, &record.id, &record.exec_session_id) {
+        if !adoptable_launch_identity(
+            &self.id,
+            &self.exec_session_id,
+            &self.session_id,
+            &record.id,
+            &record.exec_session_id,
+            &record.session_id,
+        ) {
             return false;
         }
         record.desired_enabled = false;
@@ -351,7 +397,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn persisted_background_record_accepts_colour_and_serializes_color() {
+    fn persisted_background_record_accepts_colour_and_serializes_the_fixed_key() {
         let now = DateTime::<Utc>::UNIX_EPOCH;
         let record = PersistedBackgroundRecord {
             id: "background-1".to_string(),
@@ -383,16 +429,12 @@ mod tests {
         };
 
         let mut canonical = serde_json::to_value(&record).expect("the persisted record should serialize");
-        assert_eq!(
-            canonical.get("color"),
-            Some(&json!("orchid")),
-            "persisted state should use the canonical color key"
-        );
+        assert_eq!(canonical.get("color"), Some(&json!("orchid")), "persisted state should use the fixed wire key");
         let canonical_value = canonical
             .as_object_mut()
             .expect("a serialized persisted record should be an object")
             .remove("color")
-            .expect("the canonical color key should be present");
+            .expect("the fixed wire key should be present");
         let previous_british_alias = canonical
             .as_object_mut()
             .expect("a serialized persisted record should remain an object")

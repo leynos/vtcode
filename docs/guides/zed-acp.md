@@ -517,20 +517,30 @@ and `[history]` settings do not control ACP audit output.
   missing ledger migrates nothing.
 
   If the migration fails, the resume continues but the row stays ownerless.
-  When it builds a workspace runtime after that failure, the attach defers that
-  runtime's restore, so nothing relaunches the row under the wrong scope, and
-  the session controller retries the migration when it is built: a successful
+  The session controller retries the migration when it is built: a successful
   retry makes the row this session's, while a failed retry leaves it ownerless
-  and restores nothing. The launch workspace runtime is created before any
-  session resumes, so its controller may still hold an ownerless copy of a row
-  the migration has since given to a session. A resume therefore also
-  reconciles that controller: the owner migration runs, then the workspace
-  controller adopts the migrated rows and persists that adoption, and only then
-  is the session controller built. The session controller therefore loads a
-  ledger the workspace controller can no longer add an ownerless copy to. The
-  ledger merge is the backstop — it refuses to write an ownerless copy over a
-  copy of the same launch that records an owner, so a stale copy cannot bring
-  back a launch a session has stopped.
+  and restores nothing. A resumed attach also defers the workspace controller's
+  restore of ownerless rows, whatever the migration outcome, until its required
+  history checkpoint succeeds: a restored child can outlive an attach that then
+  fails, because the fail-closed path releases the workspace lease but shutdown
+  aborts only tracked children. Only a resume that has reconciled its ownership
+  releases that deferred restore, and it does so after the checkpoint. An
+  ordinary `session/new` never migrates, so it cannot show that ownership is
+  reconciled and never releases a blocked restore; it may only complete one a
+  resume has already released. A restore pass that fails keeps the obligation,
+  and a later acquisition retries it.
+
+  The launch workspace runtime is created before any session resumes, so its
+  controller may still hold an ownerless copy of a row the migration has since
+  given to a session. A resume therefore also reconciles that controller before
+  the session controller is built: the owner migration runs, then the workspace
+  controller adopts the migrated rows. Adoption and its save are best effort: a
+  failure is logged and the attach continues. When the migration succeeded the
+  durable ledger already records the owner, and the ledger merge refuses to
+  write an ownerless copy over a copy of the same launch that records an owner,
+  so a stale copy cannot become durable. If the adoption itself fails, the
+  resume keeps the workspace-scope restore deferred, so the workspace controller
+  cannot relaunch a row the ledger attributes to the session.
 - **Provider request capacity** – For a custom provider with
   `max_in_flight_requests` configured, each ACP session's subagent controller
   caps its own child concurrency at one fewer than the provider limit, computed

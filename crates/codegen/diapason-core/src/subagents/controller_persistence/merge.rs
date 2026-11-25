@@ -71,7 +71,7 @@ pub(super) fn merge_unscoped_background_records(
 /// `clear` touches the map. A controller therefore still holds every id it
 /// committed at the moment another controller writes a replacement under one,
 /// so that snapshot carries the id and the replacement survives the join. The
-/// retain arm that would drop a newer launch under an authorised id is
+/// retain arm that would drop a newer launch under an authorized id is
 /// unreachable in production and exists only to keep the branch total.
 pub(super) fn merge_background_records(
     persisted: Vec<PersistedBackgroundRecord>,

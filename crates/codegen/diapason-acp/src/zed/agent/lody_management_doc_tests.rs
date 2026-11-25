@@ -115,7 +115,7 @@ fn published_list_response_matches_the_management_projection() {
 /// diverge from the documented notification. Asserting the example's shape by
 /// hand would let the two drift apart while both stayed internally consistent.
 #[test]
-fn published_usage_update_matches_the_serialised_notification() {
+fn published_usage_update_matches_the_serialized_notification() {
     let example = load_example("docs/acp/ACP_QUICK_REFERENCE.md", "acp-quick-reference-usage-update")
         .expect("the quick reference must publish a marked usage example");
     assert_eq!(example.language, "json", "the usage example must stay a JSON notification body");

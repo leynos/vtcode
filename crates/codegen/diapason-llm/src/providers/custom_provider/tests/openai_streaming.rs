@@ -266,7 +266,7 @@ async fn openai_chat_stream_usage_obeys_profile_precedence_and_decodes_terminal_
                 // The finish frame arrives before the usage frame, matching the
                 // order OpenAI sends in production. The decoder must keep
                 // reading after `finish_reason` so the trailing usage chunk is
-                // still captured; finalising on the finish frame would lose
+                // still captured; finalizing on the finish frame would lose
                 // these totals.
                 .set_body_string(
                     "data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"answer\"},\"finish_reason\":null}]}\n\n\
@@ -313,7 +313,7 @@ async fn openai_chat_stream_usage_obeys_profile_precedence_and_decodes_terminal_
     let usage = response.usage.expect("terminal Baseten usage should be retained");
     assert_eq!((usage.prompt_tokens, usage.completion_tokens, usage.total_tokens), (13, 5, 18));
     // The finish reason was recorded by the frame that preceded the usage
-    // chunk, so a decoder that finalised on that frame would fail here.
+    // chunk, so a decoder that finalized on that frame would fail here.
     assert_eq!(response.finish_reason, FinishReason::Length);
     drop(collect_completed_response(&router, OPTED_OUT_MODEL).await);
 

@@ -64,7 +64,7 @@ async fn archive_paths_attach_only_to_the_launch_that_named_the_session() {
 /// earlier run's archive is written over the replacement, which then reports
 /// output it never produced.
 #[tokio::test]
-async fn a_repeated_session_id_does_not_attach_the_earlier_launchs_archive() {
+async fn a_repeated_session_id_does_not_attach_the_earlier_launch_archive() {
     let temp = TempDir::new().expect("tempdir");
     let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
 

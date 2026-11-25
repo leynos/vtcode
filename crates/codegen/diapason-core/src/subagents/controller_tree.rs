@@ -103,7 +103,7 @@ impl SubagentController {
     /// close a cycle: attaching this controller, one of its ancestors, or one
     /// of its descendants would make the tree unreachable. The check compares
     /// the shared controller-state `Arc`s, so a clone wrapped in a second outer
-    /// `Arc` is still recognised as the same controller.
+    /// `Arc` is still recognized as the same controller.
     ///
     /// A record that already tracks a controller cannot be re-pointed at a
     /// different one. The displaced controller keeps its own children, which
@@ -121,7 +121,7 @@ impl SubagentController {
     /// either published their link, which creates an `Arc` cycle that leaks the
     /// subtree and never terminates a traversal. A controller bound to a
     /// different lock scope can never be published (the child-id adoption
-    /// rejects it), so this tree's guard serialises every attachment that can
+    /// rejects it), so this tree's guard serializes every attachment that can
     /// succeed.
     ///
     /// A controller that another record already lists belongs to that record's

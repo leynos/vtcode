@@ -81,3 +81,49 @@ fn a_live_snapshot_record_survives_ambiguous_persisted_rows() {
         "the surviving copy is the snapshot's launch"
     );
 }
+
+/// A legacy stop does not govern a snapshot naming another child session.
+///
+/// Both rows carry an empty exec session, but they name different child
+/// sessions, so they are different launches. Grouping them as one launch let
+/// the stop cancel a launch it never described; the newer launch must instead
+/// supersede the older one under the ordinary restart rule.
+#[test]
+fn a_legacy_stop_does_not_govern_a_snapshot_naming_another_child_session() {
+    // Shape 0 is `worker` owned by `session-a`; the fixtures share one child
+    // session unless a case names another.
+    let stopped = merge_launch_record(0, 1, false, "", "persisted-stop");
+    let mut restarted = merge_launch_record(0, 3, true, "", "snapshot-restart");
+    restarted.session_id = "child-session-restarted".to_string();
+
+    let merged =
+        merge_background_records(vec![stopped], vec![restarted], None, &BTreeSet::new(), &BTreeMap::new(), &[]);
+
+    assert_eq!(merged.len(), 1, "the ledger keeps one row per canonical id");
+    assert_eq!(
+        merge_state(&merged[0]),
+        ("snapshot-restart".to_owned(), true, "running".to_owned()),
+        "the newer launch survives; another launch's stop does not cancel it"
+    );
+}
+
+/// A legacy stop still governs a refresh of the child session it stopped.
+///
+/// The intended handling of a genuine legacy stop: both rows name the same
+/// child session, so they are copies of one launch and the stop outranks the
+/// refresh whatever its timestamp.
+#[test]
+fn a_legacy_stop_still_governs_a_refresh_of_its_own_child_session() {
+    let stopped = merge_launch_record(0, 1, false, "", "persisted-stop");
+    let refreshed = merge_launch_record(0, 3, true, "", "snapshot-refresh");
+
+    let merged =
+        merge_background_records(vec![stopped], vec![refreshed], None, &BTreeSet::new(), &BTreeMap::new(), &[]);
+
+    assert_eq!(merged.len(), 1);
+    assert_eq!(
+        merge_state(&merged[0]),
+        ("persisted-stop".to_owned(), false, "stopped".to_owned()),
+        "a refresh must not resurrect the legacy launch it stopped"
+    );
+}

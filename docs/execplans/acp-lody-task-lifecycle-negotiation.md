@@ -1820,8 +1820,9 @@ nine failed pre-merge rows. This round dispositions all of them.
   is set. A record owned by another session is never selected, so isolation is
   preserved. `legacy_restore_ignores_records_owned_by_a_session` proves the
   exclusion and contrasts it with the unfiltered restore.
-- **Spelling and read-boundary wording (outside diff).** `serialised` became
-  `serialized`, and the read-boundary description now says "each successful
+- **Spelling and read-boundary wording (outside diff).** The British spelling
+  in that test's name became the Oxford `-ize` form, and the read-boundary
+  description now says "each successful
   `_lody/subagents/output` read of the owned background task".
 - **User-facing documentation.** The 0.157.0 notes now list all four structs
   that gained a field, including `SubagentControllerConfig.output_reader` and
@@ -1939,7 +1940,7 @@ closes or rebuts each one.
 
 ### Revision note (2026-11-11, r30 round: inline review threads)
 
-- **Ledger serialisation (Major, `controller_spawn_run.rs`).**
+- **Ledger serialization (Major, `controller_spawn_run.rs`).**
   `save_background_state` now holds an inter-process advisory lock
   (`background_subagents.lock`, `fs2::FileExt::lock_exclusive`) across the
   reload, merge and write in both save branches, in addition to the existing
@@ -2001,7 +2002,7 @@ closes or rebuts each one.
 
 - **Usage-method assertion (Trivial, `buffered_usage.rs`).** The buffered-path
   helper now compares the decoded notification method with the literal
-  `lody/session/usage_update` instead of normalising the producer's constant,
+  `lody/session/usage_update` instead of normalizing the producer's constant,
   so an extra underscore or a producer rename fails the assertion. The SDK
   strips exactly one leading underscore when it decodes a custom notification,
   which is why the literal is the exact decoded name.
@@ -2214,7 +2215,7 @@ Two of them target the r39 attachment work, and both are accepted.
   unioned the joining subtree's ids into the tree, which hides an id both sides
   already hold. The adapter lists the whole tree and routes a bare id to the
   first controller that claims it, so such a duplicate double-lists and
-  mis-routes.
+  misroutes.
 - **Correction.** `ChildIdScopeSlot` is now one object per subtree — an
   `RwLock<Arc<ChildIdScope>>` — and a controller holds
   `Arc<std::sync::RwLock<Arc<ChildIdScopeSlot>>>`. A child adopts its parent's
@@ -2635,7 +2636,7 @@ the current tree first; the dispositions below record what actually changed.
 6. *Usage example tested through the serializer* (finding `4586902326`). The
    published usage notification was compared against a hand-written shape.
    `response_usage_notification` is now `pub(super)` and
-   `published_usage_update_matches_the_serialised_notification` compares the
+   `published_usage_update_matches_the_serialized_notification` compares the
    guide's own counts and model name against the bytes the adapter serializes,
    so a field rename or a changed optional-count rule fails the test instead of
    leaving both sides internally consistent.
@@ -2702,7 +2703,7 @@ follow-ups CodeRabbit posted to the replies on the same threads.
    child-id allocation) and the persistence mutex (background-ledger saves).
    `SubagentController` holds an `Arc<SubagentLockScope>` through its config
    and a child-scoped controller inherits its parent's scope, so one tree
-   serialises against itself. `default_lock_scope()` is still one
+   serializes against itself. `default_lock_scope()` is still one
    process-global instance, so a controller built without an explicit scope
    excludes other such controllers exactly as the former statics did; the
    default is the compatibility path, not a weaker guarantee.
@@ -2776,3 +2777,24 @@ follow-ups CodeRabbit posted to the replies on the same threads.
     never exceeds the limit, and returns the whole output once the limit covers
     it. The property replaces the assumption that the hand-written cases cover
     the message-boundary behaviour.
+
+### Revision note (2026-11-25, r31 round: rebase onto the spelling baseline)
+
+- **The base moved under the branch.** Main advanced eleven commits, including a
+  repository-wide Oxford spelling gate (`typos.toml`, `scripts/check-spelling.sh`,
+  a `Spelling` workflow, and `spelling` and `github-actions-lint` added to
+  `make lint`). The merge therefore makes the spelling policy part of this
+  branch's own `make lint`, so every line this branch adds must use the Oxford
+  `-ize` forms. The words that need correcting are confined to lines this
+  branch added; the rest of the tree already complies.
+- **Two merge conflicts, both mechanical.** `subagents/types.rs` is deleted on
+  this branch (split into `types/{status,snapshot,ledger_view,foreground}.rs`)
+  and modified on main, so the resolution keeps the split and ports main's
+  three reworded wire-key tests into their new homes.
+  `scripts/zen_allowlist.txt` is resolved to main's renamed
+  `model_picker/rendering/mod.rs` path with this branch's `init.rs:528` line.
+- **The 300-file review limit is now a delivery constraint.** CodeRabbit skips a
+  PR over 300 changed files, and this branch reached 306. Consolidating small
+  sibling modules into an inline `mod` in their parent removes the extra paths
+  without changing any module path, so test names and imports are unaffected;
+  the destinations all stay under the 400-line budget.

@@ -17,7 +17,7 @@ pub(super) fn record_with_restart_state(
 ) -> PersistedBackgroundRecord {
     let mut value = serde_json::to_value(persisted_background_record_for_owner(id, owner_session_id))
         .expect("serialize fixture record");
-    // The archive reader authorises a row by rebuilding its exec-session id
+    // The archive reader authorizes a row by rebuilding its exec-session id
     // from its own session id, so the shared fixture carries a launch-shaped
     // pair rather than two unrelated identifiers.
     value["exec_session_id"] = serde_json::json!(format!("exec-session-{id}-1-1"));
@@ -79,7 +79,7 @@ pub(super) fn stale_launch_plan(exec_session_id: &str) -> BackgroundRunPlan {
 ///
 /// The ledger lives under the shared workspace-directory helper, which honours
 /// an override, so building fixtures from a hard-coded `.diapason/state` path
-/// would desynchronise them from the loader whenever a test or the harness
+/// would desynchronize them from the loader whenever a test or the harness
 /// points the workspace directory somewhere else. Every fixture that writes the
 /// ledger must therefore resolve it here.
 pub(super) fn background_ledger_path(workspace_root: &std::path::Path) -> PathBuf {

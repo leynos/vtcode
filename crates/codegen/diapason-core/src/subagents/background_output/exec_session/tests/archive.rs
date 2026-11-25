@@ -1,8 +1,8 @@
-//! Archive-authorisation, PTY-fallback and classifier contracts for output reads.
+//! Archive-authorization, PTY-fallback and classifier contracts for output reads.
 //!
 //! Declared by `exec_session/tests/mod.rs`. These cases pin the launch-pairing
 //! archive rule (a record's exec-session id must embed its session id), the
-//! store-authorised archive rule (a recorded path is served only when it
+//! store-authorized archive rule (a recorded path is served only when it
 //! resolves to the task's own session), the PTY-handle fallback and the shared
 //! missing-session classifier; they build their managers with the fixtures in
 //! `exec_session/tests/fixtures.rs`.
@@ -23,7 +23,7 @@ use tempfile::tempdir;
 /// A session-store fault decides the read even when the record names a path.
 ///
 /// The store is the only authority for which file is this task's archive, so a
-/// recorded path cannot be authorised while that lookup fails. Serving it on
+/// recorded path cannot be authorized while that lookup fails. Serving it on
 /// the record's word alone would let a record read any file the workspace
 /// contains, which is the cross-task read this adapter refuses.
 #[tokio::test]
@@ -50,7 +50,7 @@ async fn a_session_store_fault_refuses_a_recorded_archive() -> anyhow::Result<()
             archive_path: Some(&archive_path),
         })
         .await
-        .expect_err("a recorded path cannot be authorised while the store lookup faults");
+        .expect_err("a recorded path cannot be authorized while the store lookup faults");
 
     assert!(
         matches!(error, BackgroundOutputError::Archived(_)),
@@ -468,16 +468,16 @@ async fn a_record_whose_exec_session_does_not_embed_its_session_is_refused() -> 
     Ok(())
 }
 
-/// A caller-chosen `--session-id` authorises nothing.
+/// A caller-chosen `--session-id` authorizes nothing.
 ///
 /// The controller passes its task session to its own launches as
 /// `--session-id`, but an ordinary exec invocation can pass the same flag. The
-/// reader authorises from the record's own pair of identifiers and never from a
+/// reader authorizes from the record's own pair of identifiers and never from a
 /// command, so naming another task's session on an unrelated exec session does
 /// not open that task's archive.
 #[tokio::test]
 #[serial_test::serial(session_dir_override)]
-async fn a_caller_chosen_session_id_flag_does_not_authorise_an_archive_read() -> anyhow::Result<()> {
+async fn a_caller_chosen_session_id_flag_does_not_authorize_an_archive_read() -> anyhow::Result<()> {
     let temp = tempdir()?;
     let sessions_dir = temp.path().join("sessions");
     std::fs::create_dir_all(&sessions_dir)?;
@@ -514,7 +514,7 @@ async fn a_caller_chosen_session_id_flag_does_not_authorise_an_archive_read() ->
             archive_path: None,
         })
         .await
-        .expect_err("a command-line session id must not authorise an archive read");
+        .expect_err("a command-line session id must not authorize an archive read");
 
     manager.close_session(exec_session_id.as_str()).await?;
 

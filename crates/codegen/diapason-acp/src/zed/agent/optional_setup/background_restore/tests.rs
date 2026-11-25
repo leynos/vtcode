@@ -157,7 +157,7 @@ fn rollback_selects_only_launches_the_ledger_does_not_record() {
     );
 }
 
-/// An unverifiable ledger must not authorise stopping anything: a launch it
+/// An unverifiable ledger must not authorize stopping anything: a launch it
 /// might still record could be durable, and the in-memory controller still
 /// tracks the live process.
 #[test]

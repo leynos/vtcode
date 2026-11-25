@@ -55,6 +55,7 @@ fn launched_by_snapshot(
                 record.exec_session_id != persisted.exec_session_id
                     && names_a_launch_of_its_own(&record)
                     && record.launch_moment() >= persisted.launch_moment()
+                    && start_evidence_outranks_persisted(&record, persisted)
             }
         };
         if supersedes {
@@ -62,6 +63,24 @@ fn launched_by_snapshot(
         }
     }
     launched
+}
+
+/// Whether this copy's launch evidence may supersede a different persisted launch.
+///
+/// A copy that recorded its start is a launch this controller began, and the
+/// ordinary moment comparison decides it. A copy that has not recorded a start
+/// is a claim: its `launch_moment` is only the moment the claim was written, and
+/// comparing that against a persisted launch's `started_at` compares two
+/// different quantities. A claim could then appear newer than a replacement
+/// that was persisted after it merely because the replacement's process began
+/// earlier, and the replacement would be erased from the ledger. Such a claim
+/// can displace another claim, but a persisted launch that recorded a start
+/// survives it.
+fn start_evidence_outranks_persisted(
+    record: &PersistedBackgroundRecord,
+    persisted: &PersistedBackgroundRecord,
+) -> bool {
+    record.started_at.is_some() || persisted.started_at.is_none()
 }
 
 /// Whether `record` carries evidence of a launch of its own.
@@ -385,6 +404,25 @@ fn reduce_persisted_launches(
         .collect()
 }
 
+/// The key one copy is reduced under within its canonical id.
+///
+/// A named exec session is the launch. A legacy row names none, so the child
+/// session it carries is the identity left: grouping two legacy copies together
+/// on a shared blank value would let a stop of one launch govern a refresh of
+/// another, and a restart of a legacy record mints a fresh child session. The
+/// prefixes keep the two namespaces apart. A row that names neither falls into
+/// the shared unidentified slot; the ambiguity rule has already excluded the
+/// persisted duplicates that could reach here.
+fn launch_group_key(record: &PersistedBackgroundRecord) -> String {
+    if !record.exec_session_id.is_empty() {
+        format!("exec:{}", record.exec_session_id)
+    } else if !record.session_id.is_empty() {
+        format!("session:{}", record.session_id)
+    } else {
+        String::new()
+    }
+}
+
 /// Groups copies of each canonical record by launch, keeping one copy per launch.
 ///
 /// Within one launch the survivor is chosen by these rules, in this order:
@@ -392,25 +430,27 @@ fn reduce_persisted_launches(
 /// 1. a copy that no longer wants the launch outranks one that still does, so a
 ///    refresh that only advanced `updated_at` cannot resurrect a stopped task;
 /// 2. a copy with a strictly newer `updated_at` outranks an older one;
-/// 3. a copy whose status is settled (`Stopped` or `Error`) outranks one that
-///    reports an active status, because the settled copy records an outcome of
-///    the same launch while the active copy is the pre-settlement snapshot;
+/// 3. of two copies tied on intent and freshness, the one whose status records
+///    the later phase of the same launch outranks the other: a settled copy
+///    (`Stopped`, then `Error`) outranks an active one, and `Running` outranks
+///    `Starting`. A recorded failure outranks a bare stop because the
+///    settlement path never relabels a failure as completed;
 /// 4. a copy the snapshot side carries outranks the persisted copy it equals.
 ///
 /// Rule 3 is what breaks a tie deterministically. Two copies of one launch with
 /// equal `updated_at` and agreeing intent used to replace each other, so the
-/// ledger's file order decided which record a load reported; the settled copy is
-/// now chosen whichever of the two is listed first. Rule 2 still comes first, so
-/// a strictly newer copy always wins, whatever status it reports.
+/// ledger's file order decided which record a load reported; the later-phase
+/// copy is now chosen whichever of the two is listed first. Rule 2 still comes
+/// first, so a strictly newer copy always wins, whatever status it reports.
 fn reduce_launch_copies(
     candidates: impl IntoIterator<Item = LaunchCandidate>,
 ) -> BTreeMap<String, BTreeMap<String, LaunchCandidate>> {
     let mut launches: BTreeMap<String, BTreeMap<String, LaunchCandidate>> = BTreeMap::new();
     for candidate in candidates {
         let id = candidate.record.id.clone();
-        let exec_session_id = candidate.record.exec_session_id.clone();
+        let launch_key = launch_group_key(&candidate.record);
         let sessions = launches.entry(id).or_default();
-        match sessions.entry(exec_session_id) {
+        match sessions.entry(launch_key) {
             std::collections::btree_map::Entry::Occupied(mut entry) => {
                 if copy_replaces(entry.get(), &candidate) {
                     entry.insert(candidate);
@@ -440,14 +480,13 @@ fn copy_replaces(current: &LaunchCandidate, candidate: &LaunchCandidate) -> bool
     if candidate.record.updated_at != current.record.updated_at {
         return candidate.record.updated_at > current.record.updated_at;
     }
-    if settled_status_outranks(&candidate.record, &current.record) {
-        return true;
+    let candidate_rank = status_phase_rank(candidate.record.status);
+    let current_rank = status_phase_rank(current.record.status);
+    if candidate_rank != current_rank {
+        return candidate_rank > current_rank;
     }
-    if settled_status_outranks(&current.record, &candidate.record) {
-        return false;
-    }
-    // Both copies now agree on intent, freshness and settlement, so only the
-    // side each came from is left to decide.
+    // Both copies now agree on intent, freshness and the phase they record, so
+    // only the side each came from is left to decide.
     later_arrival_wins(current, candidate)
 }
 
@@ -465,14 +504,20 @@ fn later_arrival_wins(current: &LaunchCandidate, candidate: &LaunchCandidate) ->
     }
 }
 
-/// Whether `candidate` records a settled outcome of a launch `current` reports as active.
+/// Orders two statuses of one launch by the phase they record.
 ///
-/// `Stopped` and `Error` are outcomes of the same launch, and an active status
-/// is the pre-settlement copy of it, so the settled copy is the later state
-/// whichever row the ledger lists first. Without this, two copies with equal
-/// `updated_at` and agreeing intent replaced each other and file order chose.
-fn settled_status_outranks(candidate: &PersistedBackgroundRecord, current: &PersistedBackgroundRecord) -> bool {
-    !candidate.status.is_active() && current.status.is_active()
+/// Higher wins: `Error` (a recorded failure) over `Stopped` (a confirmed
+/// stop), then `Running` (the later active phase), then `Starting` (the claim).
+/// A failure outranks a stop because the settlement path never relabels a
+/// failure as a completed stop; an active phase outranks a settled one only
+/// through its rank, so a settled copy still beats any active copy.
+const fn status_phase_rank(status: crate::subagents::BackgroundSubprocessStatus) -> u8 {
+    match status {
+        crate::subagents::BackgroundSubprocessStatus::Starting => 0,
+        crate::subagents::BackgroundSubprocessStatus::Running => 1,
+        crate::subagents::BackgroundSubprocessStatus::Stopped => 2,
+        crate::subagents::BackgroundSubprocessStatus::Error => 3,
+    }
 }
 
 #[cfg(test)]

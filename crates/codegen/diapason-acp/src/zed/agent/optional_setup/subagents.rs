@@ -24,9 +24,10 @@ pub(in crate::zed::agent) struct AcpSubagentControllerSetup<'a> {
     /// a caller can run a durability checkpoint before any child is launched.
     ///
     /// It applies to both controller scopes. A resumed session defers its own
-    /// restore so a failed attach cannot leave a restored child behind, and
-    /// workspace initialisation defers the workspace controller's restore of
-    /// ownerless rows so it cannot relaunch a row a session may yet adopt.
+    /// restore so a failed attach cannot leave a restored child behind, and a
+    /// resumed attach also defers the workspace controller's restore of
+    /// ownerless rows: that restore must wait for the same checkpoint, and it
+    /// may relaunch a row a session may yet adopt.
     pub(in crate::zed::agent) defer_background_restore: bool,
     /// Whether the resume-site owner migration failed, so controller
     /// construction must retry it before the controller loads the ledger.
@@ -205,11 +206,14 @@ pub(in crate::zed::agent) async fn restore_acp_session_background_subagents(
 /// Restores the ownerless background records an already-built workspace
 /// controller holds.
 ///
-/// A workspace runtime built while a resumed session's owner migration was
-/// unresolved skipped this restore, because the rows that session launched were
-/// still ownerless and would have been relaunched as workspace work. Once
-/// ownership is reconciled the skip is retried through this entry point, which
-/// is the same legacy-only restore the build would have run.
+/// A workspace runtime built for a resumed attach skipped this restore, because
+/// the rows that session launched may still be ownerless and would have been
+/// relaunched as workspace work, and because a restored child must not outlive
+/// an attach that later fails. Once a resume has reconciled ownership and
+/// passed its required checkpoint, the skip is retried through this entry
+/// point, which is the same legacy-only restore the build would have run. The
+/// caller keeps the obligation when the pass fails, so a later acquisition can
+/// retry it.
 pub(in crate::zed::agent) async fn restore_workspace_background_subagents(
     controller: &SubagentController,
     config: &DiapasonConfig,

@@ -63,7 +63,7 @@ def _split_rendered_code_span(rendered: str) -> tuple[int, str]:
 
 
 def _gfm_decode_code_span(content: str) -> str:
-    """Apply GFM's whitespace normalisation to a code span's raw content.
+    """Apply GFM's whitespace normalization to a code span's raw content.
 
     GFM removes exactly one space from each end when the content both begins
     and ends with a space, but is not made only of spaces. Modelling that rule
@@ -160,7 +160,7 @@ def test_format_code_span_uses_the_shortest_safe_delimiter() -> None:
         )
 
 
-def test_format_code_span_survives_gfm_whitespace_normalisation() -> None:
+def test_format_code_span_survives_gfm_whitespace_normalization() -> None:
     """A boundary-space value must decode back to itself under GFM's rule.
 
     The generator adds one space on each side of a value that both starts and

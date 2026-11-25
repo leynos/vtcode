@@ -5,8 +5,8 @@ use agent_client_protocol::Error as SdkError;
 #[cfg(test)]
 use diapason_core::subagents::BackgroundSubprocessStatus;
 use diapason_core::subagents::{
-    BackgroundLiveness, BackgroundOutputError, BackgroundSubprocessEntry, SubagentController, SubagentStatusEntry,
-    TaskOwner, owned_background_ids, owned_child_ids, resolve_owned_background_id,
+    BackgroundLiveness, BackgroundOutputError, BackgroundStopOutcome, BackgroundSubprocessEntry, SubagentController,
+    SubagentStatusEntry, TaskOwner, owned_background_ids, owned_child_ids, resolve_owned_background_id,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -373,25 +373,31 @@ async fn cancel_subagent(agent: &ZedAgent, request: CancelSubagentRequest) -> Re
             .force_cancel_background(TaskOwner::Session(&request.session_id), &resolved_task_id)
             .await
             .map_err(internal_management_error)?;
-        // A stop is complete only once the exec session is closed. Reporting
-        // success for a close the runtime could not confirm told the client a
-        // task had stopped while its process might still be running.
-        if outcome.is_close_pending() {
-            // The record's fault names the exec session the close could not
-            // confirm, so only the bounded category is returned; the fault
-            // itself stays in the debug-only suppressed detail.
-            if let Some(fault) = outcome.entry().error.as_deref() {
-                // The helper takes `&impl Display`; its implicit `Sized` bound
-                // excludes `str`, so the fault slice is passed by reference.
-                log_suppressed_error(&fault, "lody_subagent_management", CLOSE_PENDING_DETAIL);
-            }
-            return Err(SdkError::internal_error()
-                .data(serde_json::json!({ "reason": "subagent_close_pending", "detail": CLOSE_PENDING_DETAIL })));
-        }
-        return Ok(serde_json::json!({}));
+        return background_stop_response(&outcome);
     }
     let _ = request.reason;
     Err(unknown_task_error())
+}
+
+/// Answers a background stop with the management surface's bounded response.
+///
+/// A stop is complete only once its exec session is closed, so reporting
+/// success for a close the runtime could not confirm would tell the client a
+/// task had stopped while its process might still be running. The record's
+/// fault names the exec session the close could not confirm and can carry a
+/// workspace path in its context, so only the bounded category is returned; the
+/// fault itself stays in the debug-only suppressed detail.
+fn background_stop_response(outcome: &BackgroundStopOutcome) -> Result<Value, SdkError> {
+    if !outcome.is_close_pending() {
+        return Ok(serde_json::json!({}));
+    }
+    if let Some(fault) = outcome.entry().error.as_deref() {
+        // The helper takes `&impl Display`; its implicit `Sized` bound excludes
+        // `str`, so the fault slice is passed by reference.
+        log_suppressed_error(&fault, "lody_subagent_management", CLOSE_PENDING_DETAIL);
+    }
+    Err(SdkError::internal_error()
+        .data(serde_json::json!({ "reason": "subagent_close_pending", "detail": CLOSE_PENDING_DETAIL })))
 }
 
 async fn subagent_output(agent: &ZedAgent, request: SubagentOutputRequest) -> Result<Value, SdkError> {
@@ -528,6 +534,51 @@ mod bounded_failure_tests {
             !CLOSE_PENDING_DETAIL.contains('/'),
             "the close-pending detail must not name a path: {CLOSE_PENDING_DETAIL}"
         );
+    }
+
+    /// A close fault names the exec session it could not stop, so the stop's
+    /// response carries the bounded category instead of the record's fault.
+    ///
+    /// The controller's close-fault seam is test-only inside the controller
+    /// crate, which this adapter cannot arm, so the regression drives the exact
+    /// response builder `cancel_subagent` returns with the fault shape a real
+    /// close produces: the command context names the exec session and its cause
+    /// may name a workspace path.
+    #[test]
+    fn a_close_pending_stop_reports_a_bounded_response() {
+        let entry: BackgroundSubprocessEntry = serde_json::from_value(serde_json::json!({
+            "id": "background-worker",
+            "owner_session_id": "session-a",
+            "session_id": "session-worker",
+            "exec_session_id": "exec-worker-1",
+            "agent_name": "worker",
+            "display_label": "worker",
+            "description": "worker",
+            "source": "builtin",
+            "status": "running",
+            "desired_enabled": false,
+            "created_at": "2026-08-28T00:00:00Z",
+            "updated_at": "2026-08-28T00:00:00Z",
+            "error": "Failed to close background exec session exec-worker-1: failed to terminate \
+                      exec session '/home/operator/.diapason/state/pty-1.sock'",
+        }))
+        .expect("a close-fault record");
+        let error = background_stop_response(&BackgroundStopOutcome::ClosePending(entry))
+            .expect_err("an unconfirmed close must be refused, not reported as a completed stop");
+        let data = error.data.expect("the close-pending refusal carries data");
+        assert_eq!(
+            data.get("reason").and_then(Value::as_str),
+            Some("subagent_close_pending"),
+            "the refusal keeps its own retryable reason"
+        );
+        assert_eq!(
+            data.get("detail").and_then(Value::as_str),
+            Some(CLOSE_PENDING_DETAIL),
+            "the refusal keeps its bounded detail"
+        );
+        let rendered = data.to_string();
+        assert!(!rendered.contains("exec-worker-1"), "the response must not carry the exec-session id: {rendered}");
+        assert!(!rendered.contains('/'), "the response must not carry a path: {rendered}");
     }
 }
 

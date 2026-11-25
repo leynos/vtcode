@@ -42,7 +42,7 @@ pub(super) fn background_launch_session_id(session_base: &str) -> String {
 /// first is still starting — a failure settlement could blame on the winner's
 /// live record. A process-wide counter makes every launch distinct.
 pub(super) fn background_exec_session_id(session_id: &str) -> String {
-    // The archive reader authorises a restored row by rebuilding this id from
+    // The archive reader authorizes a restored row by rebuilding this id from
     // the record's own session id, so the pair is built through the shared
     // helper rather than a second copy of the convention.
     controller_exec_session_id(session_id, std::process::id(), next_background_launch_sequence())
@@ -236,7 +236,7 @@ impl SubagentController {
     /// A ledger that cannot be locked is a fault, not an absence of claims: the
     /// reservation below takes the same lock and reports the same failure, so
     /// the start never spawns without having read the row it might overwrite.
-    async fn refuse_explicit_start_over_competing_claim(&self, plan: &BackgroundRunPlan) -> Result<()> {
+    pub(super) async fn refuse_explicit_start_over_competing_claim(&self, plan: &BackgroundRunPlan) -> Result<()> {
         if plan.expected_exec_session_id.is_some() || self.config.managed_background_runtime {
             return Ok(());
         }
@@ -934,6 +934,21 @@ mod reservation_error_tests {
             record.error
         );
         assert!(record.ended_at.is_some(), "a settled reservation failure has ended");
+        // The record's error is the value a client receives as the task's
+        // `stopReason`, so the deadline must project a category that names no
+        // local path. The caller's own error still carries the full chain: it
+        // never leaves this process.
+        let projected = record.error.as_deref().expect("the settled failure records its category");
+        assert!(
+            !projected.contains('/') && !projected.contains("background_subagents.lock"),
+            "a client's stopReason must name no ledger path: {projected}"
+        );
+        assert!(projected.contains("ledger lock"), "the deadline keeps its bounded category: {projected}");
+        assert_eq!(
+            record.build_status_entry().error.as_deref(),
+            Some(projected),
+            "the entry a management transport projects carries the same category"
+        );
         drop(state);
 
         controller.signal_shutdown().await;

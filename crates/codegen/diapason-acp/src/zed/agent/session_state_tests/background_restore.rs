@@ -5,14 +5,16 @@
 //! failed attach, because the fail-closed path releases the workspace lease but
 //! shutdown aborts only tracked children, never restored background children.
 //!
-//! Two properties keep a failed attach from starting work it cannot stop, and
-//! from starting the same work twice:
+//! Three properties keep a failed attach from starting work it cannot stop,
+//! from starting the same work twice, and from losing the work it owes:
 //!
-//! * a failed attach must not restore a background sub-agent before its
-//!   required history checkpoint succeeds; and
-//! * a failed owner migration must defer the workspace controller's restore,
-//!   because the ownerless rows it would relaunch may yet be adopted by the
-//!   session controller on a retry.
+//! * a resumed attach must not restore a background sub-agent — its own or the
+//!   workspace scope's — before its required history checkpoint succeeds;
+//! * only a resume that reconciled its ownership may release the deferred
+//!   workspace restore, because the ownerless rows it would relaunch may yet be
+//!   adopted by the session controller on a retry; and
+//! * a restore pass that fails keeps its obligation, so a later acquisition
+//!   retries it instead of leaving the ownerless rows unrestored.
 use super::archive::archived_listing;
 use super::*;
 use crate::zed::session::AcpSessionWorkspace;
@@ -253,61 +255,27 @@ async fn failed_background_owner_migration_defers_workspace_restore() {
     );
 }
 
-/// A restore deferred by a failed migration is owed, not cancelled.
+/// A session that never migrates cannot release a restore a resume deferred.
 ///
-/// The deferral above protects a resumed session whose owner migration did not
-/// resolve: the workspace restore takes ownerless rows, so running it would
-/// relaunch a row that session may yet adopt. Skipping it forever would be a
-/// different bug — the ownerless row would then never be restored at all, even
-/// once ownership was reconciled. The runtime records the debt instead, and the
-/// next acquisition of that same runtime (a later `session/new` for the same
-/// workspace, which never migrates) runs it once.
-///
-/// The debt state is asserted directly rather than through a spawned fixture:
-/// the launch a restore makes cannot be recorded while the ledger's lock path
-/// is occupied, so a process-level observable would race its own rollback.
+/// The deferred debt exists because rows a resumed session launched may still be
+/// ownerless. A `session/new` acquisition never migrates, so its success is no
+/// evidence that ownership was reconciled; releasing the debt on it would let
+/// the workspace scope relaunch work a live session may still adopt. The
+/// persisted launch identity is the observable: a restore would have replaced
+/// the exec session the ledger names.
 #[tokio::test]
-async fn a_deferred_workspace_restore_stays_owed_until_the_runtime_is_reused() {
+async fn a_session_new_acquisition_does_not_release_a_restore_an_unresolved_migration_blocks() {
     let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
     let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
     let temp = TempDir::new().expect("create temporary workspace for the deferred-restore test");
     let launch_workspace = temp.path();
     let session_workspace = launch_workspace.join("session-workspace");
     fs::create_dir_all(&session_workspace).expect("create the session workspace");
-    write_background_restore_fixture(&session_workspace);
+    let marker = session_workspace.join("background-restored-marker");
+    write_background_restore_fixture_with_marker(&session_workspace, Some(&marker));
     let state_dir = session_workspace.join(diapason_commons::workspace_dir_name()).join("state");
     fs::create_dir_all(&state_dir).expect("create the background state directory");
-    let ledger_path = state_dir.join("background_subagents.json");
-    let seeded_ledger = serde_json::json!({
-        "records": [{
-            "id": "background-background-demo",
-            "agent_name": "background-demo",
-            "display_label": "background-demo",
-            "description": "background demo",
-            "source": "builtin",
-            "color": null,
-            "session_id": "session-background-demo-deferred",
-            "exec_session_id": "exec-missing",
-            "desired_enabled": true,
-            "status": "stopped",
-            "created_at": "2026-08-28T00:00:00Z",
-            "updated_at": "2026-08-28T00:00:00Z",
-            "started_at": null,
-            "ended_at": "2026-08-28T00:00:00Z",
-            "pid": null,
-            "prompt": "restore me",
-            "summary": null,
-            "error": null,
-            "archive_path": null,
-            "transcript_path": null,
-            "max_turns": null,
-            "model_override": null,
-            "reasoning_override": null,
-            "restart_attempts": 0
-        }]
-    });
-    fs::write(&ledger_path, serde_json::to_vec(&seeded_ledger).expect("serialize the seeded background ledger"))
-        .expect("seed the background ledger");
+    let ledger_path = seed_restorable_background_ledger(&state_dir, "deferred");
     fs::create_dir(state_dir.join("background_subagents.lock")).expect("occupy the ledger lock path with a directory");
     let mut vt_config = diapason_core::config::DiapasonConfig::default();
     vt_config.subagents.enabled = true;
@@ -342,10 +310,9 @@ async fn a_deferred_workspace_restore_stays_owed_until_the_runtime_is_reused() {
         "a restore deferred by a failed migration must stay owed instead of being dropped"
     );
 
-    // A later acquisition for the same workspace reuses the cached runtime and
-    // never migrates, so `workspace_runtime_for` itself releases the debt and
-    // claims it, running the restore exactly once. By the time it returns, the
-    // debt is already paid, and no later acquisition may pay it again.
+    // A later acquisition for the same workspace reuses the cached runtime. It
+    // never migrates, so it cannot prove ownership was reconciled and must leave
+    // the debt blocked rather than releasing and running it.
     let workspace = AcpSessionWorkspace::from_client_cwd(&session_workspace)
         .await
         .expect("build the reusing ACP session workspace");
@@ -355,17 +322,273 @@ async fn a_deferred_workspace_restore_stays_owed_until_the_runtime_is_reused() {
         .expect("a later acquisition must reuse the cached runtime");
     assert!(
         Arc::ptr_eq(reuse.runtime(), &workspace_runtime),
-        "the later acquisition must reuse the runtime the attach built, or the debt cannot be paid"
+        "the later acquisition must reuse the runtime the attach built"
     );
     assert!(
-        !workspace_runtime.pending_background_restore_is_blocked(),
-        "the reuse must have released the deferred restore it inherited"
+        workspace_runtime.pending_background_restore_is_blocked(),
+        "an acquisition that never migrates must not release a debt an unresolved migration blocks"
     );
     assert!(
-        !workspace_runtime.take_owed_background_restore(),
-        "the reuse must have paid the deferred restore, which must run only once"
+        !workspace_runtime.pending_background_restore_is_payable(),
+        "the blocked debt must not become payable on a session/new acquisition"
     );
     drop(reuse);
+
+    let ledger = fs::read_to_string(&ledger_path).expect("read the ledger after the reuse");
+    let persisted: serde_json::Value = serde_json::from_str(&ledger).expect("parse the ledger after the reuse");
+    assert_eq!(
+        persisted["records"][0]["exec_session_id"], "exec-missing",
+        "no restore may run while ownership is unresolved: {persisted}"
+    );
+
+    // The fixture script exits at once, so a restore would write the marker
+    // almost immediately. Poll briefly before asserting it never ran.
+    for _ in 0..20 {
+        if marker.exists() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert!(
+        !marker.exists(),
+        "the workspace scope must not restore a row while a resume's ownership is unresolved"
+    );
+}
+
+/// A resumed attach defers the workspace restore until its required checkpoint.
+///
+/// The migration succeeds here, which says nothing about when the workspace
+/// scope may restore ownerless rows: a child it starts before the attach's
+/// required history checkpoint can outlive an attach that then fails, because
+/// shutdown aborts only tracked children. The checkpoint is made to fail
+/// deterministically by occupying the archive path, and the untouched persisted
+/// launch identity proves the restore never ran.
+#[tokio::test]
+async fn a_resumed_attach_defers_the_workspace_restore_until_its_checkpoint() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp = TempDir::new().expect("create temporary workspace for the checkpoint-ordering test");
+    let launch_workspace = temp.path();
+    let session_workspace = launch_workspace.join("session-workspace");
+    fs::create_dir_all(&session_workspace).expect("create the session workspace");
+    let marker = session_workspace.join("background-restored-marker");
+    write_background_restore_fixture_with_marker(&session_workspace, Some(&marker));
+    let state_dir = session_workspace.join(diapason_commons::workspace_dir_name()).join("state");
+    fs::create_dir_all(&state_dir).expect("create the background state directory");
+    let ledger_path = seed_restorable_background_ledger(&state_dir, "checkpoint");
+    let mut vt_config = diapason_core::config::DiapasonConfig::default();
+    vt_config.subagents.enabled = true;
+    vt_config.subagents.background.enabled = true;
+    vt_config.subagents.background.auto_restore = true;
+    let agent = build_agent_with_vt_config(launch_workspace, "duck", Some(&vt_config)).await;
+    let session_id = acp::SessionId::new("background-checkpoint-ordering-session");
+    let mut listing = archived_listing("background-checkpoint-ordering", &session_workspace, "continue");
+    listing.snapshot.messages = vec![SessionMessage::from(&Message::assistant_with_tools(
+        String::new(),
+        vec![ToolCall::function(
+            "deferred-restore-call".to_string(),
+            "apply_patch".to_string(),
+            "{}".to_string(),
+        )],
+    ))];
+    listing.snapshot.total_messages = 1;
+    fs::create_dir(&listing.path).expect("occupy the archive path with a directory");
+
+    let error = match agent
+        .attach_thread_from_listing(
+            &session_id,
+            &AcpSessionWorkspace::from_client_cwd(&session_workspace)
+                .await
+                .expect("build the ACP session workspace from the session directory"),
+            listing,
+        )
+        .await
+    {
+        Ok(_) => panic!("a directory at the archive path must make the required checkpoint fail"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.to_string(),
+        "Failed to persist repaired ACP tool-call history: archive_write_failed",
+        "the deadline must fail at the required checkpoint"
+    );
+
+    let ledger = fs::read_to_string(&ledger_path).expect("read the ledger after the failed attach");
+    let persisted: serde_json::Value = serde_json::from_str(&ledger).expect("parse the ledger after the failed attach");
+    let record = &persisted["records"][0];
+    assert_eq!(
+        record["exec_session_id"], "exec-missing",
+        "a failed attach must not restore a child before its checkpoint: {persisted}"
+    );
+    assert_eq!(record["status"], "stopped", "the pending restore must leave the record stopped: {persisted}");
+    assert!(record["pid"].is_null(), "a restored record would have persisted a pid: {persisted}");
+
+    // The fixture script exits at once, so a restore would write the marker
+    // almost immediately. Poll briefly before asserting it never ran.
+    for _ in 0..20 {
+        if marker.exists() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert!(!marker.exists(), "a resumed attach must restore nothing before its required checkpoint succeeds");
+}
+
+/// A restore that fails keeps its obligation for a later attempt.
+///
+/// The first pass cannot take the ledger lock, so it restores nothing. The debt
+/// must stay owed afterwards, or the ownerless row would never come back; once
+/// the obstruction clears, a later acquisition retries the pass and the restored
+/// launch reaches the ledger and the fixture's marker.
+#[tokio::test]
+async fn a_failed_workspace_restore_stays_owed_and_a_later_attempt_restores() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp = TempDir::new().expect("create temporary workspace for the retried-restore test");
+    let launch_workspace = temp.path();
+    let session_workspace = launch_workspace.join("session-workspace");
+    fs::create_dir_all(&session_workspace).expect("create the session workspace");
+    let marker = session_workspace.join("background-restored-marker");
+    write_background_restore_fixture_with_marker(&session_workspace, Some(&marker));
+    let state_dir = session_workspace.join(diapason_commons::workspace_dir_name()).join("state");
+    fs::create_dir_all(&state_dir).expect("create the background state directory");
+    let ledger_path = seed_restorable_background_ledger(&state_dir, "retried");
+    let lock_path = state_dir.join("background_subagents.lock");
+    fs::create_dir(&lock_path).expect("occupy the ledger lock path with a directory");
+    let mut vt_config = diapason_core::config::DiapasonConfig::default();
+    vt_config.subagents.enabled = true;
+    vt_config.subagents.background.enabled = true;
+    vt_config.subagents.background.auto_restore = true;
+    let agent = build_agent_with_vt_config(launch_workspace, "duck", Some(&vt_config)).await;
+    let session_id = acp::SessionId::new("background-retried-restore-session");
+    let listing = archived_listing("background-retried-restore", &session_workspace, "continue");
+    let handle = agent
+        .attach_thread_from_listing(
+            &session_id,
+            &AcpSessionWorkspace::from_client_cwd(&session_workspace)
+                .await
+                .expect("build the ACP session workspace from the session directory"),
+            listing,
+        )
+        .await
+        .expect("attach must continue when background owner migration fails");
+    let workspace_runtime = {
+        let data = handle.data.lock().expect("lock the attached session data");
+        data.workspace_runtime
+            .clone()
+            .expect("attach must retain its workspace runtime")
+    };
+
+    // This acquire models the resumed attach's release once its migration is
+    // reconciled: the ledger is writable again, but the restore's own lock
+    // attempt still fails, because the sidecar path is occupied.
+    fs::remove_dir(&lock_path).expect("clear the ledger lock obstruction");
+    workspace_runtime.release_background_restore();
+    assert!(
+        workspace_runtime.pending_background_restore_is_payable(),
+        "a reconciled release makes the owed restore payable"
+    );
+    fs::create_dir(&lock_path).expect("occupy the ledger lock path again");
+    agent.run_owed_workspace_background_restore(&workspace_runtime).await;
+    assert!(
+        workspace_runtime.pending_background_restore_is_payable(),
+        "a failed restore must keep the obligation instead of discharging it"
+    );
+    let ledger = fs::read_to_string(&ledger_path).expect("read the ledger after the failed restore");
+    let persisted: serde_json::Value =
+        serde_json::from_str(&ledger).expect("parse the ledger after the failed restore");
+    assert_eq!(
+        persisted["records"][0]["exec_session_id"], "exec-missing",
+        "the failed pass must not persist a launch: {persisted}"
+    );
+
+    // A later acquisition reuses the runtime and retries the pass; this time the
+    // lock is available, so the row is restored and the debt is discharged.
+    fs::remove_dir(&lock_path).expect("clear the ledger lock obstruction");
+    let workspace = AcpSessionWorkspace::from_client_cwd(&session_workspace)
+        .await
+        .expect("build the retrying ACP session workspace");
+    let retry = agent
+        .workspace_runtime_for(&workspace, false)
+        .await
+        .expect("a later acquisition must reuse the cached runtime");
+    assert!(
+        Arc::ptr_eq(retry.runtime(), &workspace_runtime),
+        "the retry must reuse the runtime that carries the debt"
+    );
+    assert!(
+        !workspace_runtime.pending_background_restore_is_payable(),
+        "a successful pass must discharge the debt"
+    );
+    drop(retry);
+
+    // A restored launch replaces the exec session the ledger names.
+    for _ in 0..20 {
+        let restored = fs::read_to_string(&ledger_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+            .and_then(|ledger| ledger["records"][0]["exec_session_id"].as_str().map(str::to_owned));
+        if restored
+            .as_deref()
+            .is_some_and(|exec_session_id| exec_session_id != "exec-missing")
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    let ledger = fs::read_to_string(&ledger_path).expect("read the ledger after the retry");
+    let persisted: serde_json::Value = serde_json::from_str(&ledger).expect("parse the ledger after the retry");
+    assert_ne!(
+        persisted["records"][0]["exec_session_id"], "exec-missing",
+        "the retried pass must record the launch it restored: {persisted}"
+    );
+    for _ in 0..20 {
+        if marker.exists() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert!(marker.exists(), "the retried pass must actually execute the restored worker");
+}
+
+/// Seeds one ownerless `background-demo` row a workspace restore would relaunch.
+///
+/// The row names an exec session this process does not know, so a restore
+/// observes it as exited and relaunches the fixture script. It carries no owner,
+/// which is exactly the row a workspace-scope restore is authorized to take.
+fn seed_restorable_background_ledger(state_dir: &Path, suffix: &str) -> std::path::PathBuf {
+    let ledger_path = state_dir.join("background_subagents.json");
+    let seeded_ledger = serde_json::json!({
+        "records": [{
+            "id": "background-background-demo",
+            "agent_name": "background-demo",
+            "display_label": "background-demo",
+            "description": "background demo",
+            "source": "builtin",
+            "color": null,
+            "session_id": format!("session-background-demo-{suffix}"),
+            "exec_session_id": "exec-missing",
+            "desired_enabled": true,
+            "status": "stopped",
+            "created_at": "2026-08-28T00:00:00Z",
+            "updated_at": "2026-08-28T00:00:00Z",
+            "started_at": null,
+            "ended_at": "2026-08-28T00:00:00Z",
+            "pid": null,
+            "prompt": "restore me",
+            "summary": null,
+            "error": null,
+            "archive_path": null,
+            "transcript_path": null,
+            "max_turns": null,
+            "model_override": null,
+            "reasoning_override": null,
+            "restart_attempts": 0
+        }]
+    });
+    fs::write(&ledger_path, serde_json::to_vec(&seeded_ledger).expect("serialize the seeded background ledger"))
+        .expect("seed the background ledger");
+    ledger_path
 }
 
 /// Writes the `background-demo` spec and a script that exits at once.
@@ -381,8 +604,9 @@ fn write_background_restore_fixture(workspace: &Path) {
 /// Writes the same fixture, optionally recording that the script ran.
 ///
 /// A marker lets a regression observe an erroneous restore even when the save
-/// that would record the launch fails; the ledger alone cannot show it.
-fn write_background_restore_fixture_with_marker(workspace: &Path, marker: Option<&Path>) {
+/// that would record the launch fails; the ledger alone cannot show it. The
+/// ownership regressions reuse it so their worker is genuinely runnable.
+pub(super) fn write_background_restore_fixture_with_marker(workspace: &Path, marker: Option<&Path>) {
     let agent_dir = workspace.join(".diapason/agents");
     fs::create_dir_all(&agent_dir).expect("create background fixture agent directory");
     fs::write(

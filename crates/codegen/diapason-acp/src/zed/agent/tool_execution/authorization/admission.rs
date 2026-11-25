@@ -4,9 +4,10 @@
 //! the workspace controller, while a call must execute through the session's
 //! controller. These checks reject a call the session cannot own.
 //!
-//! Admission runs twice on purpose. The early check runs before any hook,
-//! prompt or resolution and fails closed only when the session has no
-//! controller: the model's raw arguments may name an obsolete target, and a
+//! Admission runs twice on purpose. The early check runs after the call is
+//! resolved — so a refusal can announce the call it fails — but before any
+//! hook or prompt, and it fails closed only when the session has no controller:
+//! the model's raw arguments may name an obsolete target, and a
 //! `PermissionRequest` hook may replace them before dispatch. The second check
 //! runs after the permission stages — therefore after the initial `ToolCall`
 //! notification — and judges per-target ownership on the arguments that will
@@ -14,14 +15,17 @@
 //! not own and only core would later refuse the call. It still precedes
 //! preapproval, the in-progress notification and dispatch.
 //!
-//! Admission and execution must answer one question the same way. The command
-//! a call dispatches to runs through the session's controller with
+//! Admission and execution must answer the ownership question the same way. The
+//! command a call dispatches to runs through the session's controller with
 //! [`TaskOwner::Session`], which reads only that controller's own child records;
 //! a grandchild belongs to the child-scoped controller that spawned it. The
 //! ownership check here therefore asks the same controller-local question
-//! rather than walking the tree, so a target cannot be admitted and then
-//! refused, and one such target cannot fail a whole `wait` list after the call
-//! was already admitted.
+//! rather than walking the tree, so no target passes admission and is then
+//! refused by the command for lack of ownership, and one unowned target cannot
+//! fail a whole `wait` list after the call was already admitted. Ownership is
+//! the only question admission answers: a target it admits is one this session
+//! may address, while a command that applies to a narrower set of targets may
+//! still refuse it for a reason of its own.
 
 #[cfg(test)]
 use diapason_core::config::constants::tools;
@@ -86,9 +90,8 @@ impl AdmissionArguments<'_> {
 /// address a target that another session owns, or run through the workspace's
 /// ownerless controller on a session that has no controller of its own. A
 /// target-less call (`spawn`) needs only the session controller; a call that
-/// names `id`/`ids` additionally needs every named target to be one the command
-/// will accept, which is the controller-local set [`session_owns_subagent`]
-/// applies.
+/// names `id`/`ids` additionally needs every named target to be one this session
+/// owns, which is the controller-local set [`session_owns_subagent`] applies.
 ///
 /// This check runs late: the initial `ToolCall` notification has already been
 /// published and the permission stages (the `PermissionRequest` hook and, when

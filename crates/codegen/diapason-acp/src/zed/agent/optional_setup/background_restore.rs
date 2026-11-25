@@ -40,7 +40,7 @@ mod tests;
 /// Core keeps its record type and loader private to the subagent module, so the
 /// migration reads and rewrites the documented ledger schema directly. The path
 /// derives from the same workspace-directory helper core uses, so a workspace
-/// directory override cannot desynchronise the two.
+/// directory override cannot desynchronize the two.
 fn ledger_path(workspace_root: &Path) -> PathBuf {
     workspace_root
         .join(diapason_commons::workspace_dir_name())
@@ -53,7 +53,7 @@ fn ledger_path(workspace_root: &Path) -> PathBuf {
 /// A row is migrated only when its verified `parent_session_id` is exactly
 /// `owner_session_id` and it carries no owner, so one session can never take
 /// over another session's record. The row's id and every other field are left
-/// untouched: core canonicalises the id on load, so the stored legacy id keeps
+/// untouched: core canonicalizes the id on load, so the stored legacy id keeps
 /// addressing the same record.
 ///
 /// Returns the number of rows migrated. A missing ledger is a no-op, and a
@@ -179,7 +179,7 @@ fn launch_snapshot(entries: Vec<BackgroundSubprocessEntry>) -> HashMap<String, S
 /// running. Only a changed, running, unrecorded launch is stopped; its stop
 /// also marks the record terminal, so a retried attach cannot relaunch the
 /// process behind the failure. When the ledger cannot be verified nothing is
-/// rolled back: an unverifiable ledger must not authorise destroying a launch
+/// rolled back: an unverifiable ledger must not authorize destroying a launch
 /// that may be durable, while the in-memory controller still tracks the live
 /// process.
 async fn rollback_unpersisted_launches(
@@ -264,7 +264,7 @@ fn unpersisted_launches(
 /// What the persisted ledger proves about the launches a restore made.
 ///
 /// An empty set and "could not tell" are different facts: treating a failed
-/// read as "records nothing" would authorise stopping a launch that the ledger
+/// read as "records nothing" would authorize stopping a launch that the ledger
 /// may still record, so the caller must distinguish them.
 #[derive(Debug, PartialEq, Eq)]
 enum PersistedLaunches {
@@ -294,7 +294,7 @@ impl PersistedLaunches {
 /// A missing ledger is [`PersistedLaunches::Absent`]. A read or parse failure
 /// is [`PersistedLaunches::Unknown`] rather than an empty set: the ledger may
 /// still record a launch this pass cannot see, and degrading that to "records
-/// nothing" would authorise destroying a durable process.
+/// nothing" would authorize destroying a durable process.
 async fn persisted_launches(workspace_root: &Path) -> PersistedLaunches {
     let path = ledger_path(workspace_root);
     let raw = match fs::read_to_string(&path).await {

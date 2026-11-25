@@ -514,6 +514,13 @@ impl SubagentController {
 
     /// Notifies observers registered for one parent session of a background
     /// status snapshot.
+    ///
+    /// Routing follows the record's `parent_session_id`, not its owner: a
+    /// launch override deliberately re-attaches a record by moving that parent,
+    /// so an owner-keyed dispatch would undo the override. The graft case this
+    /// leaves open — a populated controller attached under another session's
+    /// key — is refused at the attachment boundary, which is the only place
+    /// that knows the target tree's owner.
     pub(super) fn notify_background_observers(
         &self,
         parent_session_id: &str,

@@ -75,7 +75,7 @@ async fn run_buffered_prompt(usage: Option<diapason_core::llm::Usage>) -> Vec<ac
             let response = cx
                 .send_request(PromptRequest::new(
                     session.session_id,
-                    vec![acp::ContentBlock::Text(acp::TextContent::new("Summarise the fixture"))],
+                    vec![acp::ContentBlock::Text(acp::TextContent::new("Summarize the fixture"))],
                 ))
                 .block_task()
                 .await?;

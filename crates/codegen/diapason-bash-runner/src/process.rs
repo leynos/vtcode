@@ -229,14 +229,14 @@ impl ProcessHandle {
     /// confirmed already gone.
     ///
     /// This is idempotent: once the child has been terminated, later calls
-    /// observe an absent killer and succeed without signaling again.
+    /// observe an absent killer and succeed without signalling again.
     pub fn try_terminate(&self) -> io::Result<()> {
         self.kill_child()?;
         self.abort_tasks();
         Ok(())
     }
 
-    /// Signals the child, restoring the killer if signaling fails.
+    /// Signals the child, restoring the killer if signalling fails.
     fn kill_child(&self) -> io::Result<()> {
         let mut killer_opt = self.killer.lock().unwrap_or_else(|error| error.into_inner());
         let Some(mut killer) = killer_opt.take() else {

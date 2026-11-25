@@ -99,7 +99,7 @@ mod tests {
             );
         }
 
-        // An unrecognised payload and an error without one stay bounded: the
+        // An unrecognized payload and an error without one stay bounded: the
         // client's data must never become a span field or log value.
         assert_eq!(management_error_reason(&management_error("not_a_management_reason")), MANAGEMENT_FAILURE_CATEGORY);
         assert_eq!(management_error_reason(&SdkError::internal_error()), MANAGEMENT_FAILURE_CATEGORY);

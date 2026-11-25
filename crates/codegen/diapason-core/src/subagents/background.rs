@@ -32,7 +32,7 @@ fn background_state_path(workspace_root: &Path) -> PathBuf {
 ///
 /// The ledger location stays a private production detail, but tests must build
 /// fixtures through the same workspace-directory helper as the loader so a
-/// workspace-directory override cannot desynchronise them.
+/// workspace-directory override cannot desynchronize them.
 #[cfg(test)]
 pub(crate) fn background_state_path_for_tests(workspace_root: &Path) -> PathBuf {
     background_state_path(workspace_root)
@@ -220,7 +220,7 @@ pub fn background_record_id(agent_name: &str) -> String {
 /// so two distinct owners can never collapse into one record id. Owners made
 /// only of `[A-Za-z0-9_-]` such as `session-a` are unchanged; any other owner,
 /// including one with leading or trailing hyphens, maps to a different id. The
-/// controller canonicalises persisted ids on load and on save, so no migration
+/// controller canonicalizes persisted ids on load and on save, so no migration
 /// file is needed, although a mixed-version deployment can briefly hold both
 /// forms.
 pub fn background_record_id_for_owner(agent_name: &str, owner_session_id: Option<&str>) -> String {

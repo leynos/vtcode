@@ -41,7 +41,7 @@ fn test_config(workspace_root: PathBuf, vt_cfg: DiapasonConfig) -> SubagentContr
     }
 }
 
-/// Initialises a throwaway git repository so a worktree can be created in it.
+/// Initializes a throwaway git repository so a worktree can be created in it.
 ///
 /// Every command runs with an explicit identity and with signing and hooks
 /// disabled, so a developer's global or system Git configuration cannot change
@@ -337,15 +337,24 @@ async fn send_input_refuses_a_child_whose_isolation_worktree_is_gone() {
 }
 
 /// The guard refuses a missing checkout, not every isolated record.
+///
+/// The checkout is created before it is attached to the record, so this case
+/// holds for the reason it claims: a record whose isolation directory really
+/// exists still reopens. A record that merely carries a path to a directory
+/// nothing created would pass only if the guard never looked at the disk,
+/// which is a property of the check rather than of a resumable child.
 #[tokio::test]
 async fn reopen_allows_a_child_that_keeps_its_isolation_worktree() {
     let workspace = TempDir::new().expect("workspace");
     let controller = SubagentController::new(test_config(workspace.path().to_path_buf(), DiapasonConfig::default()))
         .await
         .expect("controller");
+    let checkout = workspace.path().join("checkout");
+    std::fs::create_dir_all(&checkout).expect("checkout");
     let mut record = child_record("agent-worker", SubagentStatus::Closed);
     record.spec.isolation = Some(diapason_config::IsolationMode::Worktree);
-    record.worktree_path = Some(workspace.path().join("checkout"));
+    record.worktree_path = Some(checkout.clone());
+    assert!(checkout.is_dir(), "the checkout at {} exists before the reopen", checkout.display());
     let id = controller
         .insert_child_with_candidate_id("agent-worker", record)
         .await
@@ -358,4 +367,9 @@ async fn reopen_allows_a_child_that_keeps_its_isolation_worktree() {
     let state = controller.state.read().await;
     let record = state.children.get(&id).expect("the reopened record");
     assert_eq!(record.status, SubagentStatus::Queued, "reopening queues the resumed run");
+    assert_eq!(
+        record.worktree_path.as_deref(),
+        Some(checkout.as_path()),
+        "the reopened run keeps the checkout that still exists"
+    );
 }

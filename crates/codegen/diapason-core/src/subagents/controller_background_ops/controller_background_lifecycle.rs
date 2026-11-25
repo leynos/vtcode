@@ -294,7 +294,7 @@ impl SubagentController {
     /// The same rule decides whether this controller's exec manager can observe
     /// a record's process at all: another session's launch lives in that
     /// process, so a missing read here is not evidence that it exited.
-    pub(super) fn background_record_restart_is_authorised(&self, record: &BackgroundRecord) -> bool {
+    pub(super) fn background_record_restart_is_authorized(&self, record: &BackgroundRecord) -> bool {
         match self.background_owner_session_id.as_deref() {
             Some(owner) => record.owner_session_id.as_deref() == Some(owner),
             None => record.owner_session_id.is_none(),
@@ -310,7 +310,7 @@ impl SubagentController {
             state
                 .background_children
                 .values()
-                .filter(|record| record.desired_enabled && self.background_record_restart_is_authorised(record))
+                .filter(|record| record.desired_enabled && self.background_record_restart_is_authorized(record))
                 .map(|record| {
                     (
                         record.id.clone(),
@@ -562,7 +562,7 @@ impl SubagentController {
                     record.status == BackgroundSubprocessStatus::Starting
                         && record.desired_enabled
                         && record.exec_session_id == restart.exec_session_id
-                        && self.background_record_restart_is_authorised(record)
+                        && self.background_record_restart_is_authorized(record)
                 })
             };
             if !still_owed {
@@ -693,14 +693,14 @@ impl SubagentController {
         };
 
         for record_id in record_ids {
-            let restart_authorised = {
+            let restart_authorized = {
                 let state = self.state.read().await;
                 state
                     .background_children
                     .get(&record_id)
-                    .is_some_and(|record| self.background_record_restart_is_authorised(record))
+                    .is_some_and(|record| self.background_record_restart_is_authorized(record))
             };
-            if !restart_authorised {
+            if !restart_authorized {
                 // Another session owns this record. Its owning process drives
                 // its lifecycle, and this controller cannot even see that
                 // process's exec sessions, so settling or respawning it here
@@ -784,7 +784,7 @@ impl SubagentController {
         self.retry_owed_background_ledger_write().await?;
         // A refresh is the controller's own maintenance pass rather than one
         // caller addressing one task: it already excludes a record another
-        // session owns from restart (`background_record_restart_is_authorised`),
+        // session owns from restart (`background_record_restart_is_authorized`),
         // and it reports the full view it reconciled. It therefore presents
         // the workspace operator's authority to the projection.
         Ok(self.background_status_entries(TaskOwner::Workspace).await)

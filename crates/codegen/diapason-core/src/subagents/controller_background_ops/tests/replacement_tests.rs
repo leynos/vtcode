@@ -10,7 +10,8 @@ use super::super::BackgroundRunReservation;
 use super::super::adopted_stop_gate::gate_next_adopted_background_stop_close;
 use super::super::controller_background_cancel::gate_next_background_close;
 use super::reserve_support::{
-    OBSERVED_EXEC, WORKER, WORKER_AGENT, insert_observed_record, persisted_row, plan, worker_spec,
+    OBSERVED_EXEC, PERSISTED_STOPPED_STATUS, WORKER, WORKER_AGENT, insert_observed_record, persisted_row,
+    persisted_row_with_status, plan, worker_spec,
 };
 use super::support::{RecordingObserver, background_test_controller};
 
@@ -26,9 +27,22 @@ async fn an_adopted_stop_closes_the_launch_it_adopted_after_a_concurrent_start()
     let temp = TempDir::new().expect("tempdir");
     let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
     insert_observed_record(&controller).await;
-    persist_background_state(temp.path(), vec![persisted_row(WORKER, None, WORKER_AGENT, OBSERVED_EXEC, false)])
-        .await
-        .expect("seed the persisted stop");
+    // A finished stop, not a close still owed: this case is about the adopted
+    // intent reaching the close, not about the obligation an unconfirmed close
+    // carries.
+    persist_background_state(
+        temp.path(),
+        vec![persisted_row_with_status(
+            WORKER,
+            None,
+            WORKER_AGENT,
+            OBSERVED_EXEC,
+            false,
+            PERSISTED_STOPPED_STATUS,
+        )],
+    )
+    .await
+    .expect("seed the persisted stop");
 
     let bound_plan = plan(worker_spec(), "exec-replacement", Some(OBSERVED_EXEC));
     let replacement_plan = plan(worker_spec(), "exec-replacement", None);

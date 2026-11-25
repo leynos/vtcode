@@ -206,7 +206,7 @@ async fn assert_attachment_guard_spans_the_stage(stage: AttachmentStage, checkpo
         .expect("the first attachment publishes");
     if stage == AttachmentStage::BeforePublication {
         // The guard was held at the publication point and is released with the
-        // attachment: a guard that stayed held would serialise every later
+        // attachment: a guard that stayed held would serialize every later
         // attachment in the tree forever.
         assert!(
             left.lock_scope().attachment().try_lock().is_ok(),

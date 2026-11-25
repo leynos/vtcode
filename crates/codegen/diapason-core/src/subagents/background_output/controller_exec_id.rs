@@ -1,7 +1,7 @@
 //! The exec-session id convention a controller background launch writes.
 //!
 //! A controller launch names its exec session `exec-<session>-<pid>-<sequence>`,
-//! and the background-output reader authorises a restored record's archive by
+//! and the background-output reader authorizes a restored record's archive by
 //! rebuilding that id from the record's own session id. The producer half and
 //! the reader half are therefore defined together, so the convention has one
 //! definition and the two cannot drift.

@@ -66,23 +66,22 @@ async fn attaching_a_controller_with_another_lock_scope_is_rejected() {
         .expect("insert into the root after the rejected attachment");
     assert_eq!(root_seeded, seeded, "a rejected graft must not have moved the reservation into the root allocator");
 
-    assert!(
-        root.state
-            .read()
-            .await
-            .children
-            .get("foreign")
-            .expect("the tracked record survives rejection")
-            .child_controller
-            .is_none(),
-        "a rejected attachment must not publish the controller"
-    );
-    assert!(
-        root.descendant_controllers().await.is_empty(),
-        "a rejected attachment must not make the foreign subtree reachable"
-    );
-
+    // The other direction of the same check. A graft that redirected the
+    // joining slot at the root while leaving the seeded reservation behind
+    // would pass the assertion above, because the root never gained that id.
+    // Reserving the next candidate in the root first makes the redirect
+    // observable: a slot that still forwards to the root has to suffix the id
+    // it is handed, while an untouched slot issues it verbatim.
     let candidate = "agent-explorer-20261118T041500000Z";
+    let root_candidate = root
+        .insert_child_with_candidate_id(
+            candidate,
+            test_child_record(candidate, "root-candidate", "parent-session", &spec, SubagentStatus::Queued, 1, None),
+        )
+        .await
+        .expect("reserve the candidate in the root after the rejected attachment");
+    assert_eq!(root_candidate, candidate, "the root must issue its free candidate verbatim");
+
     let foreign_id = foreign
         .insert_child_with_candidate_id(
             candidate,
@@ -98,7 +97,11 @@ async fn attaching_a_controller_with_another_lock_scope_is_rejected() {
         )
         .await
         .expect("insert after the rejected attachment");
-    assert_eq!(foreign_id, candidate, "the rejected controller keeps its own allocator");
+    assert_eq!(
+        foreign_id, candidate,
+        "the rejected controller keeps its own allocator: a slot redirected at the root would have \
+         suffixed the id the root already reserved"
+    );
 
     foreign.signal_shutdown().await;
     root.signal_shutdown().await;

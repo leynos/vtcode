@@ -42,7 +42,7 @@ use super::types::ControllerState;
 ///
 /// The save also maintains the ledger's durable migration evidence: every
 /// owned launch it reads or writes is recorded by ownerless id and exec
-/// session, so a workspace copy cached before a migration is still recognised
+/// session, so a workspace copy cached before a migration is still recognized
 /// after an owned replacement supersedes the migrated row. The evidence is
 /// kept beside the records in the ledger file, which the ACP owner migration
 /// rewrites as generic JSON and therefore preserves.
@@ -352,4 +352,18 @@ pub(crate) mod ledger_write_checkpoints {
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    //! Pins the background-ledger merge contract.
+    //!
+    //! A save joins another owner's records instead of replacing them, keeps the
+    //! newest copy of a record both sides hold, and honours cancellation and
+    //! restart precedence, so concurrent controllers cannot discard each other's
+    //! state.
+
+    mod adoption_tests;
+    mod empty_launch_tests;
+    mod launch_precedence_tests;
+    mod merge_oracle_tests;
+    mod ownership_supersession_tests;
+    mod reconciliation_tests;
+}

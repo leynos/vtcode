@@ -1,8 +1,8 @@
 //! Mutexes shared by one controller tree.
 //!
 //! Three controller-level exclusions used to be process-global or absent: the
-//! adoption lock that serialises subtree grafting and id allocation, the
-//! persistence lock that serialises background-ledger saves, and the
+//! adoption lock that serializes subtree grafting and id allocation, the
+//! persistence lock that serializes background-ledger saves, and the
 //! attachment guard that makes a cycle check and the link publication that
 //! follows it one critical section. A static cannot be injected or observed
 //! independently, and the attachment guard has to be asynchronous because it
@@ -15,16 +15,16 @@ use std::sync::{Arc, Mutex, OnceLock};
 /// The adoption, persistence and attachment mutexes one controller tree shares.
 ///
 /// A child-scoped controller adopts its parent's scope, so a whole tree
-/// serialises grafting, ledger writes and attachment against itself.
+/// serializes grafting, ledger writes and attachment against itself.
 /// Controllers created without an explicit scope share one process-global
 /// instance, returned by `default_lock_scope`.
 ///
 /// Controllers that can graft into one another must therefore share one
-/// scope: an injected, distinct scope only serialises the controllers given
+/// scope: an injected, distinct scope only serializes the controllers given
 /// it. Production controllers leave the config field `None`, so they all take
 /// the shared default and keep the original cross-tree exclusion.
 pub struct SubagentLockScope {
-    /// Serialises subtree adoption and child-id allocation.
+    /// Serializes subtree adoption and child-id allocation.
     ///
     /// Adopting takes the joining slot's write guard and the target's read
     /// guard, a symmetric pair that would deadlock if two controllers were
@@ -42,9 +42,9 @@ pub struct SubagentLockScope {
     ///
     /// A controller bound to a different scope cannot be attached at all: the
     /// child-id adoption rejects the graft with `LockScopeMismatch`, so taking
-    /// this tree's guard serialises every attachment that can succeed.
+    /// this tree's guard serializes every attachment that can succeed.
     attachment: tokio::sync::Mutex<()>,
-    /// Serialises background-ledger saves so the last write is the newest.
+    /// Serializes background-ledger saves so the last write is the newest.
     persistence: tokio::sync::Mutex<()>,
 }
 

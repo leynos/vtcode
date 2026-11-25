@@ -68,11 +68,23 @@ struct SubagentStopHookContext {
     transcript_path: Option<PathBuf>,
 }
 
+/// The id of the live task the record carries, if one is still running.
+///
+/// A finished handle is not a loop: a task that died without settling the
+/// record leaves its handle behind, and a later launch is the recovery for it.
+fn live_handle_id(record: &ChildRecord) -> Option<tokio::task::Id> {
+    record
+        .handle
+        .as_ref()
+        .filter(|handle| !handle.is_finished())
+        .map(|handle| handle.id())
+}
+
 impl SubagentController {
     pub(super) async fn launch_child(&self, child_id: &str) -> Result<()> {
         // Publish the queued state first, so an observer sees the position the
         // run is waiting in before the run can report itself running.
-        {
+        let observed_handle = {
             let mut state = self.state.write().await;
             let record = state
                 .children
@@ -87,7 +99,12 @@ impl SubagentController {
             }
             record.status = SubagentStatus::Queued;
             record.updated_at = Utc::now();
-        }
+            // The live handle this launch found when it published the queued
+            // state. A different one at publication is another launch's.
+            // A finished handle is not a loop: a task that died without
+            // settling the record must not block the recovery below.
+            live_handle_id(record)
+        };
         self.publish_child_status(child_id).await;
         // A test parks a launch here, after the queued status is published and
         // before the launch re-acquires the state lock, so a close that lands
@@ -103,13 +120,34 @@ impl SubagentController {
         // handle, mark the record closed and return success while the launcher
         // then started the task and dequeued the prompt back into `Running`.
         let mut state = self.state.write().await;
-        let status = state
-            .children
-            .get(child_id)
-            .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?
-            .status;
+        let (status, current_handle) = {
+            let record = state
+                .children
+                .get(child_id)
+                .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
+            (record.status, live_handle_id(record))
+        };
         if status.is_terminal() {
             bail!("Subagent {child_id} was closed before it could start");
+        }
+        // A close and a resume can both land in the window since this launch
+        // published the queued state, and the resume starts a loop of its own.
+        // If that loop is already running it has dequeued a prompt, and
+        // replacing its handle would abort the run in progress and leave the
+        // record with no loop left to settle it. Declining here leaves the
+        // resumed loop owning the record; it also dequeues any prompt queued
+        // after it, so there is nothing left for this launch to start.
+        if status == SubagentStatus::Running && current_handle.is_some() {
+            return Ok(());
+        }
+        // A live handle this launch did not see when it published the queued
+        // state was published by another launch after it — a resume that has
+        // not dequeued its prompt yet. Replacing it would abort that launch's
+        // task before it starts. Declining leaves it to run the queued prompt.
+        if let Some(current) = current_handle
+            && Some(current) != observed_handle
+        {
+            return Ok(());
         }
         // The loop's first act is to take this same lock, so the task cannot
         // dequeue its prompt before its handle is published below.

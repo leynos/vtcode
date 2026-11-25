@@ -3,24 +3,37 @@
 //! Declared by the ledger's test module. A stop governs only the launch it
 //! names, so the identity rule decides whether a persisted copy may outrank a
 //! cached one or be adopted onto it. A named exec session is that identity. A
-//! legacy row names none, so its canonical record id is the identity left; two
-//! blank sessions never establish one between them.
+//! legacy row names none, so the child session it carries is the identity left;
+//! a blank child session never establishes one between two rows.
 
 use super::*;
 use serde_json::json;
 
-/// Two records that both name no exec session are not one launch.
+/// Two blank exec sessions over different child sessions are not one launch.
 ///
 /// A legacy row predates the exec-session field, so a shared blank value
 /// cannot establish that a persisted copy and a cached record describe the
 /// same process. Before the rule was tightened, an empty id compared equal
 /// to another empty id and a stop of one legacy row adopted a cancellation
 /// onto an unrelated launch, or let one row's cancelled copy outrank the
-/// other's active copy and suppress a task that was still wanted.
+/// other's active copy and suppress a task that was still wanted. The child
+/// session each row names is the identity that tells them apart.
 #[test]
 fn an_empty_exec_session_does_not_establish_a_shared_launch() {
-    let stopped = persisted_copy("background-worker", "", false, BackgroundSubprocessStatus::Stopped);
-    let desired = persisted_copy("background-worker", "", true, BackgroundSubprocessStatus::Running);
+    let stopped = persisted_copy_naming(
+        "background-worker",
+        "",
+        "first-child-session",
+        false,
+        BackgroundSubprocessStatus::Stopped,
+    );
+    let desired = persisted_copy_naming(
+        "background-worker",
+        "",
+        "second-child-session",
+        true,
+        BackgroundSubprocessStatus::Running,
+    );
 
     assert!(
         !stopped.cancellation_outranks(&desired),
@@ -30,7 +43,26 @@ fn an_empty_exec_session_does_not_establish_a_shared_launch() {
         !desired.cancellation_outranks(&stopped),
         "the refusal is symmetric: intent alone decides nothing here"
     );
-    assert!(!stopped.shares_launch_identity_with(&desired), "two blank ids never establish a launch identity");
+    assert!(
+        !stopped.shares_launch_identity_with(&desired),
+        "two different child sessions never establish one launch identity"
+    );
+}
+
+/// Two blank exec sessions over the *same* child session are one launch.
+///
+/// The identity a legacy row still carries is its child session, and it is
+/// minted per launch. A persisted stop and a refreshed copy of that same child
+/// session are therefore copies of one launch, and the stop must outrank the
+/// refresh; refusing this case would strand a genuine pre-session stop.
+#[test]
+fn a_shared_legacy_child_session_establishes_one_launch() {
+    let stopped = persisted_copy("background-worker", "", false, BackgroundSubprocessStatus::Stopped);
+    let desired = persisted_copy("background-worker", "", true, BackgroundSubprocessStatus::Running);
+
+    assert!(stopped.shares_launch_identity_with(&desired), "the shared child session is the legacy identity");
+    assert!(stopped.cancellation_outranks(&desired), "the launch's own stop outranks its refresh");
+    assert!(!desired.cancellation_outranks(&stopped), "a desired copy never outranks its stop");
 }
 
 /// A named exec session is still the launch identity.
@@ -113,9 +145,61 @@ fn a_legacy_stop_is_adopted_under_its_own_record_id() {
     assert!(other.desired_enabled);
 }
 
+/// A legacy row's launch identity is the child session it names.
+///
+/// The canonical id names one record, but the ledger's row under it may be a
+/// different legacy launch: only the child session can tell them apart. Two
+/// blank exec sessions with different child sessions are therefore different
+/// launches, and a stop of one must not govern the other's refresh.
+#[test]
+fn a_legacy_launch_identity_is_the_child_session_it_names() {
+    let stopped = persisted_copy("background-worker", "", false, BackgroundSubprocessStatus::Stopped);
+    let other_launch =
+        persisted_copy_naming("background-worker", "", "session-other", true, BackgroundSubprocessStatus::Running);
+
+    assert!(
+        !stopped.shares_launch_identity_with(&other_launch),
+        "different child sessions are different launches"
+    );
+    assert!(!stopped.cancellation_outranks(&other_launch), "a stop of one legacy launch must not govern another");
+
+    let refresh = persisted_copy("background-worker", "", true, BackgroundSubprocessStatus::Running);
+    assert!(stopped.shares_launch_identity_with(&refresh), "the same child session is one launch");
+    assert!(stopped.cancellation_outranks(&refresh), "its stop outranks a refresh of the same child session");
+}
+
+/// A legacy stop is not adopted onto a record naming another child session.
+///
+/// The single ledger row under the canonical id is not evidence that the cached
+/// record is the same launch; the child session each names is. A stop of another
+/// child session is refused, and the record's own launch is still stopped.
+#[test]
+fn a_legacy_stop_is_not_adopted_across_child_sessions() {
+    let mut record = live_record("background-worker", "");
+    let other_launch =
+        persisted_copy_naming("background-worker", "", "session-other", false, BackgroundSubprocessStatus::Stopped);
+    assert!(!other_launch.adopt_cancellation_into(&mut record), "another child session is another launch");
+    assert!(record.desired_enabled, "a refused adoption leaves the launch wanting to run");
+
+    let own_stop = persisted_copy("background-worker", "", false, BackgroundSubprocessStatus::Stopped);
+    assert!(own_stop.adopt_cancellation_into(&mut record), "the record's own child session is its launch");
+    assert!(!record.desired_enabled, "the genuine legacy stop reaches the record it names");
+}
+
 fn persisted_copy(
     id: &str,
     exec_session_id: &str,
+    desired_enabled: bool,
+    status: BackgroundSubprocessStatus,
+) -> PersistedBackgroundRecord {
+    persisted_copy_naming(id, exec_session_id, &format!("session-{id}"), desired_enabled, status)
+}
+
+/// Builds a persisted copy that names an explicit child session.
+fn persisted_copy_naming(
+    id: &str,
+    exec_session_id: &str,
+    session_id: &str,
     desired_enabled: bool,
     status: BackgroundSubprocessStatus,
 ) -> PersistedBackgroundRecord {
@@ -127,7 +211,7 @@ fn persisted_copy(
         "description": "worker",
         "source": "builtin",
         "color": null,
-        "session_id": format!("session-{id}"),
+        "session_id": session_id,
         "parent_session_id": "parent-session",
         "exec_session_id": exec_session_id,
         "desired_enabled": desired_enabled,

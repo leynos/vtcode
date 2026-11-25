@@ -5,7 +5,7 @@
 //! whose durable row now carries another id, and once an owned replacement
 //! supersedes the migrated row no row is left that names the cached launch. The
 //! evidence recorded here keeps that launch identity across saves so the stale
-//! ownerless alias can be recognised and dropped without suppressing an
+//! ownerless alias can be recognized and dropped without suppressing an
 //! independent ownerless launch of the same agent, which names a different exec
 //! session.
 use serde::{Deserialize, Serialize};

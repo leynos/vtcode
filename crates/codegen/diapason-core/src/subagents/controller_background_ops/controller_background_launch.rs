@@ -167,6 +167,13 @@ impl SubagentController {
         {
             bail!("A background subprocess with this agent name is already active");
         }
+        // A parentless record routes its progress nowhere, so this pre-lock
+        // selector cannot answer for it: the rebind needs the write lock. The
+        // reservation path below takes that lock, moves the record onto the
+        // requesting session, and reuses it there, so no observer is skipped.
+        if reuse_needs_parent_rebind(&record.parent_session_id, &launch.parent_session_id) {
+            return Ok(None);
+        }
 
         let conflicts = Self::active_background_launch_conflicts(record, launch);
         if !conflicts.is_empty() {

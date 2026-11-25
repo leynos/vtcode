@@ -29,7 +29,7 @@ pub(super) fn reader_environment(root: &Path) -> (ExecSessionManager, PtySession
 
 /// Builds the exec-session id a launch would have written for `session_id`.
 ///
-/// The reader authorises a record's archive only while its exec-session id
+/// The reader authorizes a record's archive only while its exec-session id
 /// embeds its session id, so a fixture that expects an archive to be served
 /// pairs the two exactly as a controller launch does. The process component is
 /// a launch-side detail the reader does not compare, so any value works; this

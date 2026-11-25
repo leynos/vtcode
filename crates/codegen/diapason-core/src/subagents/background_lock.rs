@@ -1,7 +1,7 @@
 //! The workspace background ledger's inter-process lock.
 //!
 //! The lock is advisory and held on a sidecar file next to the ledger, so it
-//! serialises a reload, merge and write across every Diapason process that
+//! serializes a reload, merge and write across every Diapason process that
 //! shares the workspace, which no in-process mutex can do.
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
@@ -18,7 +18,7 @@ pub(super) fn background_state_lock_path(workspace_root: &Path) -> PathBuf {
 
 /// Holds the workspace ledger's inter-process lock until it is dropped.
 ///
-/// The lock is advisory and process-wide: it serialises the reload, merge and
+/// The lock is advisory and process-wide: it serializes the reload, merge and
 /// write of the shared ledger across every Diapason process that shares the
 /// workspace, which the in-process mutex cannot do.
 pub(crate) struct BackgroundStateLock {
@@ -51,7 +51,7 @@ const BACKGROUND_STATE_LOCK_MAX_BACKOFF: Duration = Duration::from_millis(250);
 ///
 /// `flock(2)` signals contention with a platform-specific code, which `std`
 /// normally maps to [`std::io::ErrorKind::WouldBlock`] and `fs2` also exposes
-/// as [`fs2::lock_contended_error`]. Both forms are recognised so a contended
+/// as [`fs2::lock_contended_error`]. Both forms are recognized so a contended
 /// acquisition is retried on either mapping instead of failing the save on the
 /// first attempt, which would drop a concurrent write. The raw codes are
 /// compared only when both are present, so an error without an OS code is not
@@ -79,16 +79,38 @@ pub(crate) async fn lock_background_state(workspace_root: &Path) -> Result<Backg
     lock_background_state_within(workspace_root, BACKGROUND_STATE_LOCK_TIMEOUT).await
 }
 
+/// The deadline a ledger-lock waiter reported while another holder kept it.
+///
+/// A typed cause rather than only message text: a settled launch failure is
+/// projected to a client as the task's `stopReason`, and a client must not
+/// receive a local path. The projection therefore classifies this cause into a
+/// bounded category, while this type's own message keeps the sidecar path for
+/// the process's log, where a maintainer can act on it.
+#[derive(Debug)]
+pub(crate) struct BackgroundStateLockTimeout {
+    sidecar: PathBuf,
+    waited: Duration,
+}
+
+impl std::fmt::Display for BackgroundStateLockTimeout {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "Timed out after {}ms waiting for the background state lock {}",
+            self.waited.as_millis(),
+            self.sidecar.display()
+        )
+    }
+}
+
+impl std::error::Error for BackgroundStateLockTimeout {}
+
 /// Builds the error a waiter reports once its deadline has passed.
 ///
 /// The message names the wait and the sidecar so a caller can tell a deadline
 /// from an ordinary lock failure it should not retry.
-fn lock_timeout_error(path: &Path, timeout: Duration) -> anyhow::Error {
-    anyhow::anyhow!(
-        "Timed out after {}ms waiting for the background state lock {}",
-        timeout.as_millis(),
-        path.display()
-    )
+pub(crate) fn lock_timeout_error(path: &Path, timeout: Duration) -> anyhow::Error {
+    anyhow::Error::new(BackgroundStateLockTimeout { sidecar: path.to_path_buf(), waited: timeout })
 }
 
 /// Acquires the ledger lock, giving up after `timeout`.
@@ -222,7 +244,7 @@ mod tests {
     /// The sidecar lock is held by another process in production, so the
     /// save's `try_lock` reports contention. It must retry until the holder
     /// releases and then acquire, or a concurrent save would fail instead of
-    /// serialising behind the other writer. The witness proves the waiter
+    /// serializing behind the other writer. The witness proves the waiter
     /// really reached the contention branch before the holder is released; a
     /// fixed sleep raced the waiter's start-up and asserted nothing.
     #[tokio::test]

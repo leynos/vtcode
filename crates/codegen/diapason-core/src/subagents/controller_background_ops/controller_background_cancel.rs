@@ -484,7 +484,7 @@ enum BackgroundCancellationMode {
 }
 
 /// The stable lead-in a stop's close fault carries in a record's error text.
-const BACKGROUND_CLOSE_FAULT_PREFIX: &str = "Failed to close the background subprocess's exec session";
+pub(super) const BACKGROUND_CLOSE_FAULT_PREFIX: &str = "Failed to close the background subprocess's exec session";
 
 /// The summary a record carries while a stop's close is still owed.
 ///
@@ -497,18 +497,50 @@ const BACKGROUND_STOPPING_SUMMARY: &str = "Background subagent is stopping";
 /// The summary a settled stop carries once its close is confirmed.
 const BACKGROUND_STOPPED_SUMMARY: &str = "Background subagent stopped";
 
-/// Reports whether a settled record still owes the close of a live process.
+/// Reports whether a record's launch may still own a live process.
 ///
-/// A settlement only writes the close fault onto an `Error` record, so the fault
-/// is the durable evidence that the process it names may still be running. A
-/// caller deciding whether a terminal row is safe to replace consults this: a
-/// failure whose close is unconfirmed is not a finished launch.
+/// The question a start decision asks is "is the process this row names
+/// confirmed gone?", not "does the row still carry an old fault?". Two durable
+/// facts answer it, and neither is the status alone:
+///
+/// - A recorded close fault means the close was attempted and did not confirm
+///   the process is gone. A retryable fault leaves the row active (the stop
+///   rewinds `Stopped` to `Running`), so matching only `Error` would let a
+///   second controller start a process beside the live one.
+/// - An active row that no longer wants its launch has had a stop requested but
+///   not confirmed: the stop's close is the only thing that settles it.
+///
+/// A later successful close removes the fault text and settles the row, which
+/// is what frees it; the status and the fault are therefore read together.
 pub(super) fn background_record_close_is_unconfirmed(record: &BackgroundRecord) -> bool {
-    record.status == BackgroundSubprocessStatus::Error
-        && record
-            .error
-            .as_deref()
-            .is_some_and(|error| error.contains(BACKGROUND_CLOSE_FAULT_PREFIX))
+    if record.exec_session_id.is_empty() {
+        // Nothing can be running under a record that names no session.
+        return false;
+    }
+    if record
+        .error
+        .as_deref()
+        .is_some_and(|error| error.contains(BACKGROUND_CLOSE_FAULT_PREFIX))
+    {
+        return true;
+    }
+    !record.desired_enabled && record.status.is_active()
+}
+
+/// Removes the close fault a confirmed close discharges from an error.
+///
+/// The fault is appended as its own `; `-separated clause, so everything before
+/// it is the outcome the run itself reported and is kept. A record whose error
+/// was only the fault keeps no error, and an error that never carried the fault
+/// is returned unchanged. Removing the clause is what records the confirmation:
+/// the durable evidence of an unconfirmed close is the fault itself.
+fn error_without_close_fault(error: Option<String>) -> Option<String> {
+    let error = error?;
+    let Some(index) = error.find(BACKGROUND_CLOSE_FAULT_PREFIX) else {
+        return Some(error);
+    };
+    let retained = error[..index].trim_end().trim_end_matches(';').trim_end();
+    (!retained.is_empty()).then(|| retained.to_owned())
 }
 
 /// Records a stop's close fault without discarding a terminal outcome.
@@ -844,17 +876,13 @@ impl SubagentController {
             record.updated_at = Utc::now();
         } else {
             // A retried or later close may settle a stop whose record already
-            // reached a terminal outcome. Preserve that outcome: only the
-            // pending close's own error text is cleared, and a genuine run
-            // failure keeps both its error and its summary.
-            if record.status == BackgroundSubprocessStatus::Stopped
-                && record
-                    .error
-                    .as_deref()
-                    .is_some_and(|error| error.contains(BACKGROUND_CLOSE_FAULT_PREFIX))
-            {
-                record.error = None;
-            }
+            // reached a terminal outcome. Preserve that outcome: only the close
+            // fault the confirmation discharges is removed, and a genuine run
+            // failure keeps both its error and its summary. The confirmation
+            // must reach the ledger as the newer copy, or the fault text would
+            // keep blocking a later start.
+            record.error = error_without_close_fault(record.error.take());
+            record.updated_at = Utc::now();
             // The pending-stop summary is cleanup state, not a run outcome. A
             // close that exhausted its retry allowance leaves it on an `Error`
             // record, so a later confirmed close must replace it even though
@@ -909,9 +937,12 @@ impl SubagentController {
             }
             if background_stop_close_failure_is_stale(&self.state, record_id, exec_session_id) {
                 // The close is already confirmed, by this attempt's successor or
-                // by any attempt overlapping it. Leave the record and the
-                // obligation that close settled untouched; a later attempt that
-                // has since re-armed the obligation owns it.
+                // by any attempt overlapping it. Leave the record untouched, and
+                // clear the obligation this attempt raised when it started: the
+                // attempt that started after the confirmation re-armed a stop
+                // the confirmed close had already discharged, and leaving that
+                // marker would report a stopped task as still owing its close.
+                clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
                 true
             } else {
                 record_background_close_fault(record, error);

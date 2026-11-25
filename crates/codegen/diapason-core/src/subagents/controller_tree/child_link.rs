@@ -1,6 +1,6 @@
 //! Publishing the controller link a child run carries onto its record.
 //!
-//! The link is written under the tree's attachment guard, so it is serialised
+//! The link is written under the tree's attachment guard, so it is serialized
 //! with a graft that is moving this tree's controllers onto a larger tree's
 //! route. Declared by `mod child_link;` from `controller_tree.rs`, which
 //! re-exports [`ChildRuntimePublication`] for its callers.
@@ -29,7 +29,7 @@ pub(crate) struct ChildRuntimePublication {
 }
 
 impl SubagentController {
-    /// Publishes a child run's runtime, serialising its controller link with a
+    /// Publishes a child run's runtime, serializing its controller link with a
     /// concurrent graft of this controller into a larger tree.
     ///
     /// A graft takes this tree's attachment guard, snapshots the subtree it

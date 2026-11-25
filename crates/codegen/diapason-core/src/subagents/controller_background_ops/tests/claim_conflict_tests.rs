@@ -15,13 +15,12 @@ use crate::subagents::controller_persistence::ledger_write_checkpoints;
 use super::super::BackgroundRunReservation;
 #[cfg(unix)]
 use super::super::controller_background_lifecycle::background_launch_is_owed;
-#[cfg(unix)]
 use super::super::controller_background_settlement::pending_background_ledger_write_generation;
 use super::reserve_support::{
-    OBSERVED_EXEC, WORKER, WORKER_AGENT, insert_observed_record, persisted_row, persisted_row_launched_at, plan,
-    worker_spec,
+    OBSERVED_EXEC, PERSISTED_STOPPED_STATUS, WORKER, WORKER_AGENT, insert_observed_record, persisted_row,
+    persisted_row_launched_at, persisted_row_with_status, plan, worker_spec,
 };
-use super::support::background_test_controller;
+use super::support::{RecordingObserver, background_test_controller};
 
 /// An explicit start cannot reserve over a claim another controller wrote.
 ///
@@ -77,9 +76,19 @@ async fn an_explicit_start_declines_a_claim_written_after_its_pre_check() {
 #[tokio::test]
 async fn an_explicit_start_replaces_a_record_the_ledger_holds_stopped() {
     let temp = TempDir::new().expect("tempdir");
-    persist_background_state(temp.path(), vec![persisted_row(WORKER, None, WORKER_AGENT, "exec-stopped", false)])
-        .await
-        .expect("seed the stopped record");
+    persist_background_state(
+        temp.path(),
+        vec![persisted_row_with_status(
+            WORKER,
+            None,
+            WORKER_AGENT,
+            "exec-stopped",
+            false,
+            PERSISTED_STOPPED_STATUS,
+        )],
+    )
+    .await
+    .expect("seed the stopped record");
     let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
 
     let reservation = controller
@@ -302,4 +311,54 @@ fn a_reuse_serves_only_the_parent_it_belongs_to(
         expected,
         "reuse must be refused exactly when the launch belongs to another parent"
     );
+}
+
+/// Reuse rebinds a parentless record onto the session that asked for it.
+///
+/// A legacy record names no parent, so nothing routes its progress and the
+/// observer path publishes nothing for an empty parent. The pre-lock selector
+/// cannot rebind it, so reuse happens in the reservation, which holds the write
+/// lock: the record moves onto the requesting session and its lifecycle updates
+/// reach that session's observers. The rebind is owed to the ledger, because the
+/// routing rule must survive a restart.
+#[tokio::test]
+async fn a_reuse_rebinds_a_parentless_record_onto_the_requesting_session() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+    insert_observed_record(&controller).await;
+    {
+        let mut state = controller.state.write().await;
+        let record = state.background_children.get_mut(WORKER).expect("the observed launch");
+        record.parent_session_id = String::new();
+    }
+    let observer = std::sync::Arc::new(RecordingObserver::default());
+    let registration = controller.register_progress_observer("parent-session", observer.clone());
+
+    let reservation = controller
+        .reserve_background_run(&plan(worker_spec(), OBSERVED_EXEC, None))
+        .await
+        .expect("the parentless launch is reused");
+    assert!(matches!(reservation, BackgroundRunReservation::Reused(_)));
+
+    {
+        let state = controller.state.read().await;
+        let record = state.background_children.get(WORKER).expect("record");
+        assert_eq!(
+            record.parent_session_id, "parent-session",
+            "reuse moves a legacy record onto the session that asked for it"
+        );
+    }
+    assert!(
+        pending_background_ledger_write_generation(&controller.state).is_some(),
+        "the rebind must reach the ledger through the owed write"
+    );
+
+    controller.publish_background_status(WORKER).await;
+    assert!(
+        !observer.background_entries().is_empty(),
+        "the requesting session now receives the launch's lifecycle updates"
+    );
+
+    drop(registration);
+    controller.signal_shutdown().await;
 }

@@ -429,3 +429,108 @@ fn equal_launch_copies_resolve_the_same_way_in_either_order() {
         );
     }
 }
+
+/// Same-launch copies that tie on freshness resolve by the phase they record.
+///
+/// `Running` and `Error`, or `Starting` and `Running`, can arrive with one
+/// `updated_at` and the same intent. Arrival order alone must not decide which
+/// status a load restores, so the later phase wins whichever row is listed
+/// first. A recorded failure outranks a bare stop for the same reason the
+/// settlement path never relabels one as the other.
+#[test]
+fn equal_launch_copies_tie_break_on_the_recorded_phase() {
+    use crate::subagents::BackgroundSubprocessStatus;
+
+    let mut running = merge_launch_record(0, 2, true, "exec-tied", "running-copy");
+    running.status = BackgroundSubprocessStatus::Running;
+    let mut failed = merge_launch_record(0, 2, true, "exec-tied", "failed-copy");
+    failed.status = BackgroundSubprocessStatus::Error;
+    for records in [
+        vec![running.clone(), failed.clone()],
+        vec![failed.clone(), running.clone()],
+    ] {
+        assert_eq!(
+            merged_state(collect_by_canonical_id(records).into_values()).0,
+            "failed-copy",
+            "a recorded failure outranks an active copy of the same launch"
+        );
+    }
+
+    let mut starting = merge_launch_record(0, 2, true, "exec-tied", "starting-copy");
+    starting.status = BackgroundSubprocessStatus::Starting;
+    let mut later_phase = merge_launch_record(0, 2, true, "exec-tied", "running-copy");
+    later_phase.status = BackgroundSubprocessStatus::Running;
+    for records in [
+        vec![starting.clone(), later_phase.clone()],
+        vec![later_phase.clone(), starting.clone()],
+    ] {
+        assert_eq!(
+            merged_state(collect_by_canonical_id(records).into_values()).0,
+            "running-copy",
+            "the later active phase outranks the claim"
+        );
+    }
+}
+
+/// A claim without a recorded start cannot displace a persisted launch.
+///
+/// A reservation writes `Starting` with an exec session and no `started_at`.
+/// Its `launch_moment` is then only the moment the claim was written, which is
+/// not comparable with a persisted launch's `started_at`: a claim could look
+/// newer than a replacement persisted after it merely because the
+/// replacement's process began earlier. Recorded start evidence is required
+/// before a snapshot copy may supersede a different persisted launch.
+#[test]
+fn a_claim_without_a_recorded_start_does_not_displace_a_persisted_launch() {
+    use crate::subagents::BackgroundSubprocessStatus;
+
+    let mut persisted = merge_launch_record(0, 1, true, "exec-persisted", "persisted-replacement");
+    persisted.started_at = Some("2026-08-28T00:00:00Z".parse().expect("launch time"));
+    let mut claim = merge_launch_record(0, 3, true, "exec-claim", "snapshot-claim");
+    claim.status = BackgroundSubprocessStatus::Starting;
+    claim.started_at = None;
+
+    let merged = merge_background_records(
+        vec![persisted],
+        vec![claim],
+        Some("session-a"),
+        &BTreeSet::new(),
+        &BTreeMap::new(),
+        &[],
+    );
+
+    assert_eq!(merged.len(), 1);
+    assert_eq!(
+        merge_state(&merged[0]).0,
+        "persisted-replacement",
+        "a persisted launch that recorded its start survives a newer claim"
+    );
+}
+
+/// A launch with recorded start evidence still supersedes the one it replaced.
+///
+/// The control for the rule above: ordering by an explicit `started_at` keeps
+/// its existing behaviour, so a real restart is not blocked by the claim rule.
+#[test]
+fn a_snapshot_launch_with_a_recorded_start_supersedes_a_persisted_launch() {
+    let mut persisted = merge_launch_record(0, 1, true, "exec-persisted", "persisted-old");
+    persisted.started_at = Some("2026-08-28T00:00:00Z".parse().expect("launch time"));
+    let mut replacing = merge_launch_record(0, 3, true, "exec-replacing", "snapshot-restart");
+    replacing.started_at = Some("2026-08-28T00:00:03Z".parse().expect("launch time"));
+
+    let merged = merge_background_records(
+        vec![persisted],
+        vec![replacing],
+        Some("session-a"),
+        &BTreeSet::new(),
+        &BTreeMap::new(),
+        &[],
+    );
+
+    assert_eq!(merged.len(), 1);
+    assert_eq!(
+        merge_state(&merged[0]).0,
+        "snapshot-restart",
+        "a real restart still supersedes the launch it replaced"
+    );
+}

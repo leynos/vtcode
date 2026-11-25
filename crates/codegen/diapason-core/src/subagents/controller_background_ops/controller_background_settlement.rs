@@ -6,7 +6,7 @@ use super::controller_background_cancel::background_stop_close_is_pending;
 use super::controller_background_lifecycle::{
     background_launch_is_owed, clear_background_launch_owed, mark_background_launch_owed,
 };
-use super::controller_background_liveness::bounded_launch_failure;
+use super::controller_background_liveness::launch_failure_category;
 
 /// Reports whether a background record may still be given another attempt.
 ///
@@ -235,10 +235,10 @@ impl SubagentController {
     /// error is still what the caller receives.
     ///
     /// `record.error` reaches a client as the task's `stopReason`, so it carries
-    /// a bounded failure category rather than the error chain: a spawn fault's
-    /// chain names ledger and workspace paths, which are local diagnostic detail
-    /// and must not travel to a remote peer. The full chain still reaches this
-    /// process's log, where a maintainer can read it.
+    /// a bounded failure category rather than the error chain: a spawn or claim
+    /// fault's chain names ledger, lock and workspace paths, which are local
+    /// diagnostic detail and must not travel to a remote peer. The full chain
+    /// still reaches this process's log, where a maintainer can read it.
     async fn settle_background_launch_error(
         &self,
         record_id: &str,
@@ -266,15 +266,14 @@ impl SubagentController {
             }
             record.status = BackgroundSubprocessStatus::Error;
             // The record's error becomes a client's `stopReason`, so it carries
-            // the outermost cause together with the chain's root: the root says
-            // why the spawn or the claim write failed, which is what a caller
-            // can act on. The context lines in between name ledger and
-            // workspace paths, which are local diagnostic detail; the full
-            // chain is logged below, where it stays inside this process.
+            // a fixed category and never the error chain: any chain line can
+            // quote the ledger, lock or workspace path, which is local
+            // diagnostic detail. The chain is logged below, inside this
+            // process.
             record.error = Some(format!(
                 "Failed to start background subagent '{}': {}",
                 record.agent_name,
-                bounded_launch_failure(error, exec_session_id)
+                launch_failure_category(error)
             ));
             record.summary = Some("Background subagent failed to start".to_string());
             record.updated_at = Utc::now();

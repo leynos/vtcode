@@ -139,7 +139,7 @@ async fn run_assembled_prompt(workspace: &std::path::Path, vt_config: &DiapasonC
             let response = cx
                 .send_request(PromptRequest::new(
                     session.session_id,
-                    vec![acp::ContentBlock::Text(acp::TextContent::new("Summarise the fixture"))],
+                    vec![acp::ContentBlock::Text(acp::TextContent::new("Summarize the fixture"))],
                 ))
                 .block_task()
                 .await?;

@@ -235,6 +235,56 @@ async fn a_missing_launch_settles_error_and_reaches_the_ledger() {
     controller.signal_shutdown().await;
 }
 
+/// A refresh pass writes the terminal outcome it settles.
+///
+/// The settlement and retry helpers called directly cannot prove the entry
+/// point does both. This starts from a durable `Running` row with nothing owed,
+/// runs one refresh, and reads the ledger back: the row must be terminal and
+/// carry its end instant, because nothing else will ever look at the record
+/// again.
+#[tokio::test]
+async fn a_refresh_pass_persists_the_terminal_outcome_it_settles() {
+    let temp = TempDir::new().expect("tempdir");
+    persist_background_state(temp.path(), vec![running_record().into_persisted()])
+        .await
+        .expect("seed the durable live row");
+    let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+        .await
+        .expect("controller");
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(WORKER.to_string(), running_record());
+    }
+    assert!(
+        pending_background_ledger_write_generation(&controller.state).is_none(),
+        "the fixture starts with no pending write, so only refresh can raise one"
+    );
+
+    controller
+        .refresh_background_processes()
+        .await
+        .expect("the refresh pass completes");
+
+    let persisted = load_background_state(temp.path()).await.expect("reload the ledger");
+    let stored = persisted
+        .records
+        .iter()
+        .find(|record| record.id == WORKER)
+        .expect("the settled row reaches the ledger");
+    assert_eq!(
+        stored.status,
+        BackgroundSubprocessStatus::Error,
+        "the refresh writes the terminal outcome it settled"
+    );
+    assert!(stored.ended_at.is_some(), "a terminal row written by refresh carries its end instant");
+    assert!(
+        pending_background_ledger_write_generation(&controller.state).is_none(),
+        "the pass discharges the write its settlement owed"
+    );
+
+    controller.signal_shutdown().await;
+}
+
 /// A live row refresh left unchanged is not marked as owing a write.
 ///
 /// The obligation must follow a change of outcome, not merely a refresh: an

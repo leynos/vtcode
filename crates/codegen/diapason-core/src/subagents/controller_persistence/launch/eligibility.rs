@@ -92,7 +92,7 @@ pub(super) fn owned_launch_keys<'a>(
 /// The migration rewrote the durable row under its owner's id, and a later
 /// replacement may have superseded that row entirely. The recorded evidence is
 /// then the only thing that still names the launch, so a workspace copy that
-/// was cached before the migration is recognised here and dropped rather than
+/// was cached before the migration is recognized here and dropped rather than
 /// restored beside the record its session now owns. An independent ownerless
 /// launch of the same agent names a different exec session and survives.
 ///

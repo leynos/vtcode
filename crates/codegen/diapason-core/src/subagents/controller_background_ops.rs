@@ -31,8 +31,8 @@ use self::controller_background_settlement::{
 
 pub(in crate::subagents) use self::reservation::{BackgroundRunPlan, BackgroundRunRequest, BackgroundRunReservation};
 use self::reservation::{
-    ReservedClaimGuard, background_launch_conflicts, reuse_is_for_another_parent, starting_background_record,
-    usable_background_parent_session_id,
+    ReservedClaimGuard, background_launch_conflicts, reuse_is_for_another_parent, reuse_needs_parent_rebind,
+    starting_background_record, usable_background_parent_session_id,
 };
 
 /// Disarms a reservation's claim guard when the claim has a new owner.
@@ -260,6 +260,18 @@ impl SubagentController {
                             bail!("A background subprocess with this agent name is already active");
                         }
                         if conflicts.is_empty() {
+                            // A record that names no parent routes no progress
+                            // to the caller, so reuse takes the launch onto the
+                            // requesting session. The write lock is held here,
+                            // and the owed-write marker makes the rebind durable
+                            // through the next save or reuse.
+                            if reuse_needs_parent_rebind(&parent_session_id, &plan.parent_session_id) {
+                                if let Some(record) = state.background_children.get_mut(&plan.record_id) {
+                                    record.parent_session_id = plan.parent_session_id.clone();
+                                    record.updated_at = Utc::now();
+                                }
+                                mark_background_ledger_write_pending(&self.state);
+                            }
                             (BackgroundRunReservation::Reused(Box::new(entry)), false, None)
                         } else {
                             bail!(

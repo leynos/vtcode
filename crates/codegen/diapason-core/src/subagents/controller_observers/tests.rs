@@ -78,6 +78,19 @@ impl ProgressObserverRoute {
     fn write_guard_held(&self) -> bool {
         self.state.try_read().is_err()
     }
+
+    /// Tries to take this route's write guard without waiting for it.
+    ///
+    /// A test that must prove a parked reservation excludes a handoff calls
+    /// this on its own thread. The answer therefore does not depend on whether
+    /// another task has been scheduled yet: the guard is available only while
+    /// no reader or writer holds it. `reserve` holds the read guard for its
+    /// whole parked window, so a refusal taken while the gate is parked is
+    /// evidence of that reservation, and the same attempt succeeding after the
+    /// release is evidence the window closed.
+    pub(in crate::subagents) fn write_guard_available(&self) -> bool {
+        self.state.try_write().is_ok()
+    }
 }
 
 /// An observer that reports whether the route was still write-locked when the

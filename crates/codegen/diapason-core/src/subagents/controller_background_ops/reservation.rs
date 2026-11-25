@@ -48,7 +48,7 @@ pub(in crate::subagents) struct BackgroundRunPlan {
 }
 
 impl BackgroundRunPlan {
-    /// The exec session this plan's reservation must recognise as the launch
+    /// The exec session this plan's reservation must recognize as the launch
     /// it observed.
     ///
     /// A bound plan replaces the launch its observation named, so the ledger is
@@ -163,10 +163,22 @@ pub(super) fn usable_background_parent_session_id(owner: Option<String>) -> Opti
 /// is dropped on that path: progress keeps routing to the record's parent. The
 /// rule must hold for every caller, not only those inside a tool invocation
 /// that names a parent, so the resolved parent is compared directly. A record
-/// that names no parent predates parent tracking and records no other session;
-/// the ambient invocation check still applies to it.
+/// that names a parent the request does not is another session's launch.
 pub(super) fn reuse_is_for_another_parent(record_parent_session_id: &str, requested_parent_session_id: &str) -> bool {
     !record_parent_session_id.is_empty() && record_parent_session_id != requested_parent_session_id
+}
+
+/// Reports whether reuse must move a parentless record onto the requesting session.
+///
+/// A record that names no parent predates parent tracking. Nothing routes its
+/// progress, and `notify_background_observers` publishes nothing for an empty
+/// parent, so a caller told its request was already running would never receive
+/// a lifecycle update for it. Reuse therefore rebinds such a record onto the
+/// session that asked for it; the reservation holds the write lock the rebind
+/// needs, and the ordinary owed write makes it durable. Two empty parents agree
+/// and need no rebind.
+pub(super) fn reuse_needs_parent_rebind(record_parent_session_id: &str, requested_parent_session_id: &str) -> bool {
+    record_parent_session_id.is_empty() && !requested_parent_session_id.is_empty()
 }
 
 /// Names the launch settings a record and a desired launch disagree on.

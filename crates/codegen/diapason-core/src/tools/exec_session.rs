@@ -1,7 +1,7 @@
 //! Manages persistent command and PTY process sessions used by execution tools.
 //!
 //! The controller background launch-id convention lives with the background
-//! output adapter that authorises archives by it; it is re-exported here
+//! output adapter that authorizes archives by it; it is re-exported here
 //! because the exec-session manager and the launch producer name it through
 //! this module.
 use std::path::{Path, PathBuf};
@@ -299,13 +299,18 @@ impl PipeSessionManager {
         }
     }
 
+    /// Spawns one pipe session and returns it with its backend record.
+    ///
+    /// The record is returned so a create that is cancelled before it reaches
+    /// the dispatch map can close the process it spawned; see
+    /// [`ExecSessionManager::create_pipe_session_with_sandbox`].
     async fn create_session(
         &self,
         session_id: ExecSessionId,
         command: Vec<String>,
         working_dir: PathBuf,
         env: HashMap<String, String>,
-    ) -> Result<DiapasonExecSession> {
+    ) -> Result<(DiapasonExecSession, Arc<PipeSessionRecord>)> {
         if command.is_empty() {
             return Err(anyhow!("exec session command cannot be empty"));
         }
@@ -446,9 +451,37 @@ impl PipeSessionManager {
             },
         ));
 
-        sessions.insert(session_id, record);
+        sessions.insert(session_id, Arc::clone(&record));
 
-        Ok(metadata)
+        Ok((metadata, record))
+    }
+
+    /// Signals a session a cancelled create spawned but never dispatched.
+    ///
+    /// Runs from a drop handler, so it never awaits. The child is signalled
+    /// first, which is what must not outlive the create. The backend record is
+    /// then withdrawn when its map lock is immediately available, so a later
+    /// create under the same id does not collide with a dead record. If the
+    /// lock is contended the record survives, and a later create under the id
+    /// is refused as an existing session rather than signalling a process it
+    /// does not own; the signalled child is already gone either way.
+    fn discard_undispatched_session(&self, session_id: &str, record: &Arc<PipeSessionRecord>) {
+        let _ = self.terminate_record(session_id, record);
+        if let Ok(mut sessions) = self.sessions.try_write() {
+            if sessions.get(session_id).is_some_and(|current| Arc::ptr_eq(current, record)) {
+                sessions.remove(session_id);
+            }
+        }
+        if let Ok(mut output_task) = record.output_task.try_lock() {
+            if let Some(task) = output_task.take() {
+                task.abort();
+            }
+        }
+        if let Ok(mut exit_task) = record.exit_task.try_lock() {
+            if let Some(task) = exit_task.take() {
+                task.abort();
+            }
+        }
     }
 
     async fn read_session_output(&self, session_id: &str, drain: bool) -> Result<Option<String>> {
@@ -640,6 +673,78 @@ impl ExecSessionRecord {
     }
 }
 
+/// Closes a backend session whose creation was cancelled before dispatch.
+///
+/// A create spawns the backend process and then awaits the dispatch map to
+/// record it. A future dropped inside that await used to leave a live process
+/// no dispatch entry named, so no close could ever reach it: `close_session`
+/// starts from the dispatch map. The guard owns the spawned backend record
+/// across the registration and closes it when the create does not complete. A
+/// drop handler cannot await, so the child is signalled synchronously and the
+/// backend record is withdrawn only when its lock is immediately available.
+struct UndispatchedSessionGuard {
+    exec_sessions: ExecSessionManager,
+    session_id: ExecSessionId,
+    backend: ExecSessionBackend,
+    pipe_record: Option<Arc<PipeSessionRecord>>,
+    armed: bool,
+}
+
+impl UndispatchedSessionGuard {
+    /// Arms the guard for one pipe session the backend has already spawned.
+    fn pipe(exec_sessions: ExecSessionManager, session_id: ExecSessionId, record: Arc<PipeSessionRecord>) -> Self {
+        Self {
+            exec_sessions,
+            session_id,
+            backend: ExecSessionBackend::Pipe,
+            pipe_record: Some(record),
+            armed: true,
+        }
+    }
+
+    /// Arms the guard for one PTY session the backend has already created.
+    fn pty(exec_sessions: ExecSessionManager, session_id: ExecSessionId) -> Self {
+        Self {
+            exec_sessions,
+            session_id,
+            backend: ExecSessionBackend::Pty,
+            pipe_record: None,
+            armed: true,
+        }
+    }
+
+    /// Reports that the dispatch record now owns the session.
+    fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for UndispatchedSessionGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        match self.backend {
+            ExecSessionBackend::Pipe => {
+                if let Some(record) = self.pipe_record.as_ref() {
+                    self.exec_sessions
+                        .pipe_sessions
+                        .discard_undispatched_session(self.session_id.as_str(), record);
+                }
+            }
+            ExecSessionBackend::Pty => {
+                // The PTY backend's terminate is synchronous and idempotent, so
+                // the child cannot outlive the cancelled create either.
+                let _ = self
+                    .exec_sessions
+                    .pty_sessions
+                    .manager()
+                    .terminate_session(self.session_id.as_str());
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct ExecSessionManager {
     pipe_sessions: PipeSessionManager,
@@ -724,8 +829,12 @@ impl ExecSessionManager {
         } else {
             env
         };
-        let metadata = self.pipe_sessions.create_session(session_id, command, working_dir, env).await?;
+        let (metadata, record) = self.pipe_sessions.create_session(session_id, command, working_dir, env).await?;
+        // Armed across the dispatch registration, which is the last await of
+        // the create. A caller dropped there still closes the process.
+        let registration = UndispatchedSessionGuard::pipe(self.clone(), metadata.id.clone(), record);
         self.insert_session(metadata.clone(), ExecSessionBackend::Pipe, None).await?;
+        registration.disarm();
         Ok(metadata)
     }
 
@@ -769,8 +878,13 @@ impl ExecSessionManager {
             sandbox_active,
         )?;
         let exec_metadata = DiapasonExecSession::from(metadata);
+        // Armed across the dispatch registration for the same reason the pipe
+        // create arms it: a dropped create must not leave a live PTY child no
+        // dispatch entry names.
+        let registration = UndispatchedSessionGuard::pty(self.clone(), exec_metadata.id.clone());
         self.insert_session(exec_metadata.clone(), ExecSessionBackend::Pty, Some(pty_guard))
             .await?;
+        registration.disarm();
         Ok(exec_metadata)
     }
 
@@ -1008,6 +1122,8 @@ impl ExecSessionManager {
         backend: ExecSessionBackend,
         pty_guard: Option<PtySessionGuard>,
     ) -> Result<()> {
+        #[cfg(all(test, unix))]
+        pass_session_registration_gate(&self.sessions, metadata.id.as_str()).await;
         let mut sessions = self.sessions.write().await;
         use hashbrown::hash_map::Entry;
         match sessions.entry(metadata.id.clone()) {
@@ -1034,6 +1150,72 @@ impl ExecSessionManager {
     }
 }
 
+/// A test gate between a spawned backend session and its dispatch record.
+///
+/// A create spawns the process in its backend and then awaits the dispatch map
+/// under an async lock. No real scheduling makes a caller drop inside that
+/// await deterministic, so a test arms this gate to cancel the create exactly
+/// there and observe what happens to the process.
+#[cfg(all(test, unix))]
+struct SessionRegistrationGate {
+    sessions: std::sync::Weak<RwLock<HashMap<ExecSessionId, Arc<ExecSessionRecord>>>>,
+    session_id: String,
+    entered: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
+#[cfg(all(test, unix))]
+fn session_registration_gates() -> &'static std::sync::Mutex<Vec<SessionRegistrationGate>> {
+    static GATES: std::sync::OnceLock<std::sync::Mutex<Vec<SessionRegistrationGate>>> = std::sync::OnceLock::new();
+    GATES.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
+
+/// Arms a gate that parks the next create of `session_id` before dispatch.
+#[cfg(all(test, unix))]
+pub(crate) fn gate_next_session_registration(
+    exec_sessions: &ExecSessionManager,
+    session_id: &str,
+) -> (Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>) {
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let mut gates = session_registration_gates()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    gates.retain(|gate| gate.sessions.strong_count() > 0);
+    gates.push(SessionRegistrationGate {
+        sessions: Arc::downgrade(&exec_sessions.sessions),
+        session_id: session_id.to_owned(),
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+    });
+    (entered, release)
+}
+
+/// Parks a create here when the gate armed for its session and manager matches.
+#[cfg(all(test, unix))]
+async fn pass_session_registration_gate(
+    sessions: &Arc<RwLock<HashMap<ExecSessionId, Arc<ExecSessionRecord>>>>,
+    session_id: &str,
+) {
+    let gate = {
+        let mut gates = session_registration_gates()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        gates.retain(|gate| gate.sessions.strong_count() > 0);
+        gates
+            .iter()
+            .position(|gate| {
+                gate.session_id == session_id && std::ptr::eq(gate.sessions.as_ptr(), Arc::as_ptr(sessions))
+            })
+            .map(|index| gates.remove(index))
+    };
+    let Some(gate) = gate else {
+        return;
+    };
+    gate.entered.notify_one();
+    gate.release.notified().await;
+}
+
 #[cfg(all(test, unix))]
 mod tests {
     use hashbrown::HashMap;
@@ -1048,6 +1230,53 @@ mod tests {
     use crate::tools::pty::{PtySessionNotFound, PtySize};
     use crate::tools::registry::PtySessionManager;
     use crate::utils::path::canonicalize_workspace;
+
+    /// A create cancelled before its dispatch record closes the child it spawned.
+    ///
+    /// The pipe backend spawns the process and stores it before the dispatch
+    /// record is inserted under an async lock. A caller dropped inside that
+    /// await leaves a live child no dispatch entry names, so `close_session`
+    /// could never reach it. The gate parks the create there; the guard must
+    /// signal the child and release the backend record, which re-creating the
+    /// same id proves.
+    #[tokio::test]
+    async fn a_create_cancelled_before_dispatch_closes_the_child_it_spawned() {
+        let workspace = tempdir().expect("workspace");
+        let manager = ExecSessionManager::new(
+            workspace.path().to_path_buf(),
+            PtySessionManager::new(workspace.path().to_path_buf(), PtyConfig::default()),
+        );
+        let (entered, _release) = super::gate_next_session_registration(&manager, "exec-cancelled");
+        {
+            let creator = manager.clone();
+            let create = creator.create_pipe_session(
+                "exec-cancelled".to_string().into(),
+                vec!["sh".to_string(), "-c".to_string(), "sleep 30".to_string()],
+                workspace.path().to_path_buf(),
+                HashMap::new(),
+            );
+            tokio::pin!(create);
+            tokio::select! {
+                result = &mut create => panic!("the gated create registered before it was cancelled: {result:?}"),
+                () = entered.notified() => {}
+            }
+            // Dropping the pinned future here cancels the create inside its
+            // dispatch registration, after the backend spawned the process.
+        }
+        // Re-creating the id succeeds only when the cancelled create withdrew
+        // its backend record, and that path terminates the child first.
+        manager
+            .create_pipe_session(
+                "exec-cancelled".to_string().into(),
+                vec!["sh".to_string(), "-c".to_string(), "sleep 5".to_string()],
+                workspace.path().to_path_buf(),
+                HashMap::new(),
+            )
+            .await
+            .expect("the cancelled create released its session id");
+        assert!(manager.snapshot_session("exec-cancelled").await.is_ok(), "the replacement session is registered");
+        manager.terminate_all_sessions_async().await.expect("close the replacement");
+    }
 
     /// Polls the session's activity channel until output appears or times out.
     async fn wait_for_pipe_output(

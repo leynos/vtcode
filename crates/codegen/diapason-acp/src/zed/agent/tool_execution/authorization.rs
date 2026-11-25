@@ -304,11 +304,11 @@ impl ZedAgent {
 
 /// Borrows the arguments the call would actually dispatch.
 ///
-/// Admission runs before resolution on the call's raw text and again after the
-/// permission stages, where a hook may have replaced the arguments. Both checks
-/// must judge the same input the executor will receive, so the second check
-/// hands over the installed `effective_args` rather than re-reading the model's
-/// original text.
+/// The early admission check only requires a session controller and runs before
+/// any hook or prompt. Target ownership is judged after the permission stages,
+/// where a hook may have replaced the arguments, and that check must judge the
+/// same input the executor will receive. It is therefore handed the installed
+/// `effective_args` rather than re-reading the model's original text.
 ///
 /// The value is borrowed, not rendered: the executor is handed the parsed value
 /// itself, so a re-serialized copy would only add work — and an allocation — to

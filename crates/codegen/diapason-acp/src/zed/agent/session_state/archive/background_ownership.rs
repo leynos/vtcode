@@ -25,38 +25,47 @@ impl ZedAgent {
     /// the rows it still holds ownerless, which makes the migrated ownership
     /// durable before either scope restores anything.
     ///
-    /// It runs before this attach builds the session controller, so that
-    /// controller is built from a ledger the workspace controller can no longer
-    /// add an ownerless copy to. Adoption happens whether or not this session
-    /// ends up with a controller: the stale copy belongs to the workspace
-    /// scope, and leaving it ownerless would let that scope restore a launch
-    /// the ledger already attributes to this session.
+    /// It runs before this attach builds the session controller, so the
+    /// controller is built from a ledger the workspace controller has already
+    /// been given the chance to adopt. Adoption happens whether or not this
+    /// session ends up with a controller: the stale copy belongs to the
+    /// workspace scope, and leaving it ownerless would let that scope restore a
+    /// launch the ledger already attributes to this session.
     ///
-    /// Best effort: a failure is logged and the attach continues. The ledger
-    /// merge still refuses to write an ownerless copy over an owned record of
-    /// the same launch, so the duplicate cannot reappear even when this step
-    /// does not run.
+    /// Best effort: a failure is logged and the attach continues. Reports
+    /// whether the workspace controller's copies carry the owners the ledger
+    /// records. `false` means its in-memory view still holds an ownerless copy
+    /// of a row this session launched, so the caller must keep the
+    /// workspace-scope restore deferred: restoring from that copy would
+    /// relaunch work the session owns.
+    ///
+    /// A save failure does not change the answer. The copies are already
+    /// adopted in memory, and the resume-site migration has already written the
+    /// ownership to the ledger, so there is nothing left for a restore to
+    /// relaunch; the ledger merge also refuses to write an ownerless copy over
+    /// an owned record of the same launch.
     pub(super) async fn adopt_workspace_background_owner(
         &self,
         runtime: &SessionWorkspaceRuntime,
         session_id: &acp::SessionId,
-    ) {
+    ) -> bool {
         let Some(controller) = runtime.local_tool_registry.subagent_controller() else {
-            return;
+            return true;
         };
         let adopted = match controller.adopt_persisted_background_owner(session_id.0.as_ref()).await {
             Ok(adopted) => adopted,
             Err(error) => {
                 log_suppressed_error(&error, "archive_attach", "background_owner_adoption_failed");
-                return;
+                return false;
             }
         };
         if adopted == 0 {
-            return;
+            return true;
         }
         if let Err(error) = controller.save_background_ledger().await {
             log_suppressed_error(&error, "archive_attach", "background_owner_adoption_save_failed");
         }
+        true
     }
 
     /// Gives the ledger rows this resumed session launched to its owner.
