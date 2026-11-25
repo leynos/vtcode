@@ -148,16 +148,17 @@ enum FindCommandContext {
 impl FindExecSyntaxClassifier {
     fn contains_dynamic_syntax(&mut self, argument: FindExecArgument<'_>) -> bool {
         let word = argument.0;
-        if matches!(word, "-exec" | "-execdir") {
-            self.context = FindCommandContext::ExecProgram;
-            return false;
-        }
 
         // Option and program comparisons use the literal token value, because
         // quoting that performs no expansion does not change what Bash runs.
         // The raw token still drives `contains_dynamic_shell_syntax` so any
         // expansion stays rejected.
         let literal = strip_literal_shell_quoting(word);
+
+        if matches!(literal.as_ref(), "-exec" | "-execdir") {
+            self.context = FindCommandContext::ExecProgram;
+            return false;
+        }
 
         match self.context {
             FindCommandContext::ExecProgram => {
@@ -1001,6 +1002,10 @@ mod tests {
         assert!(contains_dynamic_find_syntax("find . -exec sh '-c' '{}' \\;"));
         // A quoted env split-string option still splits its argument.
         assert!(contains_dynamic_find_syntax("find . -exec 'env' '-S' 'sh -c {}' \\;"));
+        // A quoted `-exec`/`-execdir` is still the find expression.
+        assert!(contains_dynamic_find_syntax("find . '-exec' sh -c '{}' +"));
+        assert!(contains_dynamic_find_syntax("find . \"-execdir\" sh -c '{}' +"));
+        assert!(contains_dynamic_find_syntax("find . '-exec' sh -c '{}' ';'"));
         // Quoting that performs expansion stays rejected, quoted or not.
         assert!(contains_dynamic_find_syntax("find . -exec sh -c \"$1\" {} \\;"));
     }
