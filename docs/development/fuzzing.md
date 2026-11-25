@@ -79,8 +79,12 @@ cargo llvm-cov nextest --locked --workspace --lcov --output-path lcov.info
 cargo nextest run --locked -p vtcode-core --test core_fuzz_props \
   -E 'test(fuzz_shell_parser_never_panics)'
 cargo nextest run --locked -p vtcode-core --test core_fuzz_props \
-  -E 'test(fuzz_shell_parser_never_panics)' --cargo-profile ci
+  -E 'test(fuzz_shell_parser_never_panics)' --profile ci --cargo-profile ci
 ```
+
+The nextest `ci` profile retries a failing test twice and does not fail fast,
+so it can mask a flaky result that the default profile reports. Use the
+default profile when the question is whether the property still fails.
 
 The hosted job runs the whole workspace, while the filtered arms run one binary
 in its own process. Nextest isolates each test in its own process, so parser

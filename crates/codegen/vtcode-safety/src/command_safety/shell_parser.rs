@@ -199,6 +199,13 @@ impl FindExecSyntaxClassifier {
                 false
             }
             FindCommandContext::EnvArguments | FindCommandContext::EnvCommand => {
+                // `env '{}'` reaches a program position too: `find` substitutes
+                // a path there, so the program is dynamic even though the
+                // quoting suppresses brace expansion on the raw token.
+                if literal.contains("{}") {
+                    return true;
+                }
+
                 self.context = if is_shell_interpreter(&literal) {
                     FindCommandContext::ShellArguments
                 } else {
@@ -1049,6 +1056,15 @@ mod tests {
         assert!(contains_dynamic_find_syntax("find . -exec env -u HOME -- bash -c {} \\;"));
         assert!(contains_dynamic_find_syntax("find . -exec env --split-string 'bash -c {}' \\;"));
         assert!(!contains_dynamic_find_syntax("find . -exec env bash -c 'printf %s' {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_env_program_placeholder_stays_dynamic() {
+        // Quoting suppresses brace expansion, but `find` still substitutes a
+        // path into the program position, which `env` then executes.
+        assert!(contains_dynamic_find_syntax("find . -exec env '{}' \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env -- '{}' \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env \"{}\" \\;"));
     }
 
     #[test]
