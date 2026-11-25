@@ -12,11 +12,11 @@ async fn test_temporal_context_inclusion() {
     let result = compose_system_instruction_text(&PathBuf::from("."), Some(&config), None).await;
 
     assert!(result.contains("Time:"), "Should include temporal context when enabled");
-    let env_pos = result.find("## Environment");
-    let temporal_pos = result.find("Time:");
-    if let (Some(t), Some(e)) = (temporal_pos, env_pos) {
-        assert!(t > e, "Temporal context should appear inside the environment section");
-    }
+    let env_pos = result
+        .find("## Environment")
+        .expect("the composed prompt must contain the environment section");
+    let temporal_pos = result.find("Time:").expect("temporal context must contribute a Time line");
+    assert!(temporal_pos > env_pos, "Temporal context should appear inside the environment section");
 }
 
 #[tokio::test]
@@ -105,11 +105,13 @@ async fn test_working_directory_inclusion() {
 
     assert!(result.contains("Working directory"), "Should include working directory label");
     assert!(result.contains("/tmp/test"), "Should show actual directory path");
-    let wd_pos = result.find("Working directory");
-    let env_pos = result.find("## Environment");
-    if let (Some(w), Some(e)) = (wd_pos, env_pos) {
-        assert!(w > e, "Working directory should appear inside the environment section");
-    }
+    let env_pos = result
+        .find("## Environment")
+        .expect("the composed prompt must contain the environment section");
+    let wd_pos = result
+        .find("Working directory")
+        .expect("enabling the working directory must add its label");
+    assert!(wd_pos > env_pos, "Working directory should appear inside the environment section");
 }
 
 #[tokio::test]
