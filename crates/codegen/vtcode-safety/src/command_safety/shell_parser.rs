@@ -166,7 +166,7 @@ impl FindExecSyntaxClassifier {
                     return true;
                 }
 
-                if matches!(literal.as_ref(), ";" | "\\;" | "+") {
+                if is_find_exec_terminator(word, &literal) {
                     self.context = FindCommandContext::Expression;
                 } else {
                     let program = base_command_name(&literal);
@@ -201,11 +201,11 @@ impl FindExecSyntaxClassifier {
                 false
             }
             FindCommandContext::EnvArguments if literal.starts_with('-') => true,
-            FindCommandContext::EnvArguments if matches!(literal.as_ref(), ";" | "\\;" | "+") => {
+            FindCommandContext::EnvArguments if is_find_exec_terminator(word, &literal) => {
                 self.context = FindCommandContext::Expression;
                 false
             }
-            FindCommandContext::EnvCommand if matches!(literal.as_ref(), ";" | "\\;" | "+") => {
+            FindCommandContext::EnvCommand if is_find_exec_terminator(word, &literal) => {
                 self.context = FindCommandContext::Expression;
                 false
             }
@@ -243,7 +243,7 @@ impl FindExecSyntaxClassifier {
                     context != FindCommandContext::Expression && matches!(literal.as_ref(), "{}" | "\\;");
                 let is_dynamic = !is_static_exec_token && contains_dynamic_shell_syntax(word);
 
-                if context != FindCommandContext::Expression && matches!(literal.as_ref(), ";" | "\\;" | "+") {
+                if context != FindCommandContext::Expression && is_find_exec_terminator(word, &literal) {
                     self.context = FindCommandContext::Expression;
                 } else if context != FindCommandContext::Expression && is_shell_interpreter(&literal) {
                     // A shell interpreter reached through any launcher
@@ -297,6 +297,16 @@ fn is_env_assignment(argument: &str) -> bool {
     argument.split_once('=').is_some_and(|(name, _)| !name.is_empty())
 }
 
+/// Returns whether a token ends a `find` `-exec` expression.
+///
+/// `;` and `+` terminate from their literal value. `\;` only terminates when
+/// the backslash reaches `find` unquoted: a quoted `'\;'` is passed through as
+/// the two characters `\;` and does not end the expression, so it must not
+/// reset the classifier into the expression context.
+fn is_find_exec_terminator(raw: &str, literal: &str) -> bool {
+    raw == "\\;" || matches!(literal, ";" | "+")
+}
+
 /// Removes shell quoting that performs no expansion, so a classifier can
 /// compare against the literal token value.
 ///
@@ -331,8 +341,11 @@ fn strip_literal_shell_quoting(token: &str) -> Cow<'_, str> {
                     Some('\\') => match characters.next() {
                         // Inside double quotes a backslash is literal unless
                         // it escapes one of these; otherwise it is dropped and
-                        // the escaped character is literal.
+                        // the escaped character is literal. A backslash-newline
+                        // pair is a line continuation that Bash removes
+                        // entirely, so both characters disappear.
                         Some(escaped @ ('$' | '`' | '"' | '\\')) => unquoted.push(escaped),
+                        Some('\n') => {}
                         Some(literal) => {
                             unquoted.push('\\');
                             unquoted.push(literal);
@@ -982,6 +995,8 @@ mod tests {
     #[case("'$HOME'", "$HOME")]
     #[case("\"$HOME\"", "\"$HOME\"")]
     #[case("'a'b", "ab")]
+    #[case("\"s\\\nh\"", "sh")]
+    #[case("\"echo \\n\"", "echo \\n")]
     fn strip_literal_shell_quoting_removes_non_expanding_quoting(#[case] token: &str, #[case] expected: &str) {
         assert_eq!(strip_literal_shell_quoting(token).as_ref(), expected);
     }
@@ -1117,6 +1132,26 @@ mod tests {
         // no `{}` and Bash still forms one after quote removal.
         assert!(contains_dynamic_find_syntax("find . -exec sh -c \"echo \\n \"'{''}'\" \\;"));
         assert!(!contains_dynamic_find_syntax("find . -exec sh -c 'printf %s' {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_quoted_terminator_does_not_end_the_exec_expression() {
+        // A quoted `'\;'` reaches `find` as the two characters `\;` and does
+        // not terminate, so the following `sh -c '{}'` stays dynamic.
+        assert!(contains_dynamic_find_syntax("find . -exec sudo -p '\\;' sh -c '{}' +"));
+        assert!(contains_dynamic_find_syntax("find . -exec sudo -p \"\\;\" sh -c '{}' +"));
+        assert!(contains_dynamic_find_syntax("find . -exec env -u x '\\;' sh -c '{}' +"));
+        // A genuine terminator still ends the expression.
+        assert!(!contains_dynamic_find_syntax("find . -exec printf %s {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec printf %s {} '+'"));
+    }
+
+    #[test]
+    fn find_exec_double_quoted_line_continuation_stays_dynamic() {
+        // Bash drops a double-quoted backslash-newline pair, forming `sh`.
+        assert!(contains_dynamic_find_syntax("find . -exec \"s\\\nh\" -c {} \\;"));
+        // A literal backslash-then-`n` is not a continuation.
+        assert_eq!(strip_literal_shell_quoting("\"echo \\n\"").as_ref(), "echo \\n");
     }
 
     #[test]
