@@ -270,6 +270,19 @@ and several parser round-trip bugs.
 them to vendored sources is covered by the scoped `--exclude` documented above,
 not by editing the vendor tree.
 
+A second review pass returned two findings and both are outside this change:
+
+- `patches/openai-harmony/src/tiktoken_ext/public_encodings.rs:534` — a
+  `BufWriter` flush error can be dropped on the cache-write path. This is
+  upstream `0.0.8`, in the group above.
+- `crates/codegen/diapason-llm/src/providers/openai/provider/harmony_client.rs:354`
+  — `send_harmony_tokens_to_inference_server` loads the encoding on an async
+  worker instead of `spawn_blocking`, which can block on a cold-cache download.
+  This file is **not** part of this change (`git diff` against the base does
+  not touch it); it is pre-existing first-party code. Fixing it here would mix
+  an unrelated async-runtime repair into a dependency remediation and would
+  need its own test evidence. It is recorded here so it is not lost.
+
 The patch record itself stays under `patches/openai-harmony/` rather than
 `docs/`, because its exit criterion is "delete this directory"; primary
 provenance living inside the thing it describes is what makes the deletion
