@@ -1,10 +1,9 @@
-//! Extracted regression tests; production source remains byte-identical.
+//! Regression tests for resolver defaults, XDG precedence, private storage and
+//! legacy-home separation.
 
-#[cfg(unix)]
 use std::fs;
 
 use super::super::*;
-#[cfg(unix)]
 use super::migration_paths;
 use tempfile::tempdir;
 

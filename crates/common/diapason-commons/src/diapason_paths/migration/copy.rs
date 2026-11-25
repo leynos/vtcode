@@ -91,9 +91,9 @@ fn copy_regular_file(source: &Path, destination: &Path, report: &mut MigrationRe
         .parent()
         .ok_or_else(|| anyhow!("migration destination {} has no parent", destination.display()))?;
     ensure_migration_dir(parent)?;
-    let (temporary, mut output) = unique_private_file(parent, destination.file_name().unwrap_or(OsStr::new("file")))?;
     let mut input =
         open_no_follow(source).with_context(|| format!("could not safely open legacy file {}", source.display()))?;
+    let (temporary, mut output) = unique_private_file(parent, destination.file_name().unwrap_or(OsStr::new("file")))?;
     let result: Result<()> = (|| {
         let _bytes_copied = io::copy(&mut input, &mut output)?;
         output.sync_all()?;
