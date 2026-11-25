@@ -225,8 +225,10 @@ impl FindExecSyntaxClassifier {
                 contains_dynamic_shell_syntax(word)
             }
             FindCommandContext::EnvOptionArgument => {
+                // The operand of `env -u` and friends is still shell syntax:
+                // `env -u "$(id)"` expands at approval time.
                 self.context = FindCommandContext::EnvArguments;
-                false
+                contains_dynamic_shell_syntax(word)
             }
             FindCommandContext::ShellArguments if is_shell_command_option(&literal) => {
                 self.context = FindCommandContext::ShellCommand;
@@ -300,11 +302,12 @@ fn is_env_assignment(argument: &str) -> bool {
 ///
 /// Extraction keeps the quote characters in each token, so `'sh'`, `"sh"` and
 /// the partly quoted `s'h'` all reach the classifier verbatim while Bash runs
-/// `sh`. Single quotes never expand, and double quotes only expand through
-/// `$`, backticks and backslash, so both forms are removed wherever they
-/// appear. A token that cannot be fully unquoted without changing its runtime
-/// meaning is returned unchanged, and the callers keep passing the raw token
-/// to `contains_dynamic_shell_syntax` so expansions stay rejected.
+/// `sh`. Single quotes never expand. In double quotes only `$`, backticks and
+/// backslash are special: a backslash is literal unless it precedes `$`, a
+/// backtick, `"`, `\` or a newline, and otherwise it escapes the next
+/// character. A token whose unquoted value cannot be established is returned
+/// unchanged, and the callers keep passing the raw token to
+/// `contains_dynamic_shell_syntax` so expansions stay rejected.
 fn strip_literal_shell_quoting(token: &str) -> Cow<'_, str> {
     if !token.contains(['\'', '"']) {
         return Cow::Borrowed(token);
@@ -325,10 +328,18 @@ fn strip_literal_shell_quoting(token: &str) -> Cow<'_, str> {
             '"' => loop {
                 match characters.next() {
                     Some('"') => break,
-                    Some(expandable @ ('$' | '`' | '\\')) => {
-                        let _ = expandable;
-                        return Cow::Borrowed(token);
-                    }
+                    Some('\\') => match characters.next() {
+                        // Inside double quotes a backslash is literal unless
+                        // it escapes one of these; otherwise it is dropped and
+                        // the escaped character is literal.
+                        Some(escaped @ ('$' | '`' | '"' | '\\')) => unquoted.push(escaped),
+                        Some(literal) => {
+                            unquoted.push('\\');
+                            unquoted.push(literal);
+                        }
+                        None => return Cow::Borrowed(token),
+                    },
+                    Some('$' | '`') => return Cow::Borrowed(token),
                     Some(literal) => unquoted.push(literal),
                     None => return Cow::Borrowed(token),
                 }
@@ -1093,6 +1104,22 @@ mod tests {
     }
 
     #[test]
+    fn find_exec_env_option_operands_keep_raw_dynamic_syntax() {
+        assert!(contains_dynamic_find_syntax("find . -exec env -u \"$(id)\" printf '{}' \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env -C \"$HOME\" printf '{}' \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec env -u HOME printf '{}' \\;"));
+    }
+
+    #[test]
+    fn find_exec_placeholder_hidden_by_mixed_quoting_stays_dynamic() {
+        // The placeholder is split across a double-quoted segment that ends in
+        // an escaped space and a single-quoted segment, so the raw token has
+        // no `{}` and Bash still forms one after quote removal.
+        assert!(contains_dynamic_find_syntax("find . -exec sh -c \"echo \\n \"'{''}'\" \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec sh -c 'printf %s' {} \\;"));
+    }
+
+    #[test]
     fn find_exec_env_end_of_options_preserves_following_find_expressions() {
         assert!(contains_dynamic_find_syntax("find . -exec env -- \\; -exec bash -c {} \\;"));
         assert!(!contains_dynamic_find_syntax("find . -exec env -- \\; -exec printf {} \\;"));
@@ -1107,11 +1134,12 @@ mod tests {
             exec_option in prop_oneof![Just("-exec"), Just("-execdir")],
             terminator in prop_oneof![Just("+"), Just("\\;")],
         ) {
-            // A shell interpreter in the program position makes the following
-            // argument command source, so those cases are correctly dynamic
-            // and belong to the dynamic-source regressions instead.
+            // A shell interpreter or `env` in the program position makes the
+            // following tokens command source or options, so those cases are
+            // correctly dynamic and belong to the dynamic regressions instead.
             prop_assume!(!is_shell_interpreter(&utility));
             prop_assume!(!is_shell_command_option(&argument));
+            prop_assume!(utility != "env");
 
             let script = format!("find {root} -type f {exec_option} {utility} {argument} {{}} {terminator}");
 
