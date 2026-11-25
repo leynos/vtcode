@@ -52,6 +52,10 @@ const MUTUAL_REENTRANT_TOOL_B: &str = "mutual_reentrant_tool_b";
 
 const REPLACE_DISPATCH_TOOL_NAME: &str = "replace_dispatch_test_tool";
 
+/// Pause between retained-session polls so a current-thread runtime can make
+/// progress instead of spinning the executor on `yield_now`.
+const EXEC_SESSION_POLL_INTERVAL: Duration = Duration::from_millis(10);
+
 /// Commands config that permits only the fixture's deterministic commands.
 fn command_session_fixture_commands_config() -> CommandsConfig {
     let mut config = CommandsConfig::default();
@@ -111,7 +115,7 @@ async fn await_harness_exec_session_exit_and_collect_output(
             {
                 return Ok(CompletedTerminalSession { exit_code, output: collected_output });
             }
-            tokio::task::yield_now().await;
+            tokio::time::sleep(EXEC_SESSION_POLL_INTERVAL).await;
         }
     })
     .await

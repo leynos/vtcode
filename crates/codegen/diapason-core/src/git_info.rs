@@ -176,8 +176,24 @@ mod tests {
     };
     use super::*;
     use anyhow::{Context, Result};
-    use std::path::PathBuf;
+    use diapason_commons::canonicalize;
+    use std::path::{Path, PathBuf};
     use tempfile::TempDir;
+
+    /// Compare a reported Git repository root against a fixture root as paths.
+    ///
+    /// `git rev-parse --show-toplevel` renders separators for its host
+    /// platform, so string equality is not portable. Canonicalizing both
+    /// sides compares the same location instead.
+    fn assert_repo_root_matches(reported: Option<&str>, expected: &Path, message: &str) -> Result<()> {
+        let reported = reported.with_context(|| format!("{message}: reported repository root is missing"))?;
+        let reported = canonicalize(Path::new(reported))
+            .with_context(|| format!("{message}: canonicalize reported repository root {reported:?}"))?;
+        let expected =
+            canonicalize(expected).with_context(|| format!("{message}: canonicalize fixture repository root"))?;
+        assert_eq!(reported, expected, "{message}");
+        Ok(())
+    }
 
     #[test]
     fn test_is_git_repo() {
@@ -203,8 +219,12 @@ mod tests {
 
     fn test_get_git_repo_root_body() -> Result<()> {
         let fixture = isolated_git_repository()?;
-        let root = get_git_repo_root(&fixture.repo_root)?.context("fixture repository must have a Git root")?;
-        assert_eq!(PathBuf::from(root), fixture.repo_root, "Git top-level path must equal the created fixture root");
+        let root = get_git_repo_root(&fixture.repo_root)?;
+        assert_repo_root_matches(
+            root.as_deref(),
+            &fixture.repo_root,
+            "Git top-level path must equal the created fixture root",
+        )?;
         Ok(())
     }
 
@@ -252,11 +272,11 @@ mod tests {
             Some(fixture.short_head.as_str()),
             "collected short HEAD must match the fixture commit"
         );
-        assert_eq!(
+        assert_repo_root_matches(
             info.repo_root.as_deref(),
-            fixture.repo_root.to_str(),
-            "collected repository root must match the fixture root"
-        );
+            &fixture.repo_root,
+            "collected repository root must match the fixture root",
+        )?;
         assert_eq!(
             info.remotes.get("origin").map(String::as_str),
             Some(FIXTURE_REMOTE_URL),
@@ -314,14 +334,13 @@ mod tests {
             .context("adversarial child is missing the target fixture root")?;
         let target_head =
             std::env::var(ADVERSARIAL_TARGET_HEAD_ENV).context("adversarial child is missing the target short HEAD")?;
-        let target_root_string = target_root.to_str().context("target fixture root is not UTF-8")?;
         let info = collect_git_info(&target_root)?;
 
-        assert_eq!(
+        assert_repo_root_matches(
             info.repo_root.as_deref(),
-            Some(target_root_string),
-            "clean re-exec must query the target fixture root"
-        );
+            &target_root,
+            "clean re-exec must query the target fixture root",
+        )?;
         assert_eq!(
             info.head_commit.as_deref(),
             Some(target_head.as_str()),
@@ -337,15 +356,25 @@ mod tests {
 
     #[test]
     fn test_non_git_directory() {
-        let temp_dir = TempDir::new().expect("create isolated non-Git directory");
+        run_in_clean_test_process(
+            "git_info::tests::test_non_git_directory",
+            no_command_configuration,
+            test_non_git_directory_body,
+        )
+        .expect("run isolated non-Git directory test");
+    }
+
+    fn test_non_git_directory_body() -> Result<()> {
+        let temp_dir = TempDir::new().context("create isolated non-Git directory")?;
         let non_git_path = temp_dir.path();
 
         assert!(!is_git_repo(non_git_path), "new temporary directory must not be a Git repository");
-        let remotes = get_git_remote_urls(non_git_path).expect("query remotes in non-Git directory");
+        let remotes = get_git_remote_urls(non_git_path).context("query remotes in non-Git directory")?;
         assert!(remotes.is_empty(), "non-Git directory must have no remotes");
-        let head = get_head_commit_hash(non_git_path).expect("query HEAD in non-Git directory");
+        let head = get_head_commit_hash(non_git_path).context("query HEAD in non-Git directory")?;
         assert!(head.is_none(), "non-Git directory must have no HEAD commit");
-        let root = get_git_repo_root(non_git_path).expect("query root in non-Git directory");
+        let root = get_git_repo_root(non_git_path).context("query root in non-Git directory")?;
         assert!(root.is_none(), "non-Git directory must have no Git root");
+        Ok(())
     }
 }

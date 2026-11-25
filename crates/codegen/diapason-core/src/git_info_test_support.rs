@@ -16,15 +16,39 @@ pub(crate) const FIXTURE_REMOTE_URL: &str = "https://example.invalid/diapason.gi
 const FIXTURE_AUTHOR_NAME: &str = "Diapason Test";
 const FIXTURE_AUTHOR_EMAIL: &str = "diapason-test@example.invalid";
 const FIXTURE_COMMIT_DATE: &str = "2000-01-02T03:04:05+00:00";
-const GIT_ENV_OVERRIDES: [&str; 8] = [
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_INDEX_FILE",
-    "GIT_OBJECT_DIRECTORY",
+/// Git environment variables that can redirect a command away from the
+/// repository, object store, or configuration a fixture intends to use.
+///
+/// The list mirrors the local isolation scrub in `scripts/test-git-cliff.sh`
+/// and extends it with `GIT_NAMESPACE` and `GIT_CEILING_DIRECTORIES`. Keep it
+/// sorted so a new Git redirect knob has an obvious home, and remove every
+/// entry from both fixture commands and the sentineled clean child.
+const GIT_ENV_OVERRIDES: [&str; 25] = [
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
     "GIT_CEILING_DIRECTORIES",
-    "GIT_CONFIG_PARAMETERS",
+    "GIT_COMMON_DIR",
     "GIT_CONFIG",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_NOSYSTEM",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_SYSTEM",
+    "GIT_DIR",
+    "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+    "GIT_EXEC_PATH",
+    "GIT_GRAFT_FILE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_INTERNAL_SUPER_PREFIX",
+    "GIT_NAMESPACE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_PREFIX",
+    "GIT_QUARANTINE_PATH",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_SHALLOW_FILE",
+    "GIT_TEMPLATE_DIR",
+    "GIT_WORK_TREE",
 ];
 const CHILD_OUTPUT_LIMIT: usize = 4096;
 // This bounds a hung libtest child without making normal test duration an
@@ -41,16 +65,13 @@ pub(crate) struct GitFixture {
 
 fn fixture_git_command(cwd: &Path) -> Command {
     let mut command = Command::new("git");
+    command.current_dir(cwd);
+    // The fixture pins its own Git configuration below, so every inherited
+    // redirect variable is removed rather than overridden.
+    for variable in GIT_ENV_OVERRIDES {
+        command.env_remove(variable);
+    }
     command
-        .current_dir(cwd)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .env_remove("GIT_OBJECT_DIRECTORY")
-        .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
-        .env_remove("GIT_CEILING_DIRECTORIES")
-        .env_remove("GIT_CONFIG_PARAMETERS")
-        .env_remove("GIT_CONFIG")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", cwd.join("fixture-global-git-config"))
         .env("GIT_TEMPLATE_DIR", cwd)
@@ -83,6 +104,25 @@ fn bounded_child_capture(file: &mut NamedTempFile) -> Result<String> {
     }
 }
 
+/// Read the bounded tail of a child output capture.
+///
+/// libtest writes its summary after any test output, so the tail is where the
+/// `N passed` line lives even when a verbose child fills the head of the file.
+fn bounded_child_tail_capture(file: &mut NamedTempFile) -> Result<String> {
+    let file_size = file.as_file().metadata().context("inspect child output capture")?.len();
+    let limit = CHILD_OUTPUT_LIMIT as u64;
+    let offset = file_size.saturating_sub(limit);
+    let mut bytes = Vec::with_capacity((file_size - offset) as usize);
+    file.as_file_mut()
+        .seek(SeekFrom::Start(offset))
+        .context("seek child output capture tail")?;
+    file.as_file_mut()
+        .take(limit)
+        .read_to_end(&mut bytes)
+        .context("read child output capture tail")?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 fn describe_captured_child_failure(status: &ExitStatus, stdout: &str, stderr: &str) -> String {
     format!("status={status} stdout={stdout:?} stderr={stderr:?}")
 }
@@ -107,12 +147,12 @@ fn kill_child_process_group(child: &mut Child) -> std::io::Result<()> {
     Ok(())
 }
 
-fn reap_after_child_error(
+fn reap_after_child_error<T>(
     child: &mut Child,
     reason: &str,
     stdout_capture: &mut NamedTempFile,
     stderr_capture: &mut NamedTempFile,
-) -> Result<()> {
+) -> Result<T> {
     let process_group_result = kill_child_process_group(child);
     let kill_result = child.kill();
     let wait_result = child.wait();
@@ -132,74 +172,158 @@ fn verify_clean_test_environment(test_name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Report whether this process is the sentineled child for `test_name`.
+///
+/// A sentinel naming a different test is a harness error: the inherited
+/// environment did not belong to the requested test.
+fn is_child_sentinel(test_name: &str) -> Result<bool> {
+    match std::env::var_os(CLEAN_TEST_CHILD_ENV) {
+        Some(value) if value == OsStr::new(test_name) => Ok(true),
+        Some(_) => bail!("clean Git test child sentinel does not match the requested test name"),
+        None => Ok(false),
+    }
+}
+
+/// Child stdout and stderr captures kept open for reporting after the wait.
+struct CleanTestChildCapture {
+    stdout: NamedTempFile,
+    stderr: NamedTempFile,
+}
+
+impl CleanTestChildCapture {
+    fn create() -> Result<Self> {
+        Ok(Self {
+            stdout: NamedTempFile::new().context("create child stdout capture")?,
+            stderr: NamedTempFile::new().context("create child stderr capture")?,
+        })
+    }
+}
+
+/// Build the libtest invocation for the sentineled child.
+///
+/// `configure` runs first, so parent-supplied values such as adversarial
+/// `GIT_DIR` and `GIT_WORK_TREE` are still scrubbed with the rest of the
+/// overrides before the child sentinel is set.
+fn build_child_command<F>(
+    current_exe: PathBuf,
+    test_name: &str,
+    configure: F,
+    captures: &CleanTestChildCapture,
+) -> Result<Command>
+where
+    F: FnOnce(&mut Command),
+{
+    let mut command = Command::new(current_exe);
+    command.args([test_name, "--exact", "--nocapture"]);
+    configure(&mut command);
+    for variable in GIT_ENV_OVERRIDES {
+        command.env_remove(variable);
+    }
+    command.env(CLEAN_TEST_CHILD_ENV, test_name);
+    command
+        .stdout(Stdio::from(captures.stdout.reopen().context("open child stdout capture")?))
+        .stderr(Stdio::from(captures.stderr.reopen().context("open child stderr capture")?));
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+
+        command.process_group(0);
+    }
+    Ok(command)
+}
+
+/// Spawn the child and wait for it under the watchdog.
+fn spawn_child_with_watchdog(
+    mut command: Command,
+    captures: &mut CleanTestChildCapture,
+    test_name: &str,
+) -> Result<ExitStatus> {
+    let mut child = command.spawn().context("spawn clean Git test child")?;
+    let deadline = Instant::now() + CLEAN_TEST_CHILD_WATCHDOG;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) if Instant::now() < deadline => thread::sleep(CLEAN_TEST_CHILD_POLL),
+            Ok(None) => {
+                return reap_after_child_error(
+                    &mut child,
+                    &format!("watchdog expired after {:?} for test {test_name:?}", CLEAN_TEST_CHILD_WATCHDOG),
+                    &mut captures.stdout,
+                    &mut captures.stderr,
+                );
+            }
+            Err(error) => {
+                return reap_after_child_error(
+                    &mut child,
+                    &format!("polling failed for test {test_name:?}: {error}"),
+                    &mut captures.stdout,
+                    &mut captures.stderr,
+                );
+            }
+        }
+    }
+}
+
+/// Number of tests libtest reported as passed in its final summary.
+///
+/// libtest prints `running N tests` before the run and
+/// `test result: ok. N passed; …` afterwards. The result line is preferred
+/// because it is the authoritative outcome; the running line is a fallback
+/// for a child that exited before printing a summary.
+fn reported_passed_test_count(stdout: &str) -> Option<usize> {
+    stdout
+        .lines()
+        .rev()
+        .find_map(|line| {
+            let summary = line.trim().strip_prefix("test result:")?;
+            let passed = summary.split(';').next()?.trim().split_once(" passed")?.0;
+            passed.rsplit('.').next()?.trim().parse().ok()
+        })
+        .or_else(|| {
+            stdout.lines().find_map(|line| {
+                let count = line.trim().strip_prefix("running ")?;
+                let count = count.strip_suffix(" tests").or_else(|| count.strip_suffix(" test"))?;
+                count.trim().parse().ok()
+            })
+        })
+}
+
 pub(crate) fn no_command_configuration(_: &mut Command) {}
 
 /// Run a test body in one child with the Git environment overrides removed.
 ///
-/// `configure` is called only by the parent, before the eight Git overrides
-/// are removed and the exact-name sentinel is set. The sentineled child
-/// verifies the removals before invoking `body`.
+/// `configure` is called only by the parent, before the Git overrides are
+/// removed and the exact-name sentinel is set. The sentineled child verifies
+/// the removals before invoking `body`, and the parent then confirms libtest
+/// actually ran the requested test so a drifted name cannot pass silently.
 pub(crate) fn run_in_clean_test_process<F>(test_name: &str, configure: F, body: fn() -> Result<()>) -> Result<()>
 where
     F: FnOnce(&mut Command),
 {
-    match std::env::var_os(CLEAN_TEST_CHILD_ENV) {
-        Some(value) if value == OsStr::new(test_name) => {
-            verify_clean_test_environment(test_name)?;
-            body()
-        }
-        Some(_) => bail!("clean Git test child sentinel does not match the requested test name"),
-        None => {
-            let current_exe = std::env::current_exe().context("resolve current libtest executable")?;
-            let mut stdout_capture = NamedTempFile::new().context("create child stdout capture")?;
-            let mut stderr_capture = NamedTempFile::new().context("create child stderr capture")?;
-            let mut command = Command::new(current_exe);
-            command.args([test_name, "--exact", "--nocapture"]);
-            configure(&mut command);
-            for variable in GIT_ENV_OVERRIDES {
-                command.env_remove(variable);
-            }
-            command.env(CLEAN_TEST_CHILD_ENV, test_name);
-            command
-                .stdout(Stdio::from(stdout_capture.reopen().context("open child stdout capture")?))
-                .stderr(Stdio::from(stderr_capture.reopen().context("open child stderr capture")?));
-            #[cfg(unix)]
-            {
-                use std::os::unix::process::CommandExt;
+    if is_child_sentinel(test_name)? {
+        verify_clean_test_environment(test_name)?;
+        return body();
+    }
 
-                command.process_group(0);
-            }
-            let mut child = command.spawn().context("spawn clean Git test child")?;
-            let deadline = Instant::now() + CLEAN_TEST_CHILD_WATCHDOG;
-            let status = loop {
-                match child.try_wait() {
-                    Ok(Some(status)) => break status,
-                    Ok(None) if Instant::now() < deadline => thread::sleep(CLEAN_TEST_CHILD_POLL),
-                    Ok(None) => {
-                        return reap_after_child_error(
-                            &mut child,
-                            &format!("watchdog expired after {:?} for test {test_name:?}", CLEAN_TEST_CHILD_WATCHDOG),
-                            &mut stdout_capture,
-                            &mut stderr_capture,
-                        );
-                    }
-                    Err(error) => {
-                        return reap_after_child_error(
-                            &mut child,
-                            &format!("polling failed for test {test_name:?}: {error}"),
-                            &mut stdout_capture,
-                            &mut stderr_capture,
-                        );
-                    }
-                }
-            };
-            if !status.success() {
-                let stdout = bounded_child_capture(&mut stdout_capture)?;
-                let stderr = bounded_child_capture(&mut stderr_capture)?;
-                bail!("clean Git test child failed: {}", describe_captured_child_failure(&status, &stdout, &stderr));
-            }
-            Ok(())
-        }
+    let current_exe = std::env::current_exe().context("resolve current libtest executable")?;
+    let mut captures = CleanTestChildCapture::create()?;
+    let command = build_child_command(current_exe, test_name, configure, &captures)?;
+    let status = spawn_child_with_watchdog(command, &mut captures, test_name)?;
+    if !status.success() {
+        let stdout = bounded_child_capture(&mut captures.stdout)?;
+        let stderr = bounded_child_capture(&mut captures.stderr)?;
+        bail!("clean Git test child failed: {}", describe_captured_child_failure(&status, &stdout, &stderr));
+    }
+
+    // The child runs with `--exact`, so a renamed or removed test makes
+    // libtest execute zero tests and still exit successfully.
+    let stdout = bounded_child_tail_capture(&mut captures.stdout)?;
+    match reported_passed_test_count(&stdout) {
+        Some(0) => bail!(
+            "clean Git test child {test_name:?} ran zero tests; the exact filter no longer matches a test: stdout={stdout:?}"
+        ),
+        Some(_) => Ok(()),
+        None => bail!("clean Git test child {test_name:?} did not report a libtest summary: stdout={stdout:?}"),
     }
 }
 
