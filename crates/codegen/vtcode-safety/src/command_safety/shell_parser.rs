@@ -133,6 +133,9 @@ struct FindExecSyntaxClassifier {
     /// Whether the previous token contained the `{}` placeholder, which `find`
     /// requires before `+` terminates an `-exec` expression.
     after_placeholder: bool,
+    /// Whether the next token is the operand of a predicate such as `-name`,
+    /// which `find` consumes before any action can start.
+    expecting_predicate_operand: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -159,6 +162,32 @@ impl FindExecSyntaxClassifier {
         let literal = strip_literal_shell_quoting(word);
         let previous_was_placeholder = self.after_placeholder;
         self.after_placeholder = literal.contains("{}");
+
+        // A terminator ends the action in every non-expression context, even
+        // where the current context would otherwise treat the token as command
+        // source (`sh -c ';'`) or an option operand (`env -u ';'`). `find`
+        // receives the unquoted `;` and ends the expression there.
+        if self.context != FindCommandContext::Expression
+            && is_find_exec_terminator(word, &literal, previous_was_placeholder)
+        {
+            self.context = FindCommandContext::Expression;
+            self.expecting_predicate_operand = false;
+            return false;
+        }
+
+        // A predicate such as `-name` consumes the next token as its operand,
+        // so a following quoted `'-exec'` is a pattern, not an action.
+        if self.context == FindCommandContext::Expression {
+            if self.expecting_predicate_operand {
+                self.expecting_predicate_operand = false;
+                return contains_dynamic_shell_syntax(word);
+            }
+
+            if is_find_predicate_with_operand(&literal) {
+                self.expecting_predicate_operand = true;
+                return contains_dynamic_shell_syntax(word);
+            }
+        }
 
         // Only the expression context starts an action. In an argument
         // position, `env -u '-exec'` consumes the token as an operand, and a
@@ -317,6 +346,51 @@ fn is_find_exec_terminator(raw: &str, literal: &str, previous_was_placeholder: b
     // `find` ends on `+` only when the placeholder immediately precedes it;
     // elsewhere `+` is an ordinary argument to the executed command.
     raw == "\\;" || literal == ";" || (literal == "+" && previous_was_placeholder)
+}
+
+/// Returns whether `find` consumes the next token as this predicate's operand.
+fn is_find_predicate_with_operand(literal: &str) -> bool {
+    matches!(
+        literal,
+        "-name"
+            | "-iname"
+            | "-path"
+            | "-ipath"
+            | "-wholename"
+            | "-iwholename"
+            | "-lname"
+            | "-ilname"
+            | "-regex"
+            | "-iregex"
+            | "-type"
+            | "-xtype"
+            | "-user"
+            | "-group"
+            | "-uid"
+            | "-gid"
+            | "-perm"
+            | "-size"
+            | "-mtime"
+            | "-atime"
+            | "-ctime"
+            | "-mmin"
+            | "-amin"
+            | "-cmin"
+            | "-newer"
+            | "-anewer"
+            | "-cnewer"
+            | "-used"
+            | "-links"
+            | "-inum"
+            | "-samefile"
+            | "-fstype"
+            | "-printf"
+            | "-fprintf"
+            | "-maxdepth"
+            | "-mindepth"
+            | "-regextype"
+            | "-context"
+    )
 }
 
 /// Removes shell quoting that performs no expansion, so a classifier can
@@ -1109,6 +1183,24 @@ mod tests {
         assert!(contains_dynamic_find_syntax("find . -exec env -u HOME -- bash -c {} \\;"));
         assert!(contains_dynamic_find_syntax("find . -exec env --split-string 'bash -c {}' \\;"));
         assert!(!contains_dynamic_find_syntax("find . -exec env bash -c 'printf %s' {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_predicate_operand_is_not_an_action() {
+        // `-name` consumes the quoted `-exec` as its pattern, so the real
+        // action that follows still starts an exec.
+        assert!(contains_dynamic_find_syntax("find . -name '-exec' -exec {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -type f -exec {} \\;"));
+        // Ordinary patterns stay static.
+        assert!(!contains_dynamic_find_syntax("find . -name '*.rs' -exec printf {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_terminator_ends_the_action_in_every_context() {
+        // The quoted `';'` reaches `find` as `;`, so it ends the first action
+        // even though it follows `sh -c`.
+        assert!(contains_dynamic_find_syntax("find . -exec sh -c ';' , -exec {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env -u ';' -exec {} \\;"));
     }
 
     #[test]
