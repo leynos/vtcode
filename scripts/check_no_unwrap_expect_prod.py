@@ -47,6 +47,16 @@ def parse_args() -> argparse.Namespace:
         default=200,
         help="Maximum number of findings to print (default: 200).",
     )
+    parser.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        help=(
+            "Glob pattern of repository-relative paths to skip entirely. "
+            "Used for vendored dependency sources, which are not first-party "
+            "code and must stay unmodified. May be repeated."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -206,6 +216,9 @@ def main() -> int:
     scanned = 0
     for path in files:
         if is_test_path(path):
+            continue
+        rel_path = path.relative_to(REPO_ROOT).as_posix()
+        if any(fnmatch(rel_path, pattern) for pattern in args.exclude):
             continue
         scanned += 1
         findings.extend(scan_file(path, allow_rules))

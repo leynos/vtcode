@@ -166,6 +166,31 @@ exercises a real file of that format.
   `diapason-ui` clipboard nextest filter, the `diapason-llm` Harmony tests and
   the repository gates run clean.
 
+## First-party policy gates and vendored code
+
+Vendoring registry sources puts third-party Rust under `patches/`, where the
+first-party gates would otherwise judge it. Two gates needed a scope decision,
+and in both cases the exclusion names the vendored tree rather than silencing a
+finding about Diapason:
+
+- `scripts/check_no_unwrap_expect_prod.py` gained a repeatable `--exclude`
+  glob option. Both `make advisory` and the CI `unwrap-expect-enforcement` job
+  pass `--exclude 'patches/*/src/**'`. The CI enforce-mode job previously
+  failed on 14 upstream `unwrap` calls in the vendored crate; rewriting them
+  would put the vendor tree out of sync with the released archive for no
+  behavioural gain, which is exactly what the patch refuses to do everywhere
+  else. First-party scanning is unchanged: the run still covers 2000 files and
+  reports zero findings.
+- `mdtablefix` reflows every tracked Markdown file, so the vendored `README.md`
+  is reflowed as described above. No other gate flags the vendored tree.
+  `scripts/check_rust_file_length.py` lists `patches/simdutf/src/generated.rs`
+  in warn mode only, which predates this work, and the large-file gate needed
+  no new allowlist entry.
+
+This is not an advisory allow-list. `RUSTSEC-2024-0436` is gone because the
+dependency left the graph, and nothing in this change suppresses a RustSec
+warning.
+
 ## Publication limitation
 
 `[patch.crates-io]` entries are local. They apply to this workspace and never
