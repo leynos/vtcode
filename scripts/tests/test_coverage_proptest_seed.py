@@ -49,6 +49,19 @@ def seed_steps(workflow: dict) -> list[dict]:
     return [step for step in steps(workflow) if "PROPTEST_RNG_SEED" in str(step.get("run", ""))]
 
 
+def seed_content_violations(step: dict) -> list[str]:
+    """Check that the seed step really exports one guarded decimal value."""
+    found: list[str] = []
+    run = str(step.get("run", ""))
+    if "$GITHUB_ENV" not in run:
+        found.append("the seed step does not export PROPTEST_RNG_SEED through $GITHUB_ENV")
+    if "$GITHUB_STEP_SUMMARY" not in run:
+        found.append("the seed step does not report the seed in $GITHUB_STEP_SUMMARY")
+    if not DECIMAL_GUARD.search(run):
+        found.append("the seed step does not reject non-decimal values")
+    return found
+
+
 def violations(workflow: dict) -> list[str]:
     found: list[str] = []
     seeds = seed_steps(workflow)
@@ -58,13 +71,7 @@ def violations(workflow: dict) -> list[str]:
         )
         return found
 
-    run = str(seeds[0].get("run", ""))
-    if "$GITHUB_ENV" not in run:
-        found.append("the seed step does not export PROPTEST_RNG_SEED through $GITHUB_ENV")
-    if "$GITHUB_STEP_SUMMARY" not in run:
-        found.append("the seed step does not report the seed in $GITHUB_STEP_SUMMARY")
-    if not DECIMAL_GUARD.search(run):
-        found.append("the seed step does not reject non-decimal values")
+    found.extend(seed_content_violations(seeds[0]))
 
     names = [step.get("name") for step in steps(workflow)]
     if SEED_STEP not in names:
