@@ -53,7 +53,7 @@ def seed_steps(workflow: dict) -> list[dict]:
 
 
 def seed_content_violations(step: dict) -> list[str]:
-    """Check that the seed step really exports one guarded decimal value."""
+    """Check that the seed step exports and reports the same guarded value."""
     found: list[str] = []
     run = str(step.get("run", ""))
     if "$GITHUB_ENV" not in run:
@@ -62,7 +62,28 @@ def seed_content_violations(step: dict) -> list[str]:
         found.append("the seed step does not report the seed in $GITHUB_STEP_SUMMARY")
     if not DECIMAL_GUARD.search(run):
         found.append("the seed step does not reject non-decimal values")
+    # The env export and the summary must interpolate the generated variable,
+    # so a constant cannot be reported while a different value is exported.
+    if "$proptest_rng_seed" not in seed_payload(run, "$GITHUB_ENV"):
+        found.append("the exported seed is not the generated value")
+    if "$proptest_rng_seed" not in seed_payload(run, "$GITHUB_STEP_SUMMARY"):
+        found.append("the reported seed is not the generated value")
     return found
+
+
+def seed_payload(run: str, destination: str) -> str:
+    """Return the seed-bearing text written to ``destination``."""
+    lines = run.splitlines()
+    redirects = [index for index, line in enumerate(lines) if destination in line]
+    if not redirects:
+        return ""
+    redirect = redirects[-1]
+    if "PROPTEST_RNG_SEED" in lines[redirect]:
+        return lines[redirect]
+    for index in range(redirect - 1, -1, -1):
+        if "PROPTEST_RNG_SEED" in lines[index]:
+            return lines[index]
+    return ""
 
 
 def violations(workflow: dict) -> list[str]:
@@ -147,6 +168,21 @@ class CoverageProptestSeedTest(unittest.TestCase):
             "run"
         ].replace("$GITHUB_ENV", "$GITHUB_OUTPUT")
         self.assert_fails("does not export PROPTEST_RNG_SEED through $GITHUB_ENV")
+
+    def test_a_constant_export_fails(self) -> None:
+        step = step_named(self.workflow, SEED_STEP)
+        step["run"] = step["run"].replace(
+            "printf 'PROPTEST_RNG_SEED=%s\\n' \"$proptest_rng_seed\"",
+            "printf 'PROPTEST_RNG_SEED=0\\n'",
+        )
+        self.assert_fails("exported seed is not the generated value")
+
+    def test_a_constant_summary_fails(self) -> None:
+        step = step_named(self.workflow, SEED_STEP)
+        step["run"] = step["run"].replace(
+            "PROPTEST_RNG_SEED=$proptest_rng_seed", "PROPTEST_RNG_SEED=0"
+        )
+        self.assert_fails("reported seed is not the generated value")
 
     def test_missing_decimal_guard_fails(self) -> None:
         step = step_named(self.workflow, SEED_STEP)

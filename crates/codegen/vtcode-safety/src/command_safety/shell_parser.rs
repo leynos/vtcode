@@ -161,7 +161,9 @@ impl FindExecSyntaxClassifier {
         // expansion stays rejected.
         let literal = strip_literal_shell_quoting(word);
         let previous_was_placeholder = self.after_placeholder;
-        self.after_placeholder = literal.contains("{}");
+        // `find` only accepts the `{} +` form when the placeholder is the whole
+        // argument, so `x{}` must not enable a `+` terminator.
+        self.after_placeholder = literal == "{}";
 
         // A terminator ends the action in every non-expression context, even
         // where the current context would otherwise treat the token as command
@@ -257,6 +259,10 @@ impl FindExecSyntaxClassifier {
 
                 self.context = if is_shell_interpreter(&literal) {
                     FindCommandContext::ShellArguments
+                } else if base_command_name(&literal) == "env" {
+                    // A nested `env` keeps its own option grammar, so
+                    // `env env -S 'sh -c {}'` still splits the string.
+                    FindCommandContext::EnvArguments
                 } else {
                     FindCommandContext::ExecArguments
                 };
@@ -299,10 +305,10 @@ impl FindExecSyntaxClassifier {
                     // That only costs an extra approval; the alternative would
                     // permit code execution.
                     self.context = FindCommandContext::ShellArguments;
-                } else if context != FindCommandContext::Expression && literal == "env" {
+                } else if context != FindCommandContext::Expression && base_command_name(&literal) == "env" {
                     // `env` reached behind a launcher still splits its `-S`
-                    // argument into words, so `timeout 5 env -S 'sh -c {}'`
-                    // runs the substituted path as shell source.
+                    // argument into words, so `timeout 5 /usr/bin/env -S
+                    // 'sh -c {}'` runs the substituted path as shell source.
                     self.context = FindCommandContext::EnvArguments;
                 }
 
@@ -1199,6 +1205,8 @@ mod tests {
         assert!(contains_dynamic_find_syntax("find . -exec env -u HOME -- bash -c {} \\;"));
         assert!(contains_dynamic_find_syntax("find . -exec env --split-string 'bash -c {}' \\;"));
         assert!(contains_dynamic_find_syntax("find . -exec timeout 5 env -S 'sh -c {}' \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env env -S 'sh -c {}' ';'"));
+        assert!(contains_dynamic_find_syntax("find . -exec timeout 5 /usr/bin/env -S 'sh -c {}' ';'"));
         assert!(!contains_dynamic_find_syntax("find . -exec env bash -c 'printf %s' {} \\;"));
     }
 
@@ -1212,6 +1220,9 @@ mod tests {
         // cannot start a fictitious action.
         assert!(contains_dynamic_find_syntax("find . -fprintf output '-exec' -exec '{}' \\;"));
         assert!(contains_dynamic_find_syntax("find . -fprint '-exec' -exec '{}' \\;"));
+        // Only a whole-argument `{}` enables the `{} +` terminator, so an
+        // `x{}` argument must not end the action before a later one starts.
+        assert!(contains_dynamic_find_syntax("find . -exec printf '%s' 'x{}' + -fprintf ';' -exec sh -c '{}' ';'"));
         // Ordinary patterns stay static.
         assert!(!contains_dynamic_find_syntax("find . -name '*.rs' -exec printf {} \\;"));
     }
@@ -1315,6 +1326,9 @@ mod tests {
             prop_assume!(!is_shell_interpreter(&utility));
             prop_assume!(!is_shell_command_option(&argument));
             prop_assume!(utility != "env");
+            // An `env` argument starts the env command grammar, so the
+            // following `{}` is a program position and correctly dynamic.
+            prop_assume!(argument != "env");
 
             let script = format!("find {root} -type f {exec_option} {utility} {argument} {{}} {terminator}");
 
