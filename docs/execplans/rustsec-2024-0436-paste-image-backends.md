@@ -165,6 +165,13 @@ exercises a real file of that format.
 - Locked `cargo check`/`clippy` with `RUSTFLAGS="-D warnings"`, the
   `diapason-ui` clipboard nextest filter, the `diapason-llm` Harmony tests and
   the repository gates run clean.
+- `cargo tree --locked --target x86_64-pc-windows-msvc -e features -i image`
+  shows the same codec set, plus `bmp` from `arboard`'s Windows codec, and no
+  `avif` or `exr`. A local `cargo check --target x86_64-pc-windows-msvc` cannot
+  finish on this host because `aws-lc-sys` needs an MSVC C compiler to build
+  its C sources; `cc` here is GCC. That is a host toolchain gap that predates
+  and is unaffected by this change. Windows builds run on a `windows-latest`
+  runner in `.github/workflows/build-linux-windows.yml`.
 
 ## First-party policy gates and vendored code
 
@@ -201,8 +208,16 @@ its `image` defaults, and still gets `paste` on an AVIF-enabled build.
 That limitation is inherent to a workspace-level patch and is why the vendored
 copy records an exit criterion rather than a permanent fork. Until upstream
 releases the fix, the patch is correct for Diapason and does not claim to fix
-its consumers. `cargo publish --dry-run -p diapason-llm` validates against the
-registry `openai-harmony`, so packaging is unaffected by the patch.
+its consumers. It also does not block packaging: `[patch.crates-io]` is not
+part of a packaged crate, so a published `diapason-llm` simply declares
+`openai-harmony = "0.0.8"` and resolves it from the registry.
+
+`cargo publish --dry-run -p diapason-llm` cannot run to completion in this
+workspace for a reason unrelated to the patch: `diapason-llm` depends on
+`diapason-commons`, which is not published to crates.io, so packaging stops at
+`no matching package named diapason-commons found`. That failure is identical
+before and after this change, and `crates/codegen/diapason-llm/Cargo.toml` is
+untouched here.
 
 ## Exit criterion
 
