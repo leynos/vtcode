@@ -72,10 +72,8 @@ the same case count as the hosted run.
 ```bash
 export PROPTEST_RNG_SEED=<seed-from-the-job-summary>
 
-# Coverage arm, matching the hosted job.
-cargo llvm-cov nextest --locked -p vtcode-core --test core_fuzz_props \
-  -E 'test(fuzz_shell_parser_never_panics)' --lcov \
-  --output-path /tmp/replay.lcov
+# Coverage arm, matching the hosted job's command.
+cargo llvm-cov nextest --locked --workspace --lcov --output-path lcov.info
 
 # Ordinary arm, default and CI profiles.
 cargo nextest run --locked -p vtcode-core --test core_fuzz_props \
@@ -84,12 +82,20 @@ cargo nextest run --locked -p vtcode-core --test core_fuzz_props \
   -E 'test(fuzz_shell_parser_never_panics)' --cargo-profile ci
 ```
 
+The hosted job runs the whole workspace, while the filtered arms run one binary
+in its own process. Nextest isolates each test in its own process, so parser
+state cannot leak between tests; the difference that matters is test ordering
+and the set of other binaries, which only the workspace-wide command
+reproduces. Use the workspace command when the result must match the hosted run
+exactly.
+
 A native signal kills the process before proptest can shrink the input or write
 a `.proptest-regressions` entry. To recover the script, run a scratch harness
 that records each generated script and flushes it before calling
 `parse_shell_commands`. Generated scripts may contain newlines, so a line per
 script is ambiguous; write one JSON string per record instead, which escapes
-newlines and keeps each script on one line:
+newlines and keeps each script on one line. The scratch harness needs
+`serde_json` as a dev-dependency:
 
 ```rust
 writeln!(log, "{}", serde_json::to_string(&script)?)?;

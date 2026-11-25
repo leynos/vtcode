@@ -129,9 +129,6 @@ struct FindExecArgument<'a>(&'a str);
 #[derive(Default)]
 struct FindExecSyntaxClassifier {
     context: FindCommandContext,
-    /// Set while the classifier is inside the arguments of a wrapper such as
-    /// `timeout`, where a later interpreter-name word really is an executable.
-    wrapper_arguments: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -167,10 +164,9 @@ impl FindExecSyntaxClassifier {
                     let program = base_command_name(strip_literal_shell_quoting(word));
                     self.context = match program {
                         "env" => FindCommandContext::EnvArguments,
-                        _ if is_shell_interpreter(word) => FindCommandContext::ShellArguments,
+                        _ if is_shell_interpreter(program) => FindCommandContext::ShellArguments,
                         _ => FindCommandContext::ExecArguments,
                     };
-                    self.wrapper_arguments = self.wrapper_arguments || is_exec_wrapper_program(program);
                 }
 
                 contains_dynamic_shell_syntax(word)
@@ -196,16 +192,11 @@ impl FindExecSyntaxClassifier {
                 false
             }
             FindCommandContext::EnvArguments | FindCommandContext::EnvCommand => {
-                let program = base_command_name(strip_literal_shell_quoting(word));
                 self.context = if is_shell_interpreter(word) {
                     FindCommandContext::ShellArguments
                 } else {
                     FindCommandContext::ExecArguments
                 };
-                // `env timeout 5 sh -c '{}'` reaches the interpreter through
-                // a wrapper resolved after `env`, which stays an executable
-                // position.
-                self.wrapper_arguments = self.wrapper_arguments || is_exec_wrapper_program(program);
                 contains_dynamic_shell_syntax(word)
             }
             FindCommandContext::EnvOptionArgument => {
@@ -226,18 +217,20 @@ impl FindExecSyntaxClassifier {
 
                 if context != FindCommandContext::Expression && matches!(word, ";" | "\\;" | "+") {
                     self.context = FindCommandContext::Expression;
-                    self.wrapper_arguments = false;
                 } else if context != FindCommandContext::Expression && is_shell_interpreter(word) {
-                    // A shell interpreter reached through a wrapper such as
-                    // `timeout`, `nice`, `nohup`, `stdbuf`, or `xargs` is still
-                    // an executable position; without this transition a
-                    // following `-c {}` would stay classified as static. An
-                    // interpreter-name argument to an ordinary command is not,
-                    // so `printf '%s' sh -c '{}'` stays static.
-                    if self.wrapper_arguments {
-                        self.context = FindCommandContext::ShellArguments;
-                        self.wrapper_arguments = false;
-                    }
+                    // A shell interpreter reached through any launcher
+                    // (`timeout`, `sudo`, `chroot`, `setsid`, `busybox`, ...)
+                    // is still an executable position; without this transition
+                    // a following `-c {}` would stay classified as static and
+                    // let `find` substitute a filename into shell source.
+                    //
+                    // Launchers cannot be enumerated safely, and an unknown one
+                    // must not become a bypass, so this deliberately
+                    // over-approximates: an interpreter named as an ordinary
+                    // argument (`printf '%s' sh -c '{}'`) is also dynamic.
+                    // That only costs an extra approval; the alternative would
+                    // permit code execution.
+                    self.context = FindCommandContext::ShellArguments;
                 }
 
                 is_dynamic
@@ -299,14 +292,6 @@ fn strip_literal_shell_quoting(token: &str) -> &str {
     }
 
     token
-}
-
-/// Wrappers whose remaining arguments stay in an executable position.
-fn is_exec_wrapper_program(program: &str) -> bool {
-    matches!(
-        program.to_ascii_lowercase().as_str(),
-        "timeout" | "nice" | "nohup" | "stdbuf" | "xargs"
-    )
 }
 
 fn is_shell_interpreter(program: &str) -> bool {
@@ -928,6 +913,25 @@ mod tests {
         assert!(!contains_dynamic_find_syntax("find src -type f -name '*.rs'"));
     }
 
+    #[rstest::rstest]
+    #[case("sh", "sh")]
+    #[case("'sh'", "sh")]
+    #[case("\"sh\"", "sh")]
+    #[case("''", "")]
+    #[case("\"\"", "")]
+    #[case("'", "'")]
+    #[case("\"", "\"")]
+    #[case("'a'\"b\"", "'a'\"b\"")]
+    #[case("'$HOME'", "$HOME")]
+    #[case("\"$HOME\"", "\"$HOME\"")]
+    #[case("'a'b", "'a'b")]
+    fn strip_literal_shell_quoting_removes_only_non_expanding_outer_quotes(
+        #[case] token: &str,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(strip_literal_shell_quoting(token), expected);
+    }
+
     #[test]
     fn find_exec_placeholder_is_distinct_from_dynamic_braces_and_expansions() {
         assert!(!contains_dynamic_find_syntax("find src -type f -exec printf '%s\\n' {} \\;"));
@@ -984,11 +988,27 @@ mod tests {
             assert!(contains_dynamic_find_syntax(script), "expected dynamic shell source: {script}");
         }
 
-        // A literal interpreter-name argument is not an executable position.
+        // A literal interpreter-name argument is not an executable position
+        // unless it is followed by a shell command option.
         assert!(!contains_dynamic_find_syntax("find src -type f -exec cp bash {} \\;"));
         assert!(!contains_dynamic_find_syntax("find src -type f -exec grep -e bash {} \\;"));
-        assert!(!contains_dynamic_find_syntax("find . -exec printf '%s\\n' 'sh' '-c' '{}' \\;"));
-        assert!(!contains_dynamic_find_syntax("find . -exec printf '%s\\n' sh -c '{}' \\;"));
+    }
+
+    #[test]
+    fn find_exec_interpreter_behind_any_launcher_stays_dynamic() {
+        // Launchers cannot be enumerated, so an interpreter in an argument
+        // position is treated as executable. Over-approximating costs an extra
+        // approval; under-approximating would run filename-derived source.
+        for script in [
+            "find . -exec sudo sh -c '{}' \\;",
+            "find . -exec chroot / sh -c '{}' \\;",
+            "find . -exec setsid bash -c '{}' \\;",
+            "find . -exec ionice sh -c '{}' \\;",
+            "find . -exec busybox sh -c '{}' \\;",
+            "find . -exec printf '%s\\n' sh -c '{}' \\;",
+        ] {
+            assert!(contains_dynamic_find_syntax(script), "expected dynamic shell source: {script}");
+        }
     }
 
     #[test]

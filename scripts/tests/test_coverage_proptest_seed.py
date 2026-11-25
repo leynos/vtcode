@@ -38,14 +38,17 @@ def load() -> dict:
 
 
 def steps(workflow: dict) -> list[dict]:
+    """Return the coverage job's step list."""
     return workflow["jobs"]["coverage"]["steps"]
 
 
 def step_named(workflow: dict, name: str) -> dict:
+    """Return the first step with ``name``."""
     return next(step for step in steps(workflow) if step.get("name") == name)
 
 
 def seed_steps(workflow: dict) -> list[dict]:
+    """Return every step whose script mentions ``PROPTEST_RNG_SEED``."""
     return [step for step in steps(workflow) if "PROPTEST_RNG_SEED" in str(step.get("run", ""))]
 
 

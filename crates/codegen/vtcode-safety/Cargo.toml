@@ -35,6 +35,7 @@ vtcode-commons = { workspace = true }
 
 [dev-dependencies]
 proptest = "1.11"
+rstest = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 
