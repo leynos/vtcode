@@ -66,8 +66,8 @@ cargo +nightly fuzz run shell_parser fuzz/artifacts/shell_parser/crash-...
 
 The Coverage workflow records one random decimal `PROPTEST_RNG_SEED` in the job
 summary before it runs the tests. Read that value from the failed job's summary
-and replay the property with it. Leave `PROPTEST_CASES` unset so the replay uses
-the same case count as the hosted run.
+and replay the property with it. Leave `PROPTEST_CASES` unset so the replay
+uses the same case count as the hosted run.
 
 ```bash
 export PROPTEST_RNG_SEED=<seed-from-the-job-summary>
@@ -83,8 +83,8 @@ cargo nextest run --locked -p vtcode-core --test core_fuzz_props \
 ```
 
 The nextest `ci` profile retries a failing test twice and does not fail fast,
-so it can mask a flaky result that the default profile reports. Use the
-default profile when the question is whether the property still fails.
+so it can mask a flaky result that the default profile reports. Use the default
+profile when the question is whether the property still fails.
 
 The hosted job runs the whole workspace under `cargo llvm-cov`, which adds
 coverage instrumentation and builds every test binary. The filtered arms run
