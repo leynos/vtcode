@@ -19,6 +19,7 @@
 //! **Phase 4 Implementation**: Uses tree-sitter for accurate bash AST parsing.
 //! Falls back to basic tokenization for minimal shell syntax.
 
+use std::borrow::Cow;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 
@@ -152,16 +153,22 @@ impl FindExecSyntaxClassifier {
             return false;
         }
 
+        // Option and program comparisons use the literal token value, because
+        // quoting that performs no expansion does not change what Bash runs.
+        // The raw token still drives `contains_dynamic_shell_syntax` so any
+        // expansion stays rejected.
+        let literal = strip_literal_shell_quoting(word);
+
         match self.context {
             FindCommandContext::ExecProgram => {
-                if word.contains("{}") {
+                if literal.contains("{}") {
                     return true;
                 }
 
-                if matches!(word, ";" | "\\;" | "+") {
+                if matches!(literal.as_ref(), ";" | "\\;" | "+") {
                     self.context = FindCommandContext::Expression;
                 } else {
-                    let program = base_command_name(strip_literal_shell_quoting(word));
+                    let program = base_command_name(&literal);
                     self.context = match program {
                         "env" => FindCommandContext::EnvArguments,
                         _ if is_shell_interpreter(program) => FindCommandContext::ShellArguments,
@@ -171,28 +178,28 @@ impl FindExecSyntaxClassifier {
 
                 contains_dynamic_shell_syntax(word)
             }
-            FindCommandContext::EnvArguments if is_env_split_string_option(word) => true,
-            FindCommandContext::EnvArguments if is_env_option_with_argument(word) => {
+            FindCommandContext::EnvArguments if is_env_split_string_option(&literal) => true,
+            FindCommandContext::EnvArguments if is_env_option_with_argument(&literal) => {
                 self.context = FindCommandContext::EnvOptionArgument;
                 false
             }
-            FindCommandContext::EnvArguments if is_env_option(word) => false,
-            FindCommandContext::EnvArguments if is_env_assignment(word) => false,
-            FindCommandContext::EnvArguments if word == "--" => {
+            FindCommandContext::EnvArguments if is_env_option(&literal) => false,
+            FindCommandContext::EnvArguments if is_env_assignment(&literal) => false,
+            FindCommandContext::EnvArguments if literal == "--" => {
                 self.context = FindCommandContext::EnvCommand;
                 false
             }
-            FindCommandContext::EnvArguments if word.starts_with('-') => true,
-            FindCommandContext::EnvArguments if matches!(word, ";" | "\\;" | "+") => {
+            FindCommandContext::EnvArguments if literal.starts_with('-') => true,
+            FindCommandContext::EnvArguments if matches!(literal.as_ref(), ";" | "\\;" | "+") => {
                 self.context = FindCommandContext::Expression;
                 false
             }
-            FindCommandContext::EnvCommand if matches!(word, ";" | "\\;" | "+") => {
+            FindCommandContext::EnvCommand if matches!(literal.as_ref(), ";" | "\\;" | "+") => {
                 self.context = FindCommandContext::Expression;
                 false
             }
             FindCommandContext::EnvArguments | FindCommandContext::EnvCommand => {
-                self.context = if is_shell_interpreter(word) {
+                self.context = if is_shell_interpreter(&literal) {
                     FindCommandContext::ShellArguments
                 } else {
                     FindCommandContext::ExecArguments
@@ -203,21 +210,22 @@ impl FindExecSyntaxClassifier {
                 self.context = FindCommandContext::EnvArguments;
                 false
             }
-            FindCommandContext::ShellArguments if is_shell_command_option(word) => {
+            FindCommandContext::ShellArguments if is_shell_command_option(&literal) => {
                 self.context = FindCommandContext::ShellCommand;
                 false
             }
             FindCommandContext::ShellCommand => {
                 self.context = FindCommandContext::ExecArguments;
-                word.contains("{}") || contains_dynamic_shell_syntax(word)
+                literal.contains("{}") || contains_dynamic_shell_syntax(word)
             }
             context => {
-                let is_static_exec_token = context != FindCommandContext::Expression && matches!(word, "{}" | "\\;");
+                let is_static_exec_token =
+                    context != FindCommandContext::Expression && matches!(literal.as_ref(), "{}" | "\\;");
                 let is_dynamic = !is_static_exec_token && contains_dynamic_shell_syntax(word);
 
-                if context != FindCommandContext::Expression && matches!(word, ";" | "\\;" | "+") {
+                if context != FindCommandContext::Expression && matches!(literal.as_ref(), ";" | "\\;" | "+") {
                     self.context = FindCommandContext::Expression;
-                } else if context != FindCommandContext::Expression && is_shell_interpreter(word) {
+                } else if context != FindCommandContext::Expression && is_shell_interpreter(&literal) {
                     // A shell interpreter reached through any launcher
                     // (`timeout`, `sudo`, `chroot`, `setsid`, `busybox`, ...)
                     // is still an executable position; without this transition
@@ -272,40 +280,58 @@ fn is_env_assignment(argument: &str) -> bool {
 /// Removes shell quoting that performs no expansion, so a classifier can
 /// compare against the literal token value.
 ///
-/// Extraction keeps the quote characters in each token, so `'sh'` and `"sh"`
-/// reach the classifier verbatim. Single quotes never expand; double quotes
-/// only expand through `$`, backticks and backslash, so a double-quoted token
-/// without those characters is literal too. Anything else is returned
-/// unchanged, and the callers keep passing the raw token to
-/// `contains_dynamic_shell_syntax` so expansions stay rejected.
-fn strip_literal_shell_quoting(token: &str) -> &str {
-    if let Some(inner) = token.strip_prefix('\'').and_then(|rest| rest.strip_suffix('\'')) {
-        if !inner.contains('\'') {
-            return inner;
+/// Extraction keeps the quote characters in each token, so `'sh'`, `"sh"` and
+/// the partly quoted `s'h'` all reach the classifier verbatim while Bash runs
+/// `sh`. Single quotes never expand, and double quotes only expand through
+/// `$`, backticks and backslash, so both forms are removed wherever they
+/// appear. A token that cannot be fully unquoted without changing its runtime
+/// meaning is returned unchanged, and the callers keep passing the raw token
+/// to `contains_dynamic_shell_syntax` so expansions stay rejected.
+fn strip_literal_shell_quoting(token: &str) -> Cow<'_, str> {
+    if !token.contains(['\'', '"']) {
+        return Cow::Borrowed(token);
+    }
+
+    let mut unquoted = String::with_capacity(token.len());
+    let mut characters = token.chars();
+
+    while let Some(character) = characters.next() {
+        match character {
+            '\'' => loop {
+                match characters.next() {
+                    Some('\'') => break,
+                    Some(literal) => unquoted.push(literal),
+                    None => return Cow::Borrowed(token),
+                }
+            },
+            '"' => loop {
+                match characters.next() {
+                    Some('"') => break,
+                    Some(expandable @ ('$' | '`' | '\\')) => {
+                        let _ = expandable;
+                        return Cow::Borrowed(token);
+                    }
+                    Some(literal) => unquoted.push(literal),
+                    None => return Cow::Borrowed(token),
+                }
+            },
+            other => unquoted.push(other),
         }
     }
 
-    if let Some(inner) = token.strip_prefix('"').and_then(|rest| rest.strip_suffix('"')) {
-        if !inner.contains(['"', '$', '`', '\\']) {
-            return inner;
-        }
-    }
-
-    token
+    Cow::Owned(unquoted)
 }
 
+/// Matches a shell interpreter name that has already had literal quoting
+/// removed, so `s'h'` and `'sh'` both match.
 fn is_shell_interpreter(program: &str) -> bool {
     matches!(
-        base_command_name(strip_literal_shell_quoting(program))
-            .to_ascii_lowercase()
-            .as_str(),
+        base_command_name(program).to_ascii_lowercase().as_str(),
         "sh" | "bash" | "dash" | "zsh" | "ksh" | "ksh93" | "ash" | "mksh"
     )
 }
 
 fn is_shell_command_option(argument: &str) -> bool {
-    let argument = strip_literal_shell_quoting(argument);
-
     if argument == "-c" {
         return true;
     }
@@ -917,19 +943,18 @@ mod tests {
     #[case("sh", "sh")]
     #[case("'sh'", "sh")]
     #[case("\"sh\"", "sh")]
+    #[case("s'h'", "sh")]
+    #[case("'s'h", "sh")]
     #[case("''", "")]
     #[case("\"\"", "")]
     #[case("'", "'")]
     #[case("\"", "\"")]
-    #[case("'a'\"b\"", "'a'\"b\"")]
+    #[case("'a'\"b\"", "ab")]
     #[case("'$HOME'", "$HOME")]
     #[case("\"$HOME\"", "\"$HOME\"")]
-    #[case("'a'b", "'a'b")]
-    fn strip_literal_shell_quoting_removes_only_non_expanding_outer_quotes(
-        #[case] token: &str,
-        #[case] expected: &str,
-    ) {
-        assert_eq!(strip_literal_shell_quoting(token), expected);
+    #[case("'a'b", "ab")]
+    fn strip_literal_shell_quoting_removes_non_expanding_quoting(#[case] token: &str, #[case] expected: &str) {
+        assert_eq!(strip_literal_shell_quoting(token).as_ref(), expected);
     }
 
     #[test]
@@ -964,6 +989,11 @@ mod tests {
         assert!(contains_dynamic_find_syntax("find . -exec 'sh' -c '{}' \\;"));
         assert!(contains_dynamic_find_syntax("find . -exec \"bash\" -c \"{}\" \\;"));
         assert!(contains_dynamic_find_syntax("find . -exec 'sh' '-c' {} \\;"));
+        // Partly quoted names and options unquote to the same runtime token.
+        assert!(contains_dynamic_find_syntax("find . -exec s'h' -c '{}' \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec sh '-c' '{}' \\;"));
+        // A quoted env split-string option still splits its argument.
+        assert!(contains_dynamic_find_syntax("find . -exec 'env' '-S' 'sh -c {}' \\;"));
         // Quoting that performs expansion stays rejected, quoted or not.
         assert!(contains_dynamic_find_syntax("find . -exec sh -c \"$1\" {} \\;"));
     }
