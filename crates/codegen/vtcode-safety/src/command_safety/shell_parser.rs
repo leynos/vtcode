@@ -196,11 +196,16 @@ impl FindExecSyntaxClassifier {
                 false
             }
             FindCommandContext::EnvArguments | FindCommandContext::EnvCommand => {
+                let program = base_command_name(strip_literal_shell_quoting(word));
                 self.context = if is_shell_interpreter(word) {
                     FindCommandContext::ShellArguments
                 } else {
                     FindCommandContext::ExecArguments
                 };
+                // `env timeout 5 sh -c '{}'` reaches the interpreter through
+                // a wrapper resolved after `env`, which stays an executable
+                // position.
+                self.wrapper_arguments = self.wrapper_arguments || is_exec_wrapper_program(program);
                 contains_dynamic_shell_syntax(word)
             }
             FindCommandContext::EnvOptionArgument => {
@@ -989,6 +994,7 @@ mod tests {
     #[test]
     fn find_exec_env_wrapper_detects_nested_shell_command_source() {
         assert!(contains_dynamic_find_syntax("find . -exec env bash -c {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env timeout 5 sh -c '{}' \\;"));
         assert!(contains_dynamic_find_syntax("find . -exec env -i -- bash -ec {} \\;"));
         assert!(contains_dynamic_find_syntax("find . -exec env -u HOME -- bash -c {} \\;"));
         assert!(contains_dynamic_find_syntax("find . -exec env --split-string 'bash -c {}' \\;"));
