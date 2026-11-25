@@ -181,11 +181,21 @@ impl FindExecSyntaxClassifier {
             }
             FindCommandContext::EnvArguments if is_env_split_string_option(&literal) => true,
             FindCommandContext::EnvArguments if is_env_option_with_argument(&literal) => {
+                // A quoted `env` still resolves to an option, but an expansion
+                // in the raw token is dynamic regardless of its literal shape.
+                if contains_dynamic_shell_syntax(word) {
+                    return true;
+                }
+
                 self.context = FindCommandContext::EnvOptionArgument;
                 false
             }
-            FindCommandContext::EnvArguments if is_env_option(&literal) => false,
-            FindCommandContext::EnvArguments if is_env_assignment(&literal) => false,
+            FindCommandContext::EnvArguments if is_env_option(&literal) => contains_dynamic_shell_syntax(word),
+            FindCommandContext::EnvArguments if is_env_assignment(&literal) => {
+                // Literal assignments such as `X='value'` stay static; an
+                // expansion such as `X="$(id)"` does not.
+                contains_dynamic_shell_syntax(word)
+            }
             FindCommandContext::EnvArguments if literal == "--" => {
                 self.context = FindCommandContext::EnvCommand;
                 false
@@ -1070,6 +1080,16 @@ mod tests {
         assert!(contains_dynamic_find_syntax("find . -exec env '{}' \\;"));
         assert!(contains_dynamic_find_syntax("find . -exec env -- '{}' \\;"));
         assert!(contains_dynamic_find_syntax("find . -exec env \"{}\" \\;"));
+    }
+
+    #[test]
+    fn find_exec_quoted_env_assignments_keep_raw_dynamic_syntax() {
+        // The literal value decides the env context, but an expansion in the
+        // raw token is dynamic even when quoting hides it from the shape check.
+        assert!(contains_dynamic_find_syntax("find . -exec 'env' \"X=$(id)\" printf '{}' \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env \"X=`id`\" printf '{}' \\;"));
+        // A wholly literal assignment stays static.
+        assert!(!contains_dynamic_find_syntax("find . -exec env X='value' printf '{}' \\;"));
     }
 
     #[test]
