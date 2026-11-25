@@ -545,8 +545,14 @@ round-trip assertions are not vacuous.
   Fixing them in the vendored copy would silently fork syntect's behaviour and
   make the next upstream sync a merge exercise. They belong upstream, and the
   exit path already routes them there. The one finding in the vendored tree
-  that was about *this* change — that the four assets were missing — was wrong:
-  all four are committed, in `HEAD`, and loaded by the passing tests.
+  that was about *this* change — that the four assets were missing — was wrong,
+  and was reported as `critical` in both review passes. Checked four ways:
+  `git rev-parse HEAD:patches/syntect/assets/<file>` resolves a blob for each,
+  each `HEAD` blob hashes equal to its worktree file, each file is byte-equal to
+  the crates.io archive, and all four are present in the pushed `origin` branch.
+  The crate also compiles with `dump-load`, `default-syntaxes`, and
+  `default-themes` enabled and the tests decode all four, which is only possible
+  if the paths resolve. Nothing to fix; do not "restore" the assets.
 
   Reassess if Diapason ever starts loading grammars or themes from files, which
   would bring `yaml_load` into the build and make its findings live.
