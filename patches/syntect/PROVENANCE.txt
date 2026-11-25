@@ -30,7 +30,10 @@ What changed relative to the published archive
      (`dump-create`, `dump-load`) is unchanged.
    - Example, test, and bench targets and their development-only dependencies
      are dropped. They are not part of the library and reference upstream's
-     `testdata/` tree, which the crates.io archive excludes.
+     `testdata/` tree, which the crates.io archive excludes. This means the
+     `cargo run --example ...` commands in `Readme.md` do not work against this
+     tree; run them from an upstream syntect checkout instead. `Readme.md` is
+     otherwise an unmodified copy of upstream's, kept for context.
    - The packaged `[profile.dev.package.*]` overrides are dropped; a patched
      path dependency cannot contribute profile settings, and Diapason's own
      profile governs.

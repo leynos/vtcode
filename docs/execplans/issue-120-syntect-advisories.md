@@ -210,21 +210,29 @@ Invariants and their discharge:
    everything could not pass. Discharged: `WIRE COMPATIBILITY: PASS`, 82
    checks, transcript below.
 2. Every bundled syntax's nested lazy-context blob decodes; every syntax
-   highlights a sample; every bundled theme decodes into usable scope rules.
-   Method: two named regression tests in the existing `tests` module of
-   `crates/codegen/diapason-ui/src/tui/ui/syntax_highlight.rs`. Non-vacuity: the
-   syntax test reconstructs the source text from the returned segments, which
-   fails if lazy contexts decode to an empty or wrong grammar, and asserts the
-   bundled set exceeds 50 grammars before iterating. Starting a parser at all
+   highlights a sample; the decoded grammar assigns the scopes the theme
+   expects; every bundled theme decodes into usable scope rules. Method: three
+   named regression tests in the existing `tests` module of
+   `crates/codegen/diapason-ui/src/tui/ui/syntax_highlight.rs`.
+
+   Non-vacuity, test by test. `every_bundled_syntax_highlights_a_sample`
+   reconstructs the source text from the returned segments and asserts the
+   bundled set exceeds 50 grammars before iterating; starting a parser at all
    requires `SyntaxReference::context_ids()`, which decodes the nested blob
-   through `LazyContexts::deserialize`, so a broken nested codec fails the test
-   at the first line rather than passing quietly. The theme test asserts each
-   theme is present in the decoded dump and carries a non-empty rule list:
-   `load_theme` silently falls back on an unknown name, so the name alone was
-   not evidence, and an earlier draft comparing a value with itself was
-   vacuous. Discharged: 2/2 for the new tests (`every_bundled_theme_loads_by_
-   name` 0.022 s, `every_bundled_syntax_highlights_a_sample` 1.924 s — the cost
-   of decoding all 75 grammars), and 18/18 for the whole
+   through `LazyContexts::deserialize`, so a broken nested codec fails on the
+   first line rather than passing quietly. Reconstruction alone proves only
+   that characters were not dropped, so
+   `bundled_rust_grammar_assigns_expected_colours` pins the actual
+   base16-ocean.dark foregrounds for a Rust keyword, a numeric literal, a plain
+   identifier, and a comment, and asserts they are mutually distinct. That
+   test was checked against a deliberately wrong expected colour and failed
+   (exit 100), which is the negative control for scopes and colours rather than
+   for text. `every_bundled_theme_loads_by_name` asserts each theme is present
+   in the decoded dump and carries a non-empty rule list: `load_theme`
+   silently falls back on an unknown name, so the name alone was not evidence,
+   and an earlier draft comparing a value with itself was vacuous.
+
+   Discharged: 3/3 for the new tests, 19/19 for the whole
    `test(syntax_highlight)` filter.
 3. `cargo audit --file Cargo.lock` reports neither `RUSTSEC-2025-0141` nor
    `RUSTSEC-2024-0320`, and no new advisory. Method: direct command, compared
@@ -234,10 +242,11 @@ Invariants and their discharge:
    `cargo tree -i bincode` and `cargo tree -i yaml-rust`. Discharged: both
    report "did not match any packages"; `cargo tree -i bincode-next` shows one
    path through the vendored syntect.
-5. Locked check and lint gates stay clean. Method: `cargo fmt --all -- --
-   check`, `cargo check --locked`, and `cargo clippy --locked -- -D warnings`.
-   Discharged for the affected crate with `RUSTFLAGS="-D warnings"`; the
-   workspace-wide run is the serial gate runner's evidence.
+5. Locked check and lint gates stay clean. Method:
+   `cargo fmt --all -- --check`, `cargo check --locked`, and
+   `cargo clippy --locked -- -D warnings`. Discharged for the affected crate
+   with `RUSTFLAGS="-D warnings"`; the workspace-wide run is the serial gate
+   runner's evidence.
 
 Third-party interfaces are treated as axioms: syntect's documented dump
 functions, `bincode-next`'s documented `legacy()` format, and `flate2`'s zlib

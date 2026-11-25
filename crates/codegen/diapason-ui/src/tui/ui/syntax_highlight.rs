@@ -469,6 +469,39 @@ mod tests {
         assert_eq!(theme1.name, theme2.name);
     }
 
+    /// A decoded grammar must assign the scopes the theme expects.
+    ///
+    /// Reconstructing the input text only proves a grammar did not drop
+    /// characters. This pins the actual colours base16-ocean.dark assigns to a
+    /// Rust keyword, a numeric literal, and a comment, so a dump that decoded
+    /// into a degenerate or wrong grammar — which would style everything alike
+    /// — fails here. Regenerating the bundled assets with different scopes is
+    /// what this test is designed to catch.
+    #[test]
+    fn bundled_rust_grammar_assigns_expected_colours() {
+        let segments = highlight_code_to_segments("let value = 1; // sample\n", Some("rust"), DEFAULT_THEME_NAME);
+        let colour_of = |needle: &str| {
+            segments
+                .iter()
+                .find(|(_, text)| text.trim() == needle)
+                .map(|(style, _)| (style.foreground.r, style.foreground.g, style.foreground.b))
+                .unwrap_or_else(|| panic!("no segment for {needle:?}"))
+        };
+
+        let keyword = colour_of("let");
+        let number = colour_of("1");
+        let plain = colour_of("value");
+        let comment = colour_of("//");
+
+        assert_ne!(keyword, plain, "keyword should not reuse the plain foreground");
+        assert_ne!(number, plain, "numeric literal should not reuse the plain foreground");
+        assert_ne!(comment, plain, "comment should not reuse the plain foreground");
+        assert_ne!(keyword, comment, "keyword and comment should be distinguishable");
+        assert_eq!(keyword, (180, 142, 173), "keyword colour");
+        assert_eq!(number, (208, 135, 112), "numeric literal colour");
+        assert_eq!(comment, (101, 115, 126), "comment colour");
+    }
+
     /// Every bundled grammar must decode, including its lazily loaded contexts.
     ///
     /// Lazy contexts live in a nested, individually compressed dump that
