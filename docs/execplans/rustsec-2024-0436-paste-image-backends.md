@@ -182,6 +182,21 @@ exercises a real file of that format.
   and is unaffected by this change. Windows builds run on a `windows-latest`
   runner in `.github/workflows/build-linux-windows.yml`.
 
+### External scanner drift during review
+
+`Check Unmaintained Dependencies` failed twice in CI while passing locally. The
+cause is unrelated to this change: `sha2 0.11.2` was published at 15:26 UTC on
+2026-11-25, nine minutes before CI scanned, and the reviewed baseline recorded
+`sha2`'s `version_latest` as `0.11.1`. The scanner's finding identity includes
+that field, so `bs58@0.5.1` was reported as "unreviewed or changed".
+
+`sha2` resolution is untouched here: this branch's `Cargo.lock` diff contains no
+`sha2` line, and `0.10.9` and `0.11.0` are the same two versions before and
+after. The baseline's `version_latest` for both entries that cite `sha2`
+(`bs58` and `dbus-secret-service`) was refreshed to `0.11.2` so the recorded
+identity matches what the scanner now reports. No entry was added, removed
+beyond the two resolved by the dependency prune, or allow-listed.
+
 ## First-party policy gates and vendored code
 
 Vendoring registry sources puts third-party Rust under `patches/`, where the
