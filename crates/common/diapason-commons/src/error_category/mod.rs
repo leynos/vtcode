@@ -1,8 +1,3 @@
-#![expect(
-    clippy::let_underscore_must_use,
-    reason = "The category formatter intentionally ignores infallible formatting results."
-)]
-
 //! Canonical classification of operational errors and retry guidance.
 
 mod category;

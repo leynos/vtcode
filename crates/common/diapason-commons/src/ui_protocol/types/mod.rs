@@ -1,9 +1,7 @@
-#![expect(
-    clippy::cast_possible_truncation,
-    reason = "Progress percentages are clamped to the documented byte-sized display range."
-)]
-
-//! Pure data types with no dependencies beyond `std`.
+//! Data types shared by the UI protocol.
+//!
+//! Several types derive `serde` support and, when the `schema` feature is
+//! enabled, `schemars` schemas.
 
 /// Message kind tag for inline transcript lines.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

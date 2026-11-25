@@ -372,7 +372,7 @@ fn chunks_prefix_suffix_optimization() {
     // First chunk should be Equal prefix "AAAA "
     assert!(matches!(&chunks[0], Chunk::Equal(s) if *s == "AAAA "));
     // Last chunk should be Equal suffix " CCCC"
-    assert!(matches!(chunks.last().unwrap(), Chunk::Equal(s) if *s == " CCCC"));
+    assert!(matches!(chunks.last().expect("chunks must not be empty"), Chunk::Equal(s) if *s == " CCCC"));
     // Middle should contain deletes and inserts (character-level)
     let has_delete = chunks.iter().any(|c| matches!(c, Chunk::Delete(_)));
     let has_insert = chunks.iter().any(|c| matches!(c, Chunk::Insert(_)));

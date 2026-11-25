@@ -126,33 +126,31 @@ impl ToolCall {
         }
 
         match self.call_type.as_str() {
-            "function" => {
-                if let Some(func) = &self.function {
-                    if func.name.is_empty() {
-                        return Err("Function name cannot be empty".to_owned());
-                    }
-                    // Validate that arguments is valid JSON for function tools
-                    if let Err(e) = self.parsed_arguments() {
-                        return Err(format!("Invalid JSON in function arguments: {e}"));
-                    }
-                } else {
-                    return Err("Function tool call missing function details".to_owned());
-                }
-            }
-            "custom" => {
-                // For custom tools, we allow raw text payload without JSON validation
-                if let Some(func) = &self.function {
-                    if func.name.is_empty() {
-                        return Err("Custom tool name cannot be empty".to_owned());
-                    }
-                } else {
-                    return Err("Custom tool call missing function details".to_owned());
-                }
-            }
-            _ => return Err(format!("Unsupported tool call type: {}", self.call_type)),
+            "function" => self.validate_function(),
+            // For custom tools, we allow raw text payload without JSON validation
+            "custom" => self.validate_named_function(
+                "Custom tool call missing function details",
+                "Custom tool name cannot be empty",
+            ),
+            _ => Err(format!("Unsupported tool call type: {}", self.call_type)),
         }
+    }
 
+    /// Validates that function details are present and carry a non-empty name.
+    fn validate_named_function(&self, missing: &str, empty_name: &str) -> Result<(), String> {
+        let function = self.function.as_ref().ok_or_else(|| missing.to_owned())?;
+        if function.name.is_empty() {
+            return Err(empty_name.to_owned());
+        }
         Ok(())
+    }
+
+    /// Validates a function-type tool call, including its JSON arguments.
+    fn validate_function(&self) -> Result<(), String> {
+        self.validate_named_function("Function tool call missing function details", "Function name cannot be empty")?;
+        self.parsed_arguments()
+            .map(|_| ())
+            .map_err(|error| format!("Invalid JSON in function arguments: {error}"))
     }
 }
 

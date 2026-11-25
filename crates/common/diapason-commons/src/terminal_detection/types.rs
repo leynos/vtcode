@@ -1,6 +1,6 @@
 //! Terminal types, capabilities, setup requirements, and display names.
 
-/// A terminal emulator recognized by `VTCode`.
+/// A terminal emulator recognized by `Diapason`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalType {
     Ghostty,
@@ -40,37 +40,25 @@ pub enum TerminalSetupAvailability {
 impl TerminalType {
     /// Returns whether this terminal supports `feature`.
     pub fn supports_feature(&self, feature: TerminalFeature) -> bool {
-        match (self, feature) {
-            (TerminalType::Ghostty, _) => true,
-            (TerminalType::Kitty, _) => true,
-            (TerminalType::Alacritty, _) => true,
-            (TerminalType::WezTerm, _) => true,
-            (TerminalType::TerminalApp, TerminalFeature::Multiline) => true,
-            (TerminalType::TerminalApp, TerminalFeature::ShellIntegration) => true,
-            (TerminalType::TerminalApp, TerminalFeature::Notifications) => true,
-            (TerminalType::TerminalApp, _) => false,
-            (TerminalType::Xterm, TerminalFeature::Multiline) => true,
-            (TerminalType::Xterm, TerminalFeature::Notifications) => true,
-            (TerminalType::Xterm, _) => false,
-            (TerminalType::Zed, TerminalFeature::Multiline) => true,
-            (TerminalType::Zed, TerminalFeature::ThemeSync) => true,
-            (TerminalType::Zed, TerminalFeature::Notifications) => true,
-            (TerminalType::Zed, _) => false,
-            (TerminalType::Warp, TerminalFeature::Multiline) => true,
-            (TerminalType::Warp, TerminalFeature::Notifications) => true,
-            (TerminalType::Warp, _) => false,
-            (TerminalType::ITerm2, _) => true,
-            (TerminalType::VSCode, TerminalFeature::Multiline) => true,
-            (TerminalType::VSCode, TerminalFeature::Notifications) => true,
-            (TerminalType::VSCode, _) => false,
-            (TerminalType::WindowsTerminal, _) => true,
-            (TerminalType::Hyper, _) => true,
-            (TerminalType::Tabby, _) => true,
-            (TerminalType::Unknown, _) => false,
+        match self {
+            TerminalType::Ghostty
+            | TerminalType::Kitty
+            | TerminalType::Alacritty
+            | TerminalType::WezTerm
+            | TerminalType::ITerm2
+            | TerminalType::WindowsTerminal
+            | TerminalType::Hyper
+            | TerminalType::Tabby => true,
+            TerminalType::TerminalApp => supports_terminal_app_feature(feature),
+            TerminalType::Xterm | TerminalType::Warp | TerminalType::VSCode => {
+                supports_multiline_and_notifications(feature)
+            }
+            TerminalType::Zed => supports_zed_feature(feature),
+            TerminalType::Unknown => false,
         }
     }
 
-    /// Returns whether multiline input works without `VTCode` configuration.
+    /// Returns whether multiline input works without `Diapason` configuration.
     pub fn has_native_multiline_support(&self) -> bool {
         matches!(
             self,
@@ -82,7 +70,7 @@ impl TerminalType {
         )
     }
 
-    /// Returns how `VTCode` should present `/terminal-setup` for this terminal.
+    /// Returns how `Diapason` should present `/terminal-setup` for this terminal.
     pub fn terminal_setup_availability(&self) -> TerminalSetupAvailability {
         match self {
             TerminalType::Ghostty
@@ -124,10 +112,29 @@ impl TerminalType {
             TerminalType::Unknown => "Unknown",
         }
     }
+
     /// Check if terminal requires manual setup (vs automatic config).
     pub(super) fn requires_manual_setup(&self) -> bool {
         self.should_offer_terminal_setup()
     }
+}
+
+/// Returns whether Terminal.app supports `feature`.
+fn supports_terminal_app_feature(feature: TerminalFeature) -> bool {
+    matches!(
+        feature,
+        TerminalFeature::Multiline | TerminalFeature::ShellIntegration | TerminalFeature::Notifications
+    )
+}
+
+/// Returns whether a terminal supports only multiline input and notifications.
+fn supports_multiline_and_notifications(feature: TerminalFeature) -> bool {
+    matches!(feature, TerminalFeature::Multiline | TerminalFeature::Notifications)
+}
+
+/// Returns whether Zed supports `feature`.
+fn supports_zed_feature(feature: TerminalFeature) -> bool {
+    matches!(feature, TerminalFeature::Multiline | TerminalFeature::ThemeSync | TerminalFeature::Notifications)
 }
 
 impl TerminalFeature {

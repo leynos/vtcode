@@ -14,26 +14,10 @@ impl TerminalType {
     /// This retains the fallible detection API for callers. Unavailable and
     /// non-Unicode environment variables are treated as absent markers.
     pub fn detect() -> Result<Self> {
-        if let Ok(term_program) = env::var("TERM_PROGRAM") {
-            let term_lower = term_program.to_lowercase();
-
-            if term_lower.contains("ghostty") {
-                return Ok(TerminalType::Ghostty);
-            } else if term_lower.contains("wezterm") {
-                return Ok(TerminalType::WezTerm);
-            } else if term_lower.contains("apple_terminal") {
-                return Ok(TerminalType::TerminalApp);
-            } else if term_lower.contains("iterm") {
-                return Ok(TerminalType::ITerm2);
-            } else if term_lower.contains("vscode") {
-                return Ok(TerminalType::VSCode);
-            } else if term_lower.contains("warp") {
-                return Ok(TerminalType::Warp);
-            } else if term_lower.contains("hyper") {
-                return Ok(TerminalType::Hyper);
-            } else if term_lower.contains("tabby") {
-                return Ok(TerminalType::Tabby);
-            }
+        if let Ok(term_program) = env::var("TERM_PROGRAM")
+            && let Some(terminal) = terminal_from_term_program(&term_program)
+        {
+            return Ok(terminal);
         }
 
         if env::var("KITTY_WINDOW_ID").is_ok() || env::var("KITTY_PID").is_ok() {
@@ -52,27 +36,56 @@ impl TerminalType {
             return Ok(TerminalType::WindowsTerminal);
         }
 
-        if let Ok(term) = env::var("TERM") {
-            let term_lower = term.to_lowercase();
-
-            if term_lower.contains("kitty") {
-                return Ok(TerminalType::Kitty);
-            } else if term_lower.contains("alacritty") {
-                return Ok(TerminalType::Alacritty);
-            } else if term_lower.contains("xterm") {
-                return Ok(TerminalType::Xterm);
-            }
+        if let Ok(term) = env::var("TERM")
+            && let Some(terminal) = terminal_from_term(&term)
+        {
+            return Ok(terminal);
         }
 
         Ok(TerminalType::Unknown)
     }
 }
 
-/// Returns the terminal identified by `environment`.
+/// Returns the terminal identified by a `TERM_PROGRAM` value, if any.
+fn terminal_from_term_program(term_program: &str) -> Option<TerminalType> {
+    const MARKERS: &[(&str, TerminalType)] = &[
+        ("ghostty", TerminalType::Ghostty),
+        ("wezterm", TerminalType::WezTerm),
+        ("apple_terminal", TerminalType::TerminalApp),
+        ("iterm", TerminalType::ITerm2),
+        ("vscode", TerminalType::VSCode),
+        ("warp", TerminalType::Warp),
+        ("hyper", TerminalType::Hyper),
+        ("tabby", TerminalType::Tabby),
+    ];
+
+    terminal_from_markers(term_program, MARKERS)
+}
+
+/// Returns the terminal identified by a `TERM` value, if any.
+fn terminal_from_term(term: &str) -> Option<TerminalType> {
+    const MARKERS: &[(&str, TerminalType)] = &[
+        ("kitty", TerminalType::Kitty),
+        ("alacritty", TerminalType::Alacritty),
+        ("xterm", TerminalType::Xterm),
+    ];
+
+    terminal_from_markers(term, MARKERS)
+}
+
+/// Returns the first terminal whose marker appears in `value`, case-insensitively.
+fn terminal_from_markers(value: &str, markers: &[(&str, TerminalType)]) -> Option<TerminalType> {
+    let value_lower = value.to_lowercase();
+    markers
+        .iter()
+        .find_map(|&(marker, terminal)| value_lower.contains(marker).then_some(terminal))
+}
+
+/// Returns whether `term_program` or `term` identifies the Ghostty terminal.
 pub fn is_ghostty_terminal(term_program: Option<&str>, term: Option<&str>) -> bool {
     terminal_name_contains(term_program, "ghostty") || terminal_name_contains(term, "ghostty")
 }
 
 fn terminal_name_contains(value: Option<&str>, needle: &str) -> bool {
-    value.map(|value| value.to_ascii_lowercase().contains(needle)).unwrap_or(false)
+    value.is_some_and(|value| value.to_ascii_lowercase().contains(needle))
 }

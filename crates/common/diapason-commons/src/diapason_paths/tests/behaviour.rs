@@ -1,4 +1,4 @@
-//! Extracted regression tests; production source remains byte-identical.
+//! Behaviour tests for legacy migration copying, conflict reporting, private-file writers and file locks.
 
 use std::fs;
 

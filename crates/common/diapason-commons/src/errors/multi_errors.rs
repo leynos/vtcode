@@ -149,11 +149,11 @@ impl<'de, E: serde::Deserialize<'de>> serde::Deserialize<'de> for MultiErrors<E>
 
 impl<E: fmt::Display> fmt::Display for MultiErrors<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.errors.len() {
-            0 => write!(f, "no errors"),
-            1 => write!(f, "{}", self.errors[0]),
-            _ => {
-                for (i, error) in self.errors.iter().enumerate() {
+        match self.errors.as_slice() {
+            [] => write!(f, "no errors"),
+            [error] => write!(f, "{error}"),
+            errors => {
+                for (i, error) in errors.iter().enumerate() {
                     if i > 0 {
                         writeln!(f)?;
                     }

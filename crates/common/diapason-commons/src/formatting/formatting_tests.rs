@@ -1,4 +1,8 @@
-//! Extracted regression tests; production source remains byte-identical.
+//! Regression tests for the `formatting` helpers.
+//!
+//! The tests cover byte- and character-budget truncation, head/tail and
+//! middle truncation, word wrapping, and reasoning-text compaction.
+//! They include multi-byte input to guard against UTF-8 boundary panics.
 
 use super::*;
 

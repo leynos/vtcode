@@ -27,7 +27,7 @@ pub const ERR_READ_SKILLS_DIR: &str = "failed to read skills directory";
 pub const ERR_TOOL_DENIED: &str = "tool denied or unavailable by policy";
 
 // Audit/Logging errors
-pub const ERR_CREATE_AUDIT_DIR: &str = "Failed to create audit directory";
+pub const ERR_CREATE_AUDIT_DIR: &str = "failed to create audit directory";
 pub const ERR_WRITE_AUDIT_LOG: &str = "failed to write audit log";
 
 // Checkpoint/Snapshot errors
@@ -36,8 +36,8 @@ pub const ERR_WRITE_CHECKPOINT: &str = "failed to write checkpoint";
 pub const ERR_READ_CHECKPOINT: &str = "failed to read checkpoint";
 
 // Policy errors
-pub const ERR_CREATE_POLICY_DIR: &str = "Failed to create directory for tool policy config";
-pub const ERR_CREATE_WORKSPACE_POLICY_DIR: &str = "Failed to create workspace policy directory";
+pub const ERR_CREATE_POLICY_DIR: &str = "failed to create directory for tool policy config";
+pub const ERR_CREATE_WORKSPACE_POLICY_DIR: &str = "failed to create workspace policy directory";
 
 // Serialization errors
 pub const ERR_SERIALIZE_METADATA: &str = "failed to serialize skill metadata";

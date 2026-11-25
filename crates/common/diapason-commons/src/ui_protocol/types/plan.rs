@@ -171,9 +171,13 @@ impl PlanContent {
     }
 
     /// Get progress as a percentage.
-    #[allow(
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "The ratio is rendered as a whole percentage; the float-to-`u8` cast truncates toward zero and saturates, which is the intended display behaviour."
+    )]
+    #[expect(
         clippy::cast_sign_loss,
-        reason = "Intentional compatibility, platform, or test-only suppression."
+        reason = "Both step counts are unsigned and the ratio is multiplied by a positive constant, so the percentage is never negative."
     )]
     pub fn progress_percent(&self) -> u8 {
         if self.total_steps == 0 {

@@ -11,8 +11,8 @@ use crate::diff_paths::{
     format_start_only_hunk_header, is_diff_addition_line, is_diff_deletion_line, parse_hunk_starts,
 };
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 /// Counts additions and deletions in a structured diff.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct DiffChangeCounts {
     pub additions: usize,
     pub deletions: usize,

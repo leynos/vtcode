@@ -1,11 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    clippy::string_slice,
-    clippy::let_underscore_must_use,
-    unused_results,
-    reason = "Filesystem helpers validate path lengths and intentionally ignore local cleanup results."
-)]
-
 //! Shared asynchronous and synchronous filesystem utilities.
 
 mod operations;

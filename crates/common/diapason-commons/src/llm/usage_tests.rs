@@ -1,4 +1,4 @@
-//! Extracted regression tests; production source remains byte-identical.
+//! Regression tests for `Usage` cache-metric fallbacks and unknown-metric handling.
 
 use super::Usage;
 

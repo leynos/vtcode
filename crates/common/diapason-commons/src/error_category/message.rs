@@ -50,22 +50,13 @@ pub fn is_context_capacity_message(message: &str) -> bool {
     )
 }
 
-/// Classify an error message string into an `ErrorCategory`.
+/// Ordered classification rules; the first matching marker group wins.
 ///
-/// Marker groups are checked in priority order to handle overlapping patterns
+/// Groups are checked in priority order to handle overlapping patterns
 /// (e.g., "tool permission denied by policy" → `PolicyViolation`, not `PermissionDenied`).
-#[inline]
-#[must_use]
-pub fn classify_error_message(msg: &str) -> ErrorCategory {
-    let msg = if msg.as_bytes().iter().any(|b| b.is_ascii_uppercase()) {
-        Cow::Owned(msg.to_ascii_lowercase())
-    } else {
-        Cow::Borrowed(msg)
-    };
-
+const CLASSIFICATION_RULES: &[(&[&str], ErrorCategory)] = &[
     // --- Priority 1: Policy violations (before permission checks) ---
-    if contains_any(
-        &msg,
+    (
         &[
             "policy violation",
             "denied by policy",
@@ -76,26 +67,20 @@ pub fn classify_error_message(msg: &str) -> ErrorCategory {
             "workspace boundary",
             "blocked by policy",
         ],
-    ) {
-        return ErrorCategory::PolicyViolation;
-    }
-
+        ErrorCategory::PolicyViolation,
+    ),
     // --- Priority 2: Planning workflow violations ---
-    if contains_any(
-        &msg,
+    (
         &[
             "planning workflow",
             "read-only permissions",
             concat!("read-only ", "mode"),
             "planning_policy_violation",
         ],
-    ) {
-        return ErrorCategory::PlanningPolicyViolation;
-    }
-
+        ErrorCategory::PlanningPolicyViolation,
+    ),
     // --- Priority 3: Authentication / Authorization ---
-    if contains_any(
-        &msg,
+    (
         &[
             "invalid api key",
             "authentication failed",
@@ -103,13 +88,10 @@ pub fn classify_error_message(msg: &str) -> ErrorCategory {
             "401",
             "invalid credentials",
         ],
-    ) {
-        return ErrorCategory::Authentication;
-    }
-
+        ErrorCategory::Authentication,
+    ),
     // --- Priority 4: Non-retryable resource exhaustion (billing, quotas) ---
-    if contains_any(
-        &msg,
+    (
         &[
             "weekly usage limit",
             "daily usage limit",
@@ -119,13 +101,10 @@ pub fn classify_error_message(msg: &str) -> ErrorCategory {
             "billing",
             "payment required",
         ],
-    ) {
-        return ErrorCategory::ResourceExhausted;
-    }
-
+        ErrorCategory::ResourceExhausted,
+    ),
     // --- Priority 5: Invalid parameters ---
-    if contains_any(
-        &msg,
+    (
         &[
             "invalid argument",
             "invalid parameters",
@@ -160,18 +139,12 @@ pub fn classify_error_message(msg: &str) -> ErrorCategory {
             "patch does not contain",
             "semantic patch anchor",
         ],
-    ) {
-        return ErrorCategory::InvalidParameters;
-    }
-
+        ErrorCategory::InvalidParameters,
+    ),
     // --- Priority 6: Tool not found ---
-    if contains_any(&msg, &["tool not found", "unknown tool", "unsupported tool", "no such tool"]) {
-        return ErrorCategory::ToolNotFound;
-    }
-
+    (&["tool not found", "unknown tool", "unsupported tool", "no such tool"], ErrorCategory::ToolNotFound),
     // --- Priority 7: Resource not found ---
-    if contains_any(
-        &msg,
+    (
         &[
             "no such file",
             "no such directory",
@@ -182,13 +155,10 @@ pub fn classify_error_message(msg: &str) -> ErrorCategory {
             "does not exist",
             "enoent",
         ],
-    ) {
-        return ErrorCategory::ResourceNotFound;
-    }
-
+        ErrorCategory::ResourceNotFound,
+    ),
     // --- Priority 8: Permission denied (OS-level) ---
-    if contains_any(
-        &msg,
+    (
         &[
             "permission denied",
             "access denied",
@@ -198,38 +168,20 @@ pub fn classify_error_message(msg: &str) -> ErrorCategory {
             "forbidden",
             "403",
         ],
-    ) {
-        return ErrorCategory::PermissionDenied;
-    }
-
+        ErrorCategory::PermissionDenied,
+    ),
     // --- Priority 9: Cancellation ---
-    if contains_any(&msg, &["cancelled", "interrupted", "canceled"]) {
-        return ErrorCategory::Cancelled;
-    }
-
+    (&["cancelled", "interrupted", "canceled"], ErrorCategory::Cancelled),
     // --- Priority 10: Circuit breaker ---
-    if contains_any(&msg, &["circuit breaker", "circuit open"]) {
-        return ErrorCategory::CircuitOpen;
-    }
-
+    (&["circuit breaker", "circuit open"], ErrorCategory::CircuitOpen),
     // --- Priority 11: Sandbox ---
-    if contains_any(&msg, &["sandbox denied", "sandbox failure"]) {
-        return ErrorCategory::SandboxFailure;
-    }
-
+    (&["sandbox denied", "sandbox failure"], ErrorCategory::SandboxFailure),
     // --- Priority 12: Rate limiting (before general network) ---
-    if contains_any(&msg, &["rate limit", "too many requests", "429", "throttl"]) {
-        return ErrorCategory::RateLimit;
-    }
-
+    (&["rate limit", "too many requests", "429", "throttl"], ErrorCategory::RateLimit),
     // --- Priority 13: Timeout ---
-    if contains_any(&msg, &["timeout", "timed out", "deadline exceeded"]) {
-        return ErrorCategory::Timeout;
-    }
-
+    (&["timeout", "timed out", "deadline exceeded"], ErrorCategory::Timeout),
     // --- Priority 14: Provider transient response-shape failures ---
-    if contains_any(
-        &msg,
+    (
         &[
             "invalid response format: missing choices",
             "invalid response format: missing message",
@@ -242,13 +194,10 @@ pub fn classify_error_message(msg: &str) -> ErrorCategory {
             "unexpected response format",
             "failed to parse response",
         ],
-    ) {
-        return ErrorCategory::ServiceUnavailable;
-    }
-
+        ErrorCategory::ServiceUnavailable,
+    ),
     // --- Priority 15: Service unavailable (HTTP 5xx and related) ---
-    if contains_any(
-        &msg,
+    (
         &[
             "service unavailable",
             "temporarily unavailable",
@@ -261,13 +210,10 @@ pub fn classify_error_message(msg: &str) -> ErrorCategory {
             "503",
             "504",
         ],
-    ) {
-        return ErrorCategory::ServiceUnavailable;
-    }
-
+        ErrorCategory::ServiceUnavailable,
+    ),
     // --- Priority 16: Network (connectivity, DNS, transport) ---
-    if contains_any(
-        &msg,
+    (
         &[
             "network",
             "connection reset",
@@ -287,17 +233,29 @@ pub fn classify_error_message(msg: &str) -> ErrorCategory {
             // It is a transport error, not a payload problem — retryable.
             "error decoding response body",
         ],
-    ) {
-        return ErrorCategory::Network;
-    }
-
+        ErrorCategory::Network,
+    ),
     // --- Priority 17: Resource exhausted (memory, disk) ---
-    if contains_any(&msg, &["out of memory", "disk full", "no space left"]) {
-        return ErrorCategory::ResourceExhausted;
-    }
+    (&["out of memory", "disk full", "no space left"], ErrorCategory::ResourceExhausted),
+];
 
-    // --- Fallback ---
-    ErrorCategory::ExecutionError
+/// Classify an error message string into an `ErrorCategory`.
+///
+/// Marker groups are checked in priority order to handle overlapping patterns
+/// (e.g., "tool permission denied by policy" → `PolicyViolation`, not `PermissionDenied`).
+#[inline]
+#[must_use]
+pub fn classify_error_message(msg: &str) -> ErrorCategory {
+    let msg = if msg.as_bytes().iter().any(|b| b.is_ascii_uppercase()) {
+        Cow::Owned(msg.to_ascii_lowercase())
+    } else {
+        Cow::Borrowed(msg)
+    };
+
+    CLASSIFICATION_RULES
+        .iter()
+        .find(|(markers, _)| contains_any(&msg, markers))
+        .map_or(ErrorCategory::ExecutionError, |(_, category)| *category)
 }
 
 /// Check if an LLM error message is retryable (used by the LLM request retry loop).

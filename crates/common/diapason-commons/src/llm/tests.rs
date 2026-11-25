@@ -1,4 +1,4 @@
-//! Extracted regression tests; production source remains byte-identical.
+//! Regression tests for `ToolCall` argument recovery, custom tool-call payloads and `LLMError` secret redaction.
 
 use super::{LLMError, LLMErrorMetadata, ToolCall};
 use serde_json::json;

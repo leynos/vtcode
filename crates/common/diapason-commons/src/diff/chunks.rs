@@ -10,6 +10,14 @@ pub enum Chunk<'a> {
 
 /// Compute an optimal diff between two strings using Myers algorithm.
 #[inline]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "The byte-start tables are indexed only at positions the Myers walk has already visited."
+)]
+#[expect(
+    clippy::string_slice,
+    reason = "Offsets come from `char_indices` or summed `len_utf8` values of the same text, so each boundary is a character boundary."
+)]
 pub fn compute_diff_chunks<'a>(old: &'a str, new: &'a str) -> Vec<Chunk<'a>> {
     if old.is_empty() && new.is_empty() {
         return Vec::with_capacity(0);
@@ -152,6 +160,10 @@ enum Edit {
 /// compiler sees a tight leaf loop with no surrounding state, enabling better
 /// register allocation and (in some cases) auto-vectorization heuristics.
 #[inline]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "The loop only indexes `old` and `new` while `x` and `y` are below their lengths."
+)]
 fn advance_matching(old: &[char], new: &[char], mut x: usize, mut y: usize) -> (usize, usize) {
     while x < old.len() && y < new.len() && old[x] == new[y] {
         x += 1;
@@ -180,9 +192,18 @@ fn backtrack_equal_run(
     (x, y)
 }
 
-#[allow(
+#[expect(
+    clippy::indexing_slicing,
+    reason = "`k` lies in `-d..=d` with `d <= max_d`, so `k_idx` and the row offsets stay inside `v` and `v_index`."
+)]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    reason = "`max_d` is clamped to `i32::MAX`; the `v_index` table cannot be allocated for larger inputs, so `max_d`, `d` and `x` fit in `i32`."
+)]
+#[expect(
     clippy::cast_sign_loss,
-    reason = "Intentional compatibility, platform, or test-only suppression."
+    reason = "`k + max_d_i32` is non-negative because `k` lies in `-d..=d` and `max_d` is a non-negative table size; `x - k` is the frontier's non-negative `y` coordinate."
 )]
 fn myers_diff(old: &[char], new: &[char]) -> Vec<Edit> {
     let n = old.len();
@@ -232,9 +253,18 @@ fn myers_diff(old: &[char], new: &[char]) -> Vec<Edit> {
     vec![]
 }
 
-#[allow(
+#[expect(
+    clippy::indexing_slicing,
+    reason = "Backtracking keeps `k` and `prev_k` on diagonals of the current row, so each `k_idx` stays inside the allocated table."
+)]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    reason = "`max_d` is the dimension clamped in `myers_diff`, and `cur_d` and `prev_x_val` remain within the table bounds, so the casts fit in `i32`."
+)]
+#[expect(
     clippy::cast_sign_loss,
-    reason = "Intentional compatibility, platform, or test-only suppression."
+    reason = "`k + max_d_i32` and `prev_x_val - prev_k` are non-negative because `k` lies in `-cur_d..=cur_d` inside a `2 * max_d + 1` table and `prev_x_val - prev_k` is a frontier `y` coordinate."
 )]
 fn backtrack_myers(old: &[char], new: &[char], v_index: &[usize], d: usize, mut k: i32, max_d: usize) -> Vec<Edit> {
     let mut edits = Vec::with_capacity(old.len() + new.len());

@@ -1,4 +1,4 @@
-//! Extracted regression tests; production source remains byte-identical.
+//! Regression tests for terminal detection, capabilities and setup availability.
 
 use super::*;
 

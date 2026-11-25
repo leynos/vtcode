@@ -44,7 +44,7 @@ pub struct DiffHunk {
     pub lines: Vec<DiffLine>,
 }
 
-/// A single diff line annotated with metadata and type.
+/// Classifies a diff line as context, addition or deletion.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum DiffLineKind {
@@ -93,6 +93,14 @@ where
     DiffBundle { hunks, formatted, is_empty: !has_changes }
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "`index` is only used while it is below `bytes.len()`."
+)]
+#[expect(
+    clippy::string_slice,
+    reason = "Line boundaries fall after ASCII `\\n`/`\\r` bytes, so each offset is a character boundary within `text`."
+)]
 fn split_lines_with_terminator(text: &str) -> Vec<String> {
     if text.is_empty() {
         return Vec::with_capacity(0);
@@ -125,6 +133,10 @@ fn split_lines_with_terminator(text: &str) -> Vec<String> {
 }
 
 #[inline]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "`old_index` and `new_index` count characters emitted by the chunk diff, so each stays below its line-slice length."
+)]
 fn collect_line_records<'a>(old_lines: &'a [&'a str], new_lines: &'a [&'a str]) -> Vec<LineRecord<'a>> {
     let (old_encoded, new_encoded) = encode_line_sequences(old_lines, new_lines);
     let mut records = Vec::with_capacity(old_lines.len() + new_lines.len());
@@ -198,6 +210,10 @@ fn encode_line_sequences<'a>(old_lines: &'a [&'a str], new_lines: &'a [&'a str])
     (old_encoded, new_encoded)
 }
 
+#[expect(
+    unused_results,
+    reason = "`insert` can only return `None` here because the same key was just looked up and found absent."
+)]
 fn encode_line_list<'a>(lines: &'a [&'a str], map: &mut HashMap<&'a str, char>, next_codepoint: &mut u32) -> String {
     let mut encoded = String::with_capacity(lines.len());
     for &line in lines {
@@ -239,6 +255,10 @@ struct LineRecord<'a> {
     anchor_new: u32,
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "`compute_hunk_ranges` returns inclusive ranges within `records`, so every range is non-empty and its first element exists."
+)]
 fn build_hunks(records: &[LineRecord<'_>], context: usize) -> Vec<DiffHunk> {
     if records.is_empty() {
         return Vec::new();

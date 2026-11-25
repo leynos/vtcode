@@ -1,4 +1,4 @@
-//! Extracted regression tests; production source remains byte-identical.
+//! Regression tests for error reporting and aggregation primitives.
 
 use anyhow::Error;
 

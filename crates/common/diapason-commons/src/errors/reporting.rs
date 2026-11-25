@@ -41,6 +41,6 @@ pub struct DisplayErrorFormatter;
 
 impl ErrorFormatter for DisplayErrorFormatter {
     fn format_error(&self, error: &Error) -> Cow<'_, str> {
-        Cow::Owned(format!("{error}"))
+        Cow::Owned(error.to_string())
     }
 }

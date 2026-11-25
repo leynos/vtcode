@@ -1,35 +1,44 @@
+//! Terminal notification modes, detection, and emission helpers.
+
 #![expect(
     clippy::let_underscore_must_use,
     reason = "ANSI output cleanup intentionally ignores the best-effort flush result."
 )]
 
-//! Terminal notification modes, detection, and emission helpers.
-
 use super::{BEL, OSC};
 use once_cell::sync::Lazy;
 use std::io::{IsTerminal, Write};
 
-/// Notification preference (rich OSC vs bell-only)
+/// Notification preference (rich OSC vs bell-only).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HitlNotifyMode {
+    /// Notifications disabled.
     Off,
+    /// Bell-only notifications.
     Bell,
+    /// Rich terminal notifications using OSC 9 or OSC 777.
     Rich,
 }
 
-/// Terminal-specific notification capabilities
+/// Terminal-specific notification capability.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalNotifyKind {
+    /// No supported escape sequence; emit the audible bell only.
     BellOnly,
+    /// OSC 9 notification sequence.
     Osc9,
+    /// OSC 777 notification sequence.
     Osc777,
 }
 
 /// Explicit terminal notification transport override.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NotifyMethodOverride {
+    /// Detect the transport from the terminal environment.
     Auto,
+    /// Force bell-only output.
     Bell,
+    /// Force OSC 9 output.
     Osc9,
 }
 
@@ -44,11 +53,16 @@ pub fn play_bell(enabled: bool) {
     emit_bell();
 }
 
+/// Parse the `DIAPASON_HITL_BELL` override value.
+fn parse_bell_enabled_override(raw: &str) -> bool {
+    !matches!(raw.trim().to_ascii_lowercase().as_str(), "false" | "0" | "off")
+}
+
 /// Determine whether the bell should play, honouring an env override.
 #[inline]
 fn is_bell_enabled(default_enabled: bool) -> bool {
     if let Ok(val) = std::env::var("DIAPASON_HITL_BELL") {
-        return !matches!(val.trim().to_ascii_lowercase().as_str(), "false" | "0" | "off");
+        return parse_bell_enabled_override(&val);
     }
     default_enabled
 }
@@ -59,11 +73,13 @@ fn emit_bell() {
     let _ = std::io::stdout().flush();
 }
 
+/// Notify the user, selecting the transport automatically.
 #[inline]
 pub fn notify_attention(default_enabled: bool, message: Option<&str>) {
     notify_attention_with_mode(default_enabled, message, NotifyMethodOverride::Auto);
 }
 
+/// Notify the user, using `method` to override transport selection.
 #[inline]
 pub fn notify_attention_with_mode(default_enabled: bool, message: Option<&str>, method: NotifyMethodOverride) {
     if !is_bell_enabled(default_enabled) {
@@ -80,30 +96,44 @@ pub fn notify_attention_with_mode(default_enabled: bool, message: Option<&str>, 
     }
 
     if matches!(mode, HitlNotifyMode::Rich) {
-        let notify_kind = match method {
-            NotifyMethodOverride::Auto => *DETECTED_NOTIFY_KIND,
-            NotifyMethodOverride::Bell => TerminalNotifyKind::BellOnly,
-            NotifyMethodOverride::Osc9 => TerminalNotifyKind::Osc9,
-        };
-        match notify_kind {
-            TerminalNotifyKind::Osc9 => send_osc9_notification(message),
-            TerminalNotifyKind::Osc777 => send_osc777_notification(message),
-            TerminalNotifyKind::BellOnly => {} // No-op
-        }
+        send_rich_notification(resolve_notify_kind(method), message);
     }
 
     emit_bell();
 }
 
+/// Resolve the notification transport for the requested override.
+fn resolve_notify_kind(method: NotifyMethodOverride) -> TerminalNotifyKind {
+    match method {
+        NotifyMethodOverride::Auto => *DETECTED_NOTIFY_KIND,
+        NotifyMethodOverride::Bell => TerminalNotifyKind::BellOnly,
+        NotifyMethodOverride::Osc9 => TerminalNotifyKind::Osc9,
+    }
+}
+
+/// Emit the rich notification sequence for the resolved transport.
+fn send_rich_notification(kind: TerminalNotifyKind, message: Option<&str>) {
+    match kind {
+        TerminalNotifyKind::Osc9 => send_osc9_notification(message),
+        TerminalNotifyKind::Osc777 => send_osc777_notification(message),
+        TerminalNotifyKind::BellOnly => {}
+    }
+}
+
+/// Parse the `DIAPASON_HITL_NOTIFY` preference value.
+fn parse_hitl_notify_mode(raw: &str) -> HitlNotifyMode {
+    let value = raw.trim().to_ascii_lowercase();
+    match value.as_str() {
+        "off" | "0" | "false" => HitlNotifyMode::Off,
+        "bell" => HitlNotifyMode::Bell,
+        "rich" | "osc" | "notify" => HitlNotifyMode::Rich,
+        _ => HitlNotifyMode::Bell,
+    }
+}
+
 fn hitl_notify_mode(default_enabled: bool) -> HitlNotifyMode {
     if let Ok(raw) = std::env::var("DIAPASON_HITL_NOTIFY") {
-        let v = raw.trim().to_ascii_lowercase();
-        return match v.as_str() {
-            "off" | "0" | "false" => HitlNotifyMode::Off,
-            "bell" => HitlNotifyMode::Bell,
-            "rich" | "osc" | "notify" => HitlNotifyMode::Rich,
-            _ => HitlNotifyMode::Bell,
-        };
+        return parse_hitl_notify_mode(&raw);
     }
 
     if default_enabled {
@@ -113,15 +143,19 @@ fn hitl_notify_mode(default_enabled: bool) -> HitlNotifyMode {
     }
 }
 
+/// Parse the `DIAPASON_NOTIFY_KIND` transport override value.
+fn parse_terminal_notify_kind(raw: &str) -> TerminalNotifyKind {
+    let value = raw.trim().to_ascii_lowercase();
+    match value.as_str() {
+        "osc9" => TerminalNotifyKind::Osc9,
+        "osc777" => TerminalNotifyKind::Osc777,
+        _ => TerminalNotifyKind::BellOnly,
+    }
+}
+
 fn detect_terminal_notify_kind() -> TerminalNotifyKind {
     if let Ok(explicit_kind) = std::env::var("DIAPASON_NOTIFY_KIND") {
-        let explicit = explicit_kind.trim().to_ascii_lowercase();
-        return match explicit.as_str() {
-            "osc9" => TerminalNotifyKind::Osc9,
-            "osc777" => TerminalNotifyKind::Osc777,
-            "bell" | "off" => TerminalNotifyKind::BellOnly,
-            _ => TerminalNotifyKind::BellOnly,
-        };
+        return parse_terminal_notify_kind(&explicit_kind);
     }
 
     let term = std::env::var("TERM").unwrap_or_default().to_ascii_lowercase();
@@ -201,4 +235,4 @@ fn build_osc9_payload(body: &str) -> String {
 
 #[cfg(test)]
 #[path = "notify_tests.rs"]
-mod redraw_tests;
+mod notify_tests;

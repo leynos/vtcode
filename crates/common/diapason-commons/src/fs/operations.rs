@@ -7,8 +7,10 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 
 /// Ensure a directory exists, creating it if necessary
+///
 /// # Errors
-/// Returns an error when the requested filesystem operation or serialization fails.
+///
+/// Returns an error if `create_dir_all` fails to create the directory.
 pub async fn ensure_dir_exists(path: &Path) -> Result<()> {
     if !path.exists() {
         fs::create_dir_all(path)
@@ -46,6 +48,10 @@ pub async fn write_file_with_context(path: &Path, content: &str, context: &str) 
 ///
 /// On rename failure the temp file is best-effort removed before returning
 /// the error.
+#[expect(
+    clippy::let_underscore_must_use,
+    reason = "Temp-file cleanup is best-effort; the rename error is returned and must not be masked by a cleanup failure."
+)]
 pub async fn write_file_atomic_with_context(path: &Path, content: &str, context: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         ensure_dir_exists(parent).await?;
