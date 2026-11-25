@@ -15,7 +15,8 @@ cargo install git-cliff
 Or use it via Docker without installation:
 
 ```bash
-docker run --rm -v "$(pwd):/app" -w /app ghcr.io/orhunp/git-cliff:latest --config cliff.toml
+docker run --rm -v "$(pwd):/app" -w /app \
+  ghcr.io/orhun/git-cliff/git-cliff:latest --config cliff.toml
 ```
 
 ## Configuration
@@ -26,6 +27,18 @@ The configuration file `cliff.toml` is located at the project root. It defines:
 - **Grouping**: How to organize commits by type (Features, Bug Fixes, etc.)
 - **Filtering**: Which commits to exclude (version bumps, release commits)
 - **Template**: The Markdown format for changelog entries
+
+### Heading Uniqueness
+
+Every generated category heading includes its normalized release version. For
+example, release `0.157.0` uses `### [0.157.0] Highlights` and
+`#### [0.157.0] Bug Fixes`. The repository applies Markdownlint's default MD024
+rule across the whole document, so repeating an unqualified category heading in
+different releases is invalid.
+
+Historical release records remain in their original order. If old data contains
+more than one record for a version, the headings identify them as historical
+records instead of deleting or merging their entries.
 
 ### Commit Types
 
@@ -126,6 +139,14 @@ available:
 4. **Fallback**: If git-cliff is not available, uses built-in changelog
    generator
 
+Both generator paths emit the same version-qualified heading structure. Before
+inserting a release, the script checks normalized historical heading forms for
+the target version. It inserts the new section before the first H2, after the
+complete document preamble, instead of relying on a fixed preamble line count.
+Insertion writes a same-directory temporary file, preserves the changelog's
+permissions, and atomically replaces the original only after generation
+succeeds.
+
 ### Release Workflow
 
 ```bash
@@ -140,7 +161,7 @@ available:
 
 Diapason follows [Conventional Commits](https://www.conventionalcommits.org/):
 
-```
+```text
 <type>(<scope>): <description>
 
 [optional body]
@@ -195,7 +216,7 @@ Edit the order in the template `body` section:
 
 ```tera
 {% for group, commits in commits | group_by(attribute="group") %}
-    ### {{ group }}
+    ### [{{ version | trim_start_matches(pat="v") }}] {{ group }}
     {% for commit in commits %}
         - {{ commit.message }}
     {% endfor %}
@@ -204,18 +225,23 @@ Edit the order in the template `body` section:
 
 ### Modify Output Format
 
-The template uses [Tera](https://keats.github.io/tera/) templating:
+The template uses [Tera](https://keats.github.io/tera/) templating. Keep each
+list item on one template line: a tag or filter split across lines keeps its
+newlines, which breaks the rendered list item. The excerpt below mirrors
+`cliff.toml`.
 
+<!-- markdownlint-disable MD013 -- literal copied from cliff.toml -->
 ```tera
-## {{ version }} - {{ timestamp | date(format="%Y-%m-%d") }}
+## {{ version | trim_start_matches(pat="v") }} - {{ timestamp | date(format="%Y-%m-%d") }}
 
 {% for group, commits in commits | group_by(attribute="group") %}
-    ### {{ group }}
-    {% for commit in commits %}
-        - {{ commit.message | upper_first }} ({% if commit.remote.username %}@{{ commit.remote.username }}{% endif %})
-    {% endfor %}
+### [{{ version | trim_start_matches(pat="v") }}] {{ group }}
+{% for commit in commits %}
+- {{ commit.message | split(pat="\n") | first | upper_first }} ({% if commit.id %}{{ commit.id | truncate(length=8, end="") }}{% else %}unknown{% endif %}) {% if commit.remote.username %}(@{{ commit.remote.username }}){% endif %}
+{% endfor %}
 {% endfor %}
 ```
+<!-- markdownlint-enable MD013 -->
 
 ## Troubleshooting
 

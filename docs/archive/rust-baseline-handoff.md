@@ -1074,3 +1074,41 @@ names the unmerged parent `630f2c758`; the replay moved the layer's own commit
 onto `f3f7c2f71` without changing its content. The gate evidence recorded above
 describes an earlier replay onto an unmerged parent and is not evidence for
 this head.
+
+## Changelog Markdown prerequisite
+
+This layer follows test-module PR #72. It gives changelog sections unique
+version-qualified headings while preserving non-heading history. The generated
+release sections follow the same heading contract. Hermetic fixtures exercise
+both release-script generators and the installed git-cliff without network
+access or ambient Git configuration.
+
+The fixture exposed a release-script defect: plain read loops skipped the final
+Git log record when it lacked a trailing newline. Both loops now retain a
+nonempty final record, preserving the oldest commit and contributor. Strict
+category, hash and ordering assertions remain in place.
+
+Offline checks passed the fixture and found no added Markdown diagnostics:
+8,425 remain against 11,233 in the exact source parent, with all 2,808
+differences being removals. Changelog duplicate-heading and multiple-title
+findings are zero. ShellCheck retains 21 exact-parent diagnostics. Current
+blobs match the audited candidate, and both parent document blobs match its
+exact parent, so the diagnostic identity mapping still applies.
+
+Current-layer formatting, lint, build, type-checking, all 10,094 workspace
+tests (17 skipped), all 67 harness tests, eight spelling contracts and 13
+Actions contracts pass. The generator fixture also passes on this branch.
+Advisory checks and Nixie pass; optional AST-grep is unavailable. Four
+inherited rustdoc warnings remain for later source fixes. Final handoff and
+spelling checks validate these notes; mechanical Markdown formatting follows in
+later layers.
+
+## PR 73 after PR 72 merged
+
+PR #72 squash-merged into `main` as `644464ed1`. This layer was replayed onto
+it with `git rebase --onto 644464ed1 88918340f`. The only conflict was this
+handoff file, which now keeps every earlier record. The earlier restack record
+above describes the layer's own preservation restack; the replay moved its
+commit onto `644464ed1` without changing its content. The gate evidence
+recorded above describes earlier replays onto unmerged parents and is not
+evidence for this head.
