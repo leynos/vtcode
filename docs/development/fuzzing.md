@@ -86,12 +86,11 @@ The nextest `ci` profile retries a failing test twice and does not fail fast,
 so it can mask a flaky result that the default profile reports. Use the
 default profile when the question is whether the property still fails.
 
-The hosted job runs the whole workspace, while the filtered arms run one binary
-in its own process. Nextest isolates each test in its own process, so parser
-state cannot leak between tests; the difference that matters is test ordering
-and the set of other binaries, which only the workspace-wide command
-reproduces. Use the workspace command when the result must match the hosted run
-exactly.
+The hosted job runs the whole workspace under `cargo llvm-cov`, which adds
+coverage instrumentation and builds every test binary. The filtered arms run
+one test binary in one package without instrumentation. Use the workspace
+command when the result must match the hosted run exactly; use the filtered
+commands for a quick check of the property itself.
 
 A native signal kills the process before proptest can shrink the input or write
 a `.proptest-regressions` entry. To recover the script, run a scratch harness

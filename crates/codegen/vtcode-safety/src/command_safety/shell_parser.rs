@@ -130,6 +130,9 @@ struct FindExecArgument<'a>(&'a str);
 #[derive(Default)]
 struct FindExecSyntaxClassifier {
     context: FindCommandContext,
+    /// Whether the previous token contained the `{}` placeholder, which `find`
+    /// requires before `+` terminates an `-exec` expression.
+    after_placeholder: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -154,6 +157,8 @@ impl FindExecSyntaxClassifier {
         // The raw token still drives `contains_dynamic_shell_syntax` so any
         // expansion stays rejected.
         let literal = strip_literal_shell_quoting(word);
+        let previous_was_placeholder = self.after_placeholder;
+        self.after_placeholder = literal.contains("{}");
 
         if matches!(literal.as_ref(), "-exec" | "-execdir") {
             self.context = FindCommandContext::ExecProgram;
@@ -166,7 +171,7 @@ impl FindExecSyntaxClassifier {
                     return true;
                 }
 
-                if is_find_exec_terminator(word, &literal) {
+                if is_find_exec_terminator(word, &literal, previous_was_placeholder) {
                     self.context = FindCommandContext::Expression;
                 } else {
                     let program = base_command_name(&literal);
@@ -201,11 +206,11 @@ impl FindExecSyntaxClassifier {
                 false
             }
             FindCommandContext::EnvArguments if literal.starts_with('-') => true,
-            FindCommandContext::EnvArguments if is_find_exec_terminator(word, &literal) => {
+            FindCommandContext::EnvArguments if is_find_exec_terminator(word, &literal, previous_was_placeholder) => {
                 self.context = FindCommandContext::Expression;
                 false
             }
-            FindCommandContext::EnvCommand if is_find_exec_terminator(word, &literal) => {
+            FindCommandContext::EnvCommand if is_find_exec_terminator(word, &literal, previous_was_placeholder) => {
                 self.context = FindCommandContext::Expression;
                 false
             }
@@ -240,10 +245,12 @@ impl FindExecSyntaxClassifier {
             }
             context => {
                 let is_static_exec_token =
-                    context != FindCommandContext::Expression && matches!(literal.as_ref(), "{}" | "\\;");
+                    context != FindCommandContext::Expression && (literal == "{}" || word == "\\;");
                 let is_dynamic = !is_static_exec_token && contains_dynamic_shell_syntax(word);
 
-                if context != FindCommandContext::Expression && is_find_exec_terminator(word, &literal) {
+                if context != FindCommandContext::Expression
+                    && is_find_exec_terminator(word, &literal, previous_was_placeholder)
+                {
                     self.context = FindCommandContext::Expression;
                 } else if context != FindCommandContext::Expression && is_shell_interpreter(&literal) {
                     // A shell interpreter reached through any launcher
@@ -303,8 +310,10 @@ fn is_env_assignment(argument: &str) -> bool {
 /// the backslash reaches `find` unquoted: a quoted `'\;'` is passed through as
 /// the two characters `\;` and does not end the expression, so it must not
 /// reset the classifier into the expression context.
-fn is_find_exec_terminator(raw: &str, literal: &str) -> bool {
-    raw == "\\;" || matches!(literal, ";" | "+")
+fn is_find_exec_terminator(raw: &str, literal: &str, previous_was_placeholder: bool) -> bool {
+    // `find` ends on `+` only when the placeholder immediately precedes it;
+    // elsewhere `+` is an ordinary argument to the executed command.
+    raw == "\\;" || literal == ";" || (literal == "+" && previous_was_placeholder)
 }
 
 /// Removes shell quoting that performs no expansion, so a classifier can
@@ -1141,6 +1150,8 @@ mod tests {
         assert!(contains_dynamic_find_syntax("find . -exec sudo -p '\\;' sh -c '{}' +"));
         assert!(contains_dynamic_find_syntax("find . -exec sudo -p \"\\;\" sh -c '{}' +"));
         assert!(contains_dynamic_find_syntax("find . -exec env -u x '\\;' sh -c '{}' +"));
+        // A `+` only ends the expression when the placeholder precedes it.
+        assert!(contains_dynamic_find_syntax("find . -exec sudo -p + sh -c '{}' ';'"));
         // A genuine terminator still ends the expression.
         assert!(!contains_dynamic_find_syntax("find . -exec printf %s {} \\;"));
         assert!(!contains_dynamic_find_syntax("find . -exec printf %s {} '+'"));
