@@ -1,3 +1,8 @@
+//! Parent module for the agent runner test submodules.
+//!
+//! The submodules cover the runner harness, configuration, session state,
+//! shared helpers, `tool_execution`, and tool exposure.
+
 #![allow(
     missing_docs,
     reason = "Intentional compatibility, platform, or test-only suppression."
