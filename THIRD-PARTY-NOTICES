@@ -39,19 +39,17 @@ Do not edit by hand — regenerate after dependency changes.
 --------------------------------------------------------------------------------
 License Overview
 --------------------------------------------------------------------------------
-  Apache License 2.0 (526 crates) — SPDX: Apache-2.0
-  MIT License (229 crates) — SPDX: MIT
+  Apache License 2.0 (511 crates) — SPDX: Apache-2.0
+  MIT License (210 crates) — SPDX: MIT
   ISC License (23 crates) — SPDX: ISC
   Unicode License v3 (19 crates) — SPDX: Unicode-3.0
-  BSD 3-Clause "New" or "Revised" License (9 crates) — SPDX: BSD-3-Clause
-  BSD 2-Clause "Simplified" License (4 crates) — SPDX: BSD-2-Clause
+  BSD 3-Clause "New" or "Revised" License (5 crates) — SPDX: BSD-3-Clause
   Community Data License Agreement Permissive 2.0 (3 crates) — SPDX: CDLA-Permissive-2.0
   zlib License (3 crates) — SPDX: Zlib
   Boost Software License 1.0 (2 crates) — SPDX: BSL-1.0
   Mozilla Public License 2.0 (2 crates) — SPDX: MPL-2.0
   Creative Commons Zero v1.0 Universal (1 crates) — SPDX: CC0-1.0
   MIT No Attribution (1 crates) — SPDX: MIT-0
-  University of Illinois/NCSA Open Source License (1 crates) — SPDX: NCSA
 
 --------------------------------------------------------------------------------
 Detailed Dependency Listing
@@ -83,6 +81,9 @@ Apache License 2.0 — SPDX: Apache-2.0
 --------------------------------------------------------------------------------
 Apache License 2.0 — SPDX: Apache-2.0
 --------------------------------------------------------------------------------
+  diapason 0.156.1
+    Source: https://github.com/leynos/vtcode
+    License: MIT OR Apache-2.0
   openai-harmony 0.0.8
     Source: https://github.com/openai/harmony
     License: Apache-2.0
@@ -365,9 +366,6 @@ Apache License 2.0 — SPDX: Apache-2.0
   ciborium 0.2.2
     Source: https://github.com/enarx/ciborium
     License: Apache-2.0
-  imgref 1.12.2
-    Source: https://github.com/kornelski/imgref
-    License: CC0-1.0 OR Apache-2.0
   rustls-platform-verifier 0.7.0
     Source: https://github.com/rustls/rustls-platform-verifier
     License: MIT OR Apache-2.0
@@ -413,9 +411,6 @@ Apache License 2.0 — SPDX: Apache-2.0
 --------------------------------------------------------------------------------
 Apache License 2.0 — SPDX: Apache-2.0
 --------------------------------------------------------------------------------
-  bit_field 0.10.3
-    Source: https://github.com/phil-opp/rust-bit-field
-    License: Apache-2.0 OR MIT
   bytecount 0.6.9
     Source: https://github.com/llogiq/bytecount
     License: Apache-2.0 OR MIT
@@ -503,9 +498,6 @@ Apache License 2.0 — SPDX: Apache-2.0
   jni-sys 0.4.1
     Source: https://github.com/jni-rs/jni-sys
     License: MIT OR Apache-2.0
-  no_std_io2 0.9.4
-    Source: https://github.com/wcampbell0x2a/no-std-io2
-    License: Apache-2.0 OR MIT
   once_cell_polyfill 1.70.2
     Source: https://github.com/polyfill-rs/once_cell_polyfill
     License: MIT OR Apache-2.0
@@ -704,20 +696,8 @@ Apache License 2.0 — SPDX: Apache-2.0
   ahash 0.8.12
     Source: https://github.com/tkaitchuck/ahash
     License: MIT OR Apache-2.0
-  aligned 0.4.3
-    Source: https://github.com/rust-embedded-community/aligned
-    License: MIT OR Apache-2.0
-  arbitrary 1.4.2
-    Source: https://github.com/rust-fuzz/arbitrary/
-    License: MIT OR Apache-2.0
   arc-swap 1.9.2
     Source: https://github.com/vorner/arc-swap
-    License: MIT OR Apache-2.0
-  arrayvec 0.7.8
-    Source: https://github.com/bluss/arrayvec
-    License: MIT OR Apache-2.0
-  as-slice 0.2.1
-    Source: https://github.com/japaric/as-slice
     License: MIT OR Apache-2.0
   async-channel 2.5.0
     Source: https://github.com/smol-rs/async-channel
@@ -760,9 +740,6 @@ Apache License 2.0 — SPDX: Apache-2.0
     License: MIT OR Apache-2.0
   bitflags 2.13.1
     Source: https://github.com/bitflags/bitflags
-    License: MIT OR Apache-2.0
-  bitstream-io 4.10.0
-    Source: https://github.com/tuffy/bitstream-io
     License: MIT OR Apache-2.0
   blocking 1.6.2
     Source: https://github.com/smol-rs/blocking
@@ -944,9 +921,6 @@ Apache License 2.0 — SPDX: Apache-2.0
   left-right 0.11.8
     Source: https://github.com/jonhoo/left-right.git
     License: MIT OR Apache-2.0
-  libfuzzer-sys 0.4.13
-    Source: https://github.com/rust-fuzz/libfuzzer
-    License: (MIT OR Apache-2.0) AND NCSA
   linux-raw-sys 0.12.1
     Source: https://github.com/sunfishcode/linux-raw-sys
     License: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
@@ -967,9 +941,6 @@ Apache License 2.0 — SPDX: Apache-2.0
     License: MIT OR Apache-2.0
   num-complex 0.4.6
     Source: https://github.com/rust-num/num-complex
-    License: MIT OR Apache-2.0
-  num-derive 0.4.2
-    Source: https://github.com/rust-num/num-derive
     License: MIT OR Apache-2.0
   num-integer 0.1.46
     Source: https://github.com/rust-num/num-integer
@@ -1246,9 +1217,6 @@ Apache License 2.0 — SPDX: Apache-2.0
     License: MIT OR Apache-2.0
   minimal-lexical 0.2.1
     Source: https://github.com/Alexhuszagh/minimal-lexical
-    License: MIT OR Apache-2.0
-  qoi 0.4.1
-    Source: https://github.com/aldanor/qoi-rust
     License: MIT OR Apache-2.0
 --------------------------------------------------------------------------------
 Apache License 2.0 — SPDX: Apache-2.0
@@ -1601,12 +1569,6 @@ Apache License 2.0 — SPDX: Apache-2.0
   objc2-io-kit 0.3.2
     Source: https://github.com/madsmtm/objc2
     License: Zlib OR Apache-2.0 OR MIT
-  paste 1.0.15
-    Source: https://github.com/dtolnay/paste
-    License: MIT OR Apache-2.0
-  pastey 0.1.1
-    Source: https://github.com/as1100k/pastey
-    License: MIT OR Apache-2.0
   pastey 0.2.3
     Source: https://github.com/as1100k/pastey
     License: MIT OR Apache-2.0
@@ -1631,12 +1593,6 @@ Apache License 2.0 — SPDX: Apache-2.0
   process-wrap 10.0.1
     Source: https://github.com/watchexec/process-wrap
     License: Apache-2.0 OR MIT
-  profiling-procmacros 1.0.18
-    Source: https://github.com/aclysma/profiling
-    License: MIT OR Apache-2.0
-  profiling 1.0.18
-    Source: https://github.com/aclysma/profiling
-    License: MIT OR Apache-2.0
   quote 1.0.47
     Source: https://github.com/dtolnay/quote
     License: MIT OR Apache-2.0
@@ -1781,8 +1737,6 @@ Apache License 2.0 — SPDX: Apache-2.0
   winapi-x86_64-pc-windows-gnu 0.4.0
     Source: https://github.com/retep998/winapi-rs
     License: MIT OR Apache-2.0
-  zune-inflate 0.2.54
-    License: MIT OR Apache-2.0 OR Zlib
 --------------------------------------------------------------------------------
 Apache License 2.0 — SPDX: Apache-2.0
 --------------------------------------------------------------------------------
@@ -1805,30 +1759,6 @@ Apache License 2.0 — SPDX: Apache-2.0
     Source: https://github.com/chronotope/chrono
     License: MIT OR Apache-2.0
 --------------------------------------------------------------------------------
-BSD 2-Clause "Simplified" License — SPDX: BSD-2-Clause
---------------------------------------------------------------------------------
-  rav1e 0.8.1
-    Source: https://github.com/xiph/rav1e/
-    License: BSD-2-Clause
---------------------------------------------------------------------------------
-BSD 2-Clause "Simplified" License — SPDX: BSD-2-Clause
---------------------------------------------------------------------------------
-  v_frame 0.3.9
-    Source: https://github.com/rust-av/v_frame
-    License: BSD-2-Clause
---------------------------------------------------------------------------------
-BSD 2-Clause "Simplified" License — SPDX: BSD-2-Clause
---------------------------------------------------------------------------------
-  rav1e 0.8.1
-    Source: https://github.com/xiph/rav1e/
-    License: BSD-2-Clause
---------------------------------------------------------------------------------
-BSD 2-Clause "Simplified" License — SPDX: BSD-2-Clause
---------------------------------------------------------------------------------
-  av1-grain 0.2.5
-    Source: https://github.com/rust-av/av1-grain
-    License: BSD-2-Clause
---------------------------------------------------------------------------------
 BSD 3-Clause "New" or "Revised" License — SPDX: BSD-3-Clause
 --------------------------------------------------------------------------------
   encoding_rs 0.8.35
@@ -1843,26 +1773,8 @@ BSD 3-Clause "New" or "Revised" License — SPDX: BSD-3-Clause
 --------------------------------------------------------------------------------
 BSD 3-Clause "New" or "Revised" License — SPDX: BSD-3-Clause
 --------------------------------------------------------------------------------
-  avif-serialize 0.8.9
-    Source: https://github.com/kornelski/avif-serialize
-    License: BSD-3-Clause
---------------------------------------------------------------------------------
-BSD 3-Clause "New" or "Revised" License — SPDX: BSD-3-Clause
---------------------------------------------------------------------------------
-  ravif 0.13.0
-    Source: https://github.com/kornelski/cavif-rs
-    License: BSD-3-Clause
---------------------------------------------------------------------------------
-BSD 3-Clause "New" or "Revised" License — SPDX: BSD-3-Clause
---------------------------------------------------------------------------------
   subtle 2.6.1
     Source: https://github.com/dalek-cryptography/subtle
-    License: BSD-3-Clause
---------------------------------------------------------------------------------
-BSD 3-Clause "New" or "Revised" License — SPDX: BSD-3-Clause
---------------------------------------------------------------------------------
-  lebe 0.5.3
-    Source: https://github.com/johannesvollmer/lebe
     License: BSD-3-Clause
 --------------------------------------------------------------------------------
 BSD 3-Clause "New" or "Revised" License — SPDX: BSD-3-Clause
@@ -1870,9 +1782,6 @@ BSD 3-Clause "New" or "Revised" License — SPDX: BSD-3-Clause
   aws-lc-sys 0.45.0
     Source: https://github.com/aws/aws-lc-rs
     License: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)
-  exr 1.74.2
-    Source: https://github.com/johannesvollmer/exrs
-    License: BSD-3-Clause
 --------------------------------------------------------------------------------
 BSD 3-Clause "New" or "Revised" License — SPDX: BSD-3-Clause
 --------------------------------------------------------------------------------
@@ -2146,9 +2055,6 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
-  new_debug_unreachable 1.0.6
-    Source: https://github.com/mbrubeck/rust-debug-unreachable
-    License: MIT
   ordered-float 5.3.0
     Source: https://github.com/reem/rust-ordered-float
     License: MIT
@@ -2458,21 +2364,6 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
-  built 0.8.1
-    Source: https://github.com/lukaslueg/built
-    License: MIT
---------------------------------------------------------------------------------
-MIT License — SPDX: MIT
---------------------------------------------------------------------------------
-  arg_enum_proc_macro 0.3.4
-    Source: https://github.com/lu-zero/arg_enum_proc_macro
-    License: MIT
-  interpolate_name 0.2.4
-    Source: https://github.com/lu-zero/interpolate_name
-    License: MIT
---------------------------------------------------------------------------------
-MIT License — SPDX: MIT
---------------------------------------------------------------------------------
   tiff 0.11.3
     Source: https://github.com/image-rs/image-tiff
     License: MIT
@@ -2512,26 +2403,8 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
-  rgb 0.8.53
-    Source: https://github.com/kornelski/rust-rgb
-    License: MIT
---------------------------------------------------------------------------------
-MIT License — SPDX: MIT
---------------------------------------------------------------------------------
-  noop_proc_macro 0.3.0
-    Source: https://github.com/lu-zero/noop_proc_macro
-    License: MIT
---------------------------------------------------------------------------------
-MIT License — SPDX: MIT
---------------------------------------------------------------------------------
   ruzstd 0.9.1
     Source: https://github.com/KillingSpark/zstd-rs
-    License: MIT
---------------------------------------------------------------------------------
-MIT License — SPDX: MIT
---------------------------------------------------------------------------------
-  av-scenechange 0.14.1
-    Source: https://github.com/rust-av/av-scenechange
     License: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
@@ -2593,12 +2466,6 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
-  maybe-rayon 0.1.1
-    Source: https://github.com/shssoichiro/maybe-rayon
-    License: MIT
---------------------------------------------------------------------------------
-MIT License — SPDX: MIT
---------------------------------------------------------------------------------
   compact_str 0.10.0
     Source: https://github.com/ParkMyCar/compact_str
     License: MIT
@@ -2610,12 +2477,6 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
   castaway 0.2.4
     Source: https://github.com/sagebind/castaway
-    License: MIT
---------------------------------------------------------------------------------
-MIT License — SPDX: MIT
---------------------------------------------------------------------------------
-  pulp 0.22.3
-    Source: https://github.com/sarah-quinones/pulp/
     License: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
@@ -2653,15 +2514,6 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
-  aligned-vec 0.6.4
-    Source: https://github.com/sarah-ek/aligned-vec/
-    License: MIT
-  reborrow 0.5.5
-    Source: https://github.com/sarah-ek/reborrow/
-    License: MIT
---------------------------------------------------------------------------------
-MIT License — SPDX: MIT
---------------------------------------------------------------------------------
   teletypewriter 0.5.29
     Source: https://github.com/raphamorim/rio
     License: MIT
@@ -2670,15 +2522,6 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
   libredox 0.1.18
     Source: https://gitlab.redox-os.org/redox-os/libredox.git
-    License: MIT
---------------------------------------------------------------------------------
-MIT License — SPDX: MIT
---------------------------------------------------------------------------------
-  equator-macro 0.4.2
-    Source: https://github.com/sarah-ek/equator/
-    License: MIT
-  equator 0.4.2
-    Source: https://github.com/sarah-ek/equator/
     License: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
@@ -2740,9 +2583,6 @@ MIT License — SPDX: MIT
   jsonschema-value 0.52.1
     Source: https://github.com/Stranger6667/jsonschema
     License: MIT
-  libm 0.2.16
-    Source: https://github.com/rust-lang/compiler-builtins
-    License: MIT
   objc2-encode 4.1.0
     Source: https://github.com/madsmtm/objc2
     License: MIT
@@ -2761,9 +2601,6 @@ MIT License — SPDX: MIT
   plotters 0.3.7
     Source: https://github.com/plotters-rs/plotters
     License: MIT
-  pulp-wasm-simd-flag 0.1.1
-    Source: https://github.com/sarah-quinones/pulp/
-    License: MIT
   ratatui-cheese 0.7.0
     Source: https://github.com/shashanktomar/ratatui-cheese
     License: MIT
@@ -2772,9 +2609,6 @@ MIT License — SPDX: MIT
     License: MIT
   rio-vt 0.5.29
     Source: https://github.com/raphamorim/rio
-    License: MIT
-  simd_helpers 0.1.0
-    Source: https://github.com/lu-zero/simd_helpers
     License: MIT
   tree-sitter-cpp 0.23.4
     Source: https://github.com/tree-sitter/tree-sitter-cpp
@@ -2935,12 +2769,6 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
-  raw-cpuid 11.6.0
-    Source: https://github.com/gz/rust-cpuid
-    License: MIT
---------------------------------------------------------------------------------
-MIT License — SPDX: MIT
---------------------------------------------------------------------------------
   sysinfo 0.38.4
     Source: https://github.com/GuillaumeGomez/sysinfo
     License: MIT
@@ -2961,12 +2789,6 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
   fsevent-sys 4.1.0
     Source: https://github.com/octplane/fsevent-rust/tree/master/fsevent-sys
-    License: MIT
---------------------------------------------------------------------------------
-MIT License — SPDX: MIT
---------------------------------------------------------------------------------
-  y4m 0.8.0
-    Source: https://github.com/image-rs/y4m.git
     License: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
@@ -3125,12 +2947,6 @@ MIT License — SPDX: MIT
     Source: https://github.com/kornelski/rust_urlencoding
     License: MIT
 --------------------------------------------------------------------------------
-MIT License — SPDX: MIT
---------------------------------------------------------------------------------
-  loop9 0.1.5
-    Source: https://gitlab.com/kornelski/loop9.git
-    License: MIT
---------------------------------------------------------------------------------
 MIT No Attribution — SPDX: MIT-0
 --------------------------------------------------------------------------------
   borrow-or-share 0.2.4
@@ -3148,12 +2964,6 @@ Mozilla Public License 2.0 — SPDX: MPL-2.0
   option-ext 0.2.0
     Source: https://github.com/soc/option-ext.git
     License: MPL-2.0
---------------------------------------------------------------------------------
-University of Illinois/NCSA Open Source License — SPDX: NCSA
---------------------------------------------------------------------------------
-  libfuzzer-sys 0.4.13
-    Source: https://github.com/rust-fuzz/libfuzzer
-    License: (MIT OR Apache-2.0) AND NCSA
 --------------------------------------------------------------------------------
 Unicode License v3 — SPDX: Unicode-3.0
 --------------------------------------------------------------------------------
