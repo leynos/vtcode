@@ -72,7 +72,11 @@ def seed_content_violations(step: dict) -> list[str]:
 
 
 def seed_payload(run: str, destination: str) -> str:
-    """Return the seed-bearing text written to ``destination``."""
+    """Return the seed-bearing text written to ``destination``.
+
+    The search stops at the redirect block's opening brace, so an earlier
+    export cannot satisfy the summary check.
+    """
     lines = run.splitlines()
     redirects = [index for index, line in enumerate(lines) if destination in line]
     if not redirects:
@@ -81,6 +85,8 @@ def seed_payload(run: str, destination: str) -> str:
     if "PROPTEST_RNG_SEED" in lines[redirect]:
         return lines[redirect]
     for index in range(redirect - 1, -1, -1):
+        if lines[index].rstrip().endswith("{"):
+            return ""
         if "PROPTEST_RNG_SEED" in lines[index]:
             return lines[index]
     return ""
@@ -181,6 +187,15 @@ class CoverageProptestSeedTest(unittest.TestCase):
         step = step_named(self.workflow, SEED_STEP)
         step["run"] = step["run"].replace(
             "PROPTEST_RNG_SEED=$proptest_rng_seed", "PROPTEST_RNG_SEED=0"
+        )
+        self.assert_fails("reported seed is not the generated value")
+
+    def test_a_summary_without_the_seed_fails(self) -> None:
+        step = step_named(self.workflow, SEED_STEP)
+        step["run"] = "\n".join(
+            line
+            for line in step["run"].splitlines()
+            if "This coverage run used" not in line
         )
         self.assert_fails("reported seed is not the generated value")
 
