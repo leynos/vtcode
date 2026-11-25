@@ -9,9 +9,9 @@ separately by [#108](https://github.com/leynos/vtcode/issues/108) and
 ## Purpose and constraints
 
 `cargo audit --file Cargo.lock` reported `paste 1.0.15` as unmaintained under
-`RUSTSEC-2024-0436`. Removing the advisory without suppressing it, without an
-allow-list entry, and without an unrelated dependency upgrade required finding
-the activator rather than the crate.
+the RustSec advisory `RUSTSEC-2024-0436`. Removing the advisory without
+suppressing it, without an allow-list entry, and without an unrelated
+dependency upgrade required finding the activator rather than the crate.
 
 The direct workspace declaration is already minimal:
 

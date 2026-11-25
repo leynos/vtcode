@@ -25,8 +25,9 @@ under "Local delta".
 
 ## Why
 
-`RUSTSEC-2024-0436` reports `paste 1.0.15` as unmaintained. Diapason reached
-`paste` only through `image`'s default formats:
+The RustSec advisory database entry `RUSTSEC-2024-0436` reports `paste 1.0.15`
+as unmaintained. Diapason reached `paste` only through the default formats of
+`image`:
 
 ```text
 image -> ravif -> rav1e -> paste
