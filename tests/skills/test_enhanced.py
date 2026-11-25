@@ -320,7 +320,7 @@ Modify the specification to include:
 {
   "title": "Report",
   "style": {
-    "primary_color": "#003366",
+    "primary_colour": "#003366",
     "font_family": "Arial",
     "header_size": 16
   }
@@ -340,7 +340,7 @@ import matplotlib.pyplot as plt
 "chart_config": {
   "type": "bar",
   "data": [10, 20, 30],
-  "colors": ["#003366", "#0066CC", "#0099FF"]
+  "colours": ["#003366", "#0066CC", "#0099FF"]
 }
 ```
 """)
@@ -354,7 +354,7 @@ import matplotlib.pyplot as plt
         # Ultra-concise SKILL.md (target: 25-30 lines)
         skill_md = """---
 name: excel-analysis-optimized
-description: Analyze Excel spreadsheets, create pivot tables, generate charts. Use for sales data, financial reports, data analysis. Use when user mentions Excel, spreadsheet, or .xlsx files.
+description: Analyse Excel spreadsheets, create pivot tables, generate charts. Use for sales data, financial reports, data analysis. Use when user mentions Excel, spreadsheet, or .xlsx files.
 version: 2.0.0
 author: Diapason Team
 category: data_analysis
@@ -368,15 +368,17 @@ complexity: moderate
 
 ## Quick Start
 
+The scripts below are project-provided placeholders for this illustrative example; this demonstration generates the skill instructions only.
+
 ```bash
 # Create analysis
-python -m diapason.skills.excel.analyze --file data.xlsx --config analysis.json
+python scripts/analyse.py --file data.xlsx --config analysis.json
 
 # Generate chart
-python -m diapason.skills.excel.chart --file data.xlsx --type bar --output chart.png
+python scripts/chart.py --file data.xlsx --type bar --output chart.png
 
 # Create pivot table
-python -m diapason.skills.excel.pivot --file data.xlsx --config pivot.json
+python scripts/pivot.py --file data.xlsx --config pivot.json
 ```
 
 ## Configuration
@@ -559,8 +561,8 @@ This demonstration skill:
         
         print(f" Created token optimization demo (85% token savings)")
     
-    def analyze_skill_efficiency(self, skill_name: str) -> TokenMetrics:
-        """Analyze token efficiency of a skill."""
+    def analyse_skill_efficiency(self, skill_name: str) -> TokenMetrics:
+        """Analyse token efficiency of a skill."""
         
         skill_dir = self.skills_dir / skill_name
         if not skill_dir.exists():
@@ -618,7 +620,7 @@ This demonstration skill:
         for skill_dir in self.skills_dir.iterdir():
             if skill_dir.is_dir() and (skill_dir / "SKILL.md").exists():
                 try:
-                    metrics = self.analyze_skill_efficiency(skill_dir.name)
+                    metrics = self.analyse_skill_efficiency(skill_dir.name)
                     
                     result = {
                         'skill': skill_dir.name,
@@ -641,7 +643,7 @@ This demonstration skill:
                     print(f"  Status: {result['status']}")
                     
                 except Exception as e:
-                    print(f"  Could not analyze {skill_dir.name}: {e}")
+                    print(f"  Could not analyse {skill_dir.name}: {e}")
         
         return results
     
@@ -794,7 +796,7 @@ if __name__ == "__main__":
         
         skill_md = """---
 name: data-analysis-pipeline
-description: Complete data analysis pipeline: extract, clean, analyze, visualize. Requires data-processing-utils skill.
+description: Complete data analysis pipeline: extract, clean, analyse, visualize. Requires data-processing-utils skill.
 version: 1.0.0
 dependencies: ["data-processing-utils"]
 ---
@@ -815,9 +817,13 @@ diapason skill run data-processing-utils:extract --source database.db --query "S
 diapason skill run data-processing-utils:clean --input raw_data.csv --config cleaning_rules.json
 ```
 
-### 3. Analyze (this skill)
+### 3. Analyse (this skill)
+
+Provide a project-specific `scripts/analyse.py` implementation for this illustrative
+step. This demonstration generates the skill instructions only.
+
 ```bash
-python scripts/analyze.py --cleaned-data cleaned_data.csv --config analysis.json
+python scripts/analyse.py --cleaned-data cleaned_data.csv --config analysis.json
 ```
 
 ### 4. Visualize (uses data-processing-utils)
@@ -944,7 +950,7 @@ TEST_CASES = [
                 {
                     "name": "pipeline_orchestration",
                     "skills": ["data-analysis-pipeline", "data-processing-utils"],
-                    "query": "analyze sales data",
+                    "query": "analyse sales data",
                     "expected_dependencies": ["data-processing-utils"],
                     "success_criteria": [
                         "dependencies_resolved",
@@ -1004,7 +1010,7 @@ TEST_CASES = [
         # Summary
         print("\n" + "=" * 60)
         print(" Benchmark Summary:")
-        print(f"  Skills analyzed: {len(results)}")
+        print(f"  Skills analysed: {len(results)}")
         print(f"  Optimized: {len(results) - len(needs_optimization)}")
         print(f"  Need work: {len(needs_optimization)}")
         

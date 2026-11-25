@@ -134,18 +134,70 @@ The complete PR train is not yet delivered.
   build, 10,081 workspace tests with 17 skipped, 67 harness tests, the optional
   ast-grep skip, and advisory. Logs use `ACTION-manifest` with the engineering
   branch suffix.
-- `harden-lint-spelling-user-docs` is active, based on #33.
-  It corrects 94 user, reference, and provider documents, including native
-  colour aliases in examples. Fixed URLs, APIs, configuration keys, and
-  protocol names remain intact. All seven original code gates recorded exit
-  zero: formatting, lint, build, 10,081 workspace tests with 17 skipped, 67
-  harness tests, the optional ast-grep skip, and advisory. Logs use
-  `ACTION-manifest` with the user-docs branch suffix. Nixie passed all 95
-  changed documents. Original table and wrapping repairs left 5,069 inherited
-  Markdown diagnostics against 5,074 in the parent: no added path, mapped-line,
-  and rule identities; five inherited instances removed. Two residual Oxford
-  spellings found by reconnaissance are queued for the next source-fix layer
-  before the final spelling scan and gate.
+- [Draft PR #34](https://github.com/leynos/vtcode/pull/34) publishes
+  `harden-lint-spelling-user-docs` at
+  `b1328dc3fedc00e01da8a8688abceb19a2a53f21`, based on #33. It corrects 94
+  user, reference, and provider documents, including native colour aliases in
+  examples. Fixed URLs, APIs, configuration keys, and protocol names remain
+  intact. All seven original code gates recorded exit zero: formatting, lint,
+  build, 10,081 workspace tests with 17 skipped, 67 harness tests, the optional
+  ast-grep skip, and advisory. Logs use `ACTION-manifest` with the user-docs
+  branch suffix. Nixie passed all 95 changed documents. Original table and
+  wrapping repairs left 5,069 inherited Markdown diagnostics against 5,074 in
+  the parent: no added path, mapped-line, and rule identities; five inherited
+  instances removed. Two residual Oxford spellings found by reconnaissance are
+  queued for the next source-fix layer before the final spelling scan and gate.
+- [Draft PR #38](https://github.com/leynos/vtcode/pull/38) tracks
+  `harden-lint-spelling-residual`; the rebased candidate targets
+  [Draft PR #34](https://github.com/leynos/vtcode/pull/34) at
+  `b1328dc3fedc00e01da8a8688abceb19a2a53f21`. The original residual validation
+  evidence below remains historical against its previous parent. This candidate
+  has completed fresh gates and supplement provenance checks, recorded below. A
+  fresh scan using the reviewed external configuration found 1,086 candidates
+  across 310 files. These include fixed external names and intentional
+  malformed inputs, so classification precedes source fixes and narrow contract
+  exemptions. The scan used typos 1.50.1 and exited 2; its log is
+  `/tmp/spelling-measure-2-vtcode-df12-onboarding-harden-lint-spelling-residual.out`.
+  All seven ordered workspace gates passed: formatting, lint, build, 10,081
+  tests with 17 skipped, 67 harness tests, the optional ast-grep skip, and
+  advisory. Logs use `ACTION-manifest` with this branch suffix. WebMCP
+  typecheck, 41 tests, and build passed; VS Code bundled successfully; Python
+  compilation and shell syntax checks passed. The excluded Zed crate passed its
+  WASM check. Exact-parent comparisons found no added supplementary failures:
+  Zed retains 83 formatting hunks and three cache Arc-count test failures (149
+  tests pass); VS Code retains 578 TypeScript diagnostics. Markdown retains
+  3,384 inherited findings against 3,390 in the parent, with no added mapped
+  identities; Nixie passed all 57 changed documents. A refined offline spelling
+  scan found 335 candidates across 115 files; further native sample and
+  command-skill corrections precede the gate.
+- [Draft PR #51](https://github.com/leynos/vtcode/pull/51) tracks
+  `harden-lint-spelling-examples`; the rebased candidate targets
+  [PR #38](https://github.com/leynos/vtcode/pull/38) at
+  `03ab606cc8ed15f29a5eb84e360fd872edd465ab`. The original examples validation
+  evidence below remains historical against its previous parent. Fresh gates
+  and supplementary comparisons are recorded below. The additional workflow
+  validation remains a later onboarding layer. The command-skill migration
+  retains the legacy ID, discovery precedence, and model-catalogue exclusion.
+  Authored test prompts and examples follow in the same layer; all seven
+  ordered workspace gates passed. The full run passed 10,090 tests with 17
+  skipped and one leaky-process result. Its focused repeat passed without a
+  leak; the unchanged snapshot test has no process-spawn path. The 67 harness
+  tests passed. Logs use `ACTION-manifest-2` with this branch suffix. Nixie,
+  Python compilation, and VS Code bundling passed. The focused mention-parser
+  suite passed 16 tests and reproduced the exact parent's one email-detection
+  failure, tracked as [issue #48](https://github.com/leynos/vtcode/issues/48).
+  Markdownlint retains the exact parent's 31 findings with no added or removed
+  identities. The proposed spelling scan now reports 137 findings across 58
+  files; the policy remains outside the live tree.
+- The user now prioritizes review and merge readiness for #20 and subsequent
+  PRs in order, using the comenq-coderabbit workflow and worker agents. GitHub
+  cancelled #20's cold `tool-eval` job at its 15-minute ceiling after a 10m43s
+  build; a 30-minute budget patch is prepared for that PR. Its first CodeRabbit
+  review has six inline findings. Pertinent fixes are being prepared against
+  #20; spelling and structural findings are assigned to the later train layers.
+  Every bot reply must mention `@coderabbitai`. Valid out-of-scope findings
+  require GitHub issues. Preserve the current layer as a gated commit before
+  switching to the review fixes.
 - Remaining spelling changes are preserved separately while each layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
@@ -154,7 +206,9 @@ The complete PR train is not yet delivered.
   untouched. It will eventually rebase onto the lint train.
 - The user waived all Lody-session requirements. Upper PRs remain draft and
   stacked, with predecessor/successor links, reviewer entrypoints and gate
-  evidence.
+  evidence. The user marked #20 ready for review and applied a GitHub stack to
+  the published train. Native stack #37 now contains 15 PRs, including #38;
+  preserve it and the existing review states when adding layers.
 
 ## Validation evidence
 
@@ -677,4 +731,417 @@ file, which now keeps every earlier record. The earlier restack record above
 names the unmerged parent `d94310f9a`; the replay moved those commits onto
 `e9af93b` without changing the layer's own content. The gate evidence recorded
 above describes earlier replays onto unmerged parents and is not evidence for
+this head.
+
+## PR 38 review restack
+
+The residual layer is rebased onto PR #34 `b1328dc3f`. All eight sequential
+code gates passed: formatting, lint, build, type checking, 10,085 workspace
+tests (17 skipped), 67 harness tests, the optional ast-grep skip, and advisory.
+The optional scan is unavailable, rather than a completed scan. Gate logs use
+`ACTION-pr38-restack-1` with the residual branch suffix.
+
+Markdownlint checked 57 changed documents: 3,384 current diagnostics versus
+3,390 in the final parent. Source-line mapping found no added identities and
+six removed instances. The rewritten parser-guide subtitle retains its existing
+MD036 finding; its corresponding source line was checked explicitly. Three
+obsolete list entries and three unsupported configuration rows account for the
+removed findings. These inherited failures are not a passing Markdownlint gate.
+Nixie passed all 57 files. The mapped comparison is
+`/tmp/vtcode-pr38-md-identity-root.json`.
+
+The original Zed, VS Code, and WebMCP supplement results above are carried
+forward, not rerun. Exact blob and mode comparison found identical 16-path
+changes across the original and rebased transitions. The four inherited WebMCP
+and Cargo differences match the parent transition. Evidence is in
+`/tmp/pr38-supplement-parity-final.json`; inherited supplement failures remain
+reported separately from the passing workspace gates.
+
+## Additional GitHub Actions validation requirement
+
+Import Netsuke's yamllint and actionlint validation, including hardening from
+revision `d0bb051fac02416cb38a8e76865b1b569d5ec163`. Preserve the existing
+workflow-security checks, require yamllint before actionlint, and test failure
+propagation. Pin yamllint 1.38.0 and actionlint 1.7.12; verify the actionlint
+archive before installation and use the reviewed installer revision.
+
+Workflow repairs precede the gate that requires them. The offline candidate and
+process-contract tests are under review and are not delivered. This addition
+retains mdtablefix 0.5.1, the requested shared-actions revision, and the
+project's unchanged primary Rust toolchain.
+
+## PR 38 after PR 34 merged
+
+PR #34 squash-merged into `main` as `e9e0e33b`. This layer was replayed onto it
+with `git rebase --onto e9e0e33b 2d937c8ca`. The only conflict was this handoff
+file, which now keeps every earlier record. The earlier restack record above
+names the unmerged parent `b1328dc3f`; the replay moved the layer's own three
+commits onto `e9e0e33b` without changing their content. The gate evidence
+recorded above describes that earlier replay onto an unmerged parent and is not
+evidence for this head.
+
+The self-contained-snippet commit replayed as empty, because its
+`CachedStyleParser` examples were already replaced by the public
+`ThemeConfigParser::parse_flexible`; the import that still made each
+cheat-sheet fence self-contained was added separately. All eight sequential
+code gates then passed at `cf5f4785a`: formatting, lint, build, type checking,
+10,695 workspace tests (22 skipped), 67 harness tests, the installed ast-grep
+scan, and advisory. Markdownlint over the 44 changed documents found two
+diagnostics, both introduced by the Phase 3 list edit and repaired before
+publication. Gate logs use `ACTION-pr38-restack-2` with the residual branch
+suffix.
+
+## PR 51 review restack
+
+The authored-examples layer is rebased onto PR #38 `03ab606cc`. Its 30-path
+inventory is unchanged. The Anthropic test input retains lower-layer test
+repairs, and the handoff preserves both layers' history and new requirements.
+All eight sequential code gates passed: formatting, lint, build, type checking,
+10,094 workspace tests (17 skipped), 67 harness tests, the optional ast-grep
+skip, and advisory. Logs use `ACTION-pr51-restack-1` with the examples branch
+suffix. The optional scan remains unavailable.
+
+Fresh supplementary checks passed Nixie for three documents, Python
+compilation, and VS Code bundling. The mention-parser suite passed 16 tests and
+reproduced the exact parent's email-detection failure from issue #48.
+Markdownlint initially found one new handoff line-length finding; it was
+wrapped before the final document checks. The other 31 diagnostic identities
+belong to the native-plugin guide and match the final parent. The renamed
+bundled command-skill document is clean. These inherited supplementary failures
+remain visible and do not represent passing gates.
+
+PR #20 has separately published review fixes at `8f34d6e94`. Its hosted eval
+checks passed, and its next CodeRabbit review is queued. The upper train must
+be restacked in order after that review reaches equilibrium and PR #20 merges.
+The Markdown and workflow-validation candidates remain separate offline work;
+none of their demanding configuration is enabled by this examples layer.
+
+## PR 51 after PR 38 merged
+
+PR #38 squash-merged into `main` as `d5f3478d7`. This layer was replayed onto
+it with `git rebase --onto d5f3478d7 6462646d5`. The only conflict was this
+handoff file, which now keeps every earlier record. The earlier restack record
+above names the unmerged parent `03ab606cc`; the replay moved the layer's own
+three commits onto `d5f3478d7` without changing their content. The gate
+evidence recorded above describes earlier replays onto unmerged parents and is
+not evidence for this head.
+
+## Final native spelling source layer
+
+`harden-lint-spelling-final-sources` follows PR #51
+`450782900cd8dc542d6d1bfa5bf488c4925a7d24` and applies the reviewed nine
+native-spelling corrections across seven paths. The changes cover authored
+prose, test prompts, comments, and command examples; the canonical command is
+`analyse`. Reviewed external names and syntax remain deliberate, including the
+`rust-analyzer` project name and registry configuration shape. No spelling
+configuration, exception, or policy change is introduced by this source layer.
+
+The Zed `allowed_tools` example now uses the canonical command spelling, but
+whether that configuration is enforced is a separate contract issue tracked in
+[issue #65](https://github.com/leynos/vtcode/issues/65). This layer does not
+claim to implement or validate that policy.
+
+Fresh format, lint, build, type-check, workspace, and harness gates passed:
+10,094 workspace tests passed with 17 skipped, and all 67 harness tests passed.
+The advisory target passed in warning mode; optional ast-grep was unavailable.
+Documentation generation retains the four previously recorded warnings. Python
+compilation and Nixie passed. The Markdown and workflow-validation
+prerequisites remain separate until their own full gates pass.
+
+The subsequent tracked-index measurement found eight correctable textual hits.
+This layer corrects the native `normalize` assertion prose and Copilot guidance
+prose. The two stale guidance references had no CodeGraph symbol or
+code-pattern wiring, so they were removed rather than renaming or inventing a
+tool API. The actual CLI keeps canonical `analyse` and its legacy alias. The
+earlier permission-hook JSON key remains accurate and unchanged; its precise
+external-contract policy treatment is separate.
+
+The proposed tracked-file spelling scan checked 3,095 existing paths and found
+zero textual findings, plus 22 informational binary-file records. Its inherited
+CHANGELOG exclusion is being replaced separately: the history audit identified
+196 prose corrections, 137 commit-hash fragments, and 22 historical identifiers
+or paths. The fixed references must remain byte-exact.
+
+The first Markdown check found 334 diagnostics against 333 on the exact parent.
+The sole added diagnostic was the rewritten Copilot instruction's line length;
+that instruction is now wrapped. Final Markdown and spelling checks include
+this handoff update. The inherited Markdown findings remain for the formatting
+work.
+
+## PR 66 after PR 51 merged
+
+PR #51 squash-merged into `main` as `2f2e4cb95`. This layer was replayed onto
+it with `git rebase --onto 2f2e4cb95 6d9bd0127`. The only conflict was this
+handoff file, which now keeps every earlier record. The earlier record above
+names the unmerged parent `450782900`; the replay moved the layer's own three
+commits onto `2f2e4cb95` without changing their content. The gate evidence
+recorded above describes earlier replays onto unmerged parents and is not
+evidence for this head.
+
+## Workflow source prerequisite
+
+The workflow repair layer follows source spelling PR #66 and prepares the
+existing five workflows for Netsuke's yamllint and actionlint policy. It adds
+document markers, corrects comment spacing, expands a compact mapping, and
+wraps long commands without changing their arguments or folded Rust flags. Tag
+polling still makes 12 attempts with ten-second sleeps; diagnostics now include
+the attempt number. The binary-size fallback keeps its existing
+platform-specific probes and unknown-size outcome.
+
+The source revision is `d0bb051fac02416cb38a8e76865b1b569d5ec163` from Netsuke.
+Parsed YAML comparison preserves the CI, coverage, tool-eval, and WebMCP jobs
+exactly. Build-workflow differences are confined to the documented equivalent
+command forms and retry diagnostics. The Rust toolchain file remains
+byte-exact. This layer carries source repairs only; the next layer installs the
+linters, tests the process boundaries, and enables the gate.
+
+This layer passed format, lint, build, type-check, workspace, and harness
+gates: 10,094 workspace tests passed with 17 skipped, and all 67 harness tests
+passed. Advisory checks passed in warning mode. Optional ast-grep was
+unavailable, and the same four rustdoc warnings remain under the existing
+configuration. Final document and proposed workflow-linter checks include this
+evidence update.
+
+## PR 67 after PR 66 merged
+
+PR #66 squash-merged into `main` as `47cb1867c`. This layer was replayed onto
+it with `git rebase --onto 47cb1867c a4b6f55b0`. The only conflict was this
+handoff file, which now keeps every earlier record. The earlier record above
+names the unmerged parent for the workflow-sources restack; the replay moved
+the layer's own two commits onto `47cb1867c` without changing their content.
+The gate evidence recorded above describes earlier replays onto unmerged
+parents and is not evidence for this head.
+
+## GitHub Actions validation gate
+
+The validation layer follows workflow repairs PR #67 and imports Netsuke
+revision `d0bb051fac02416cb38a8e76865b1b569d5ec163`. `make lint` now runs
+yamllint before actionlint, alongside the existing security checks. Either
+linter's non-zero status stops the gate. The policy requires YAML document
+markers and 120-column lines while preserving GitHub's `on` trigger key.
+
+CI pins yamllint 1.38.0 and actionlint 1.7.12. It verifies the actionlint
+archive checksum before invoking the installer at its reviewed commit. The
+exported downloader function and its archive variables cross the child-process
+boundary together, so installation consumes the verified bytes. Controlled
+tests cover every linter exit status and fail-closed download/checksum paths.
+CI uses the absolute Make binary, preserves its four-job build limit, and
+triggers on Makefile changes as well.
+
+The primary Rust toolchain, existing workflow security policy, and job
+selection are preserved. Markdown formatter installation remains a separate
+layer.
+
+This layer passed all 13 contract tests, format, lint, build, type-check,
+workspace, and harness gates: 10,094 workspace tests passed with 17 skipped,
+and all 67 harness tests passed. Advisory checks passed in warning mode;
+optional ast-grep was unavailable. The same four rustdoc warnings remain. Final
+contracts, workflow linters, and document checks include the CI job-limit
+correction and this evidence update.
+
+## PR 68 after PR 67 merged
+
+PR #67 squash-merged into `main` as `4213ed12f`. This layer was replayed onto
+it with `git rebase --onto 4213ed12f 26c5d93df`. The only conflict was this
+handoff file, which now keeps every earlier record. The earlier record above
+names the unmerged parent for the workflow-sources stack; the replay moved the
+layer's own three commits onto `4213ed12f` without changing their content. The
+gate evidence recorded above describes earlier replays onto unmerged parents
+and is not evidence for this head.
+
+## Historical CHANGELOG spelling layer
+
+This layer applies 196 reviewed prose-only spelling corrections to
+`CHANGELOG.md`. It preserves 137 commit-hash fragments and 22 historical
+identifiers or paths; 18 newly introduced single trailing spaces on changed
+release bullets were removed. No generated spelling configuration is included.
+Format, lint, build, type-check, workspace, and harness gates passed: 10,094
+tests passed with 17 skipped, plus all 67 harness tests. The 13 workflow
+contracts passed. Advisory checks passed in warning mode; optional ast-grep was
+unavailable. Four inherited rustdoc warnings remain.
+
+The replacement history policy checked all 3,099 tracked files with no textual
+findings. Markdownlint findings fell from 11,252 on the exact parent to 11,229,
+with no additions; the remaining findings await the Markdown cleanup layers.
+Nixie passed for both changed documents.
+
+## PR 69 after PR 68 merged
+
+PR #68 squash-merged into `main` as `929daec2a`. This layer was replayed onto
+it with `git rebase --onto 929daec2a 9ff056914`. The only conflict was this
+handoff file, which now keeps every earlier record. The earlier record above
+names the unmerged parent for the Actions-validation stack; the replay moved
+the layer's own two commits onto `929daec2a` without changing their content.
+The gate evidence recorded above describes earlier replays onto unmerged
+parents and is not evidence for this head.
+
+## Tracked-file spelling gate
+
+This layer enables the reviewed Oxford spelling policy through `make spelling`
+and `make lint`. Discovery uses Git's tracked-file index, preserves
+NUL-delimited paths, skips deleted files, and fails closed on discovery errors.
+CI installs pinned typos-cli 1.50.1 and invokes the same Make target.
+
+Historical exceptions enumerate the audited commit hashes and names instead of
+excluding changelogs. Custom file types match basenames, so both changelogs
+remain covered. Focused process and CI contracts accompany developer setup
+instructions. The primary Rust toolchain remains unchanged.
+
+All eight spelling contracts, the 3,104-file spelling scan, and 13 workflow
+contracts passed. Format, lint, build, type-check, workspace tests, and harness
+checks passed: 10,094 tests passed with 17 skipped, plus all 67 harness tests.
+Advisory checks passed in warning mode; optional ast-grep was unavailable. Four
+inherited rustdoc warnings remain. Nixie passed both changed documents;
+Markdownlint retains seven exact-parent line-length findings in the setup
+guide, with no additions. CI installs typos in both spelling-dependent jobs.
+
+## PR 70 after PR 69 merged
+
+PR #69 squash-merged into `main` as `f2c7e5b4d`. This layer was replayed onto
+it with `git rebase --onto f2c7e5b4d e4b5b2b73`. The only conflict was this
+handoff file, which now keeps every earlier record. The earlier record above
+names the unmerged parent for the spelling-history stack; the replay moved the
+layer's own six commits onto `f2c7e5b4d` without changing their content. The
+gate evidence recorded above describes earlier replays onto unmerged parents
+and is not evidence for this head.
+
+## Module structure layer
+
+This layer moves self-named Rust modules into `mod.rs` form and extracts
+API-key and Anthropic validation sections without changing their behaviour.
+Forty-five moves preserve their complete source bytes. The API-key production
+section and all extracted test bodies retain their contents; Anthropic tool
+validation gains only the visibility needed by its new private child module.
+
+Ten relative module paths are adjusted for their new directories. Current
+source-path guidance receives 35 literal substitutions across 23 documents;
+dated historical records retain their original references. A full CodeGraph
+refresh removed stale deleted-file entries, and Leta resolves the new API-key
+module location. Existing logging and advisory rules follow their moved source
+files with unchanged scope and rationale; model-script instructions use the new
+path. One extracted test line is joined as required by the existing formatter.
+The first full test run found 15 transcript-link failures caused by a fixture
+path that still named the moved `session.rs`; the helper now follows
+`session/mod.rs`. The corrected layer passes formatting, spelling, Actions
+contracts, lint, build, type-checking, all 10,094 workspace tests (17 skipped)
+and all 67 harness tests. Advisory checks pass; AST-grep is unavailable and the
+existing optional target skips it. Four inherited rustdoc warnings remain for
+the later source-fix layer.
+
+All 24 changed documents pass Nixie. Exact-parent Markdown comparison
+identified one new long line from a longer module path, now wrapped; the other
+1,134 diagnostics are inherited. Final document validation follows that
+correction.
+
+## PR 71 after PR 70 merged
+
+PR #70 squash-merged into `main` as `726bbcdc5`. This layer was replayed onto
+it with `git rebase --onto 726bbcdc5 a5c4871ef`. The conflicts were this
+handoff file and the zen allowlist. The handoff keeps every earlier record; the
+allowlist takes the moved `rendering/mod.rs` path and `main`'s current
+`init.rs:526` line. The earlier record above names the unmerged parent for the
+spelling-gate stack; the replay moved the layer's own three commits onto
+`726bbcdc5` without changing their content.
+
+## Test-module extraction follow-up
+
+This layer (`harden-lint-test-modules`) follows module structure PR #71 at
+`630f2c7589d5860a1c8eca3772968903ba571566`. It extracts two source groups,
+totalling 147 tests plus helpers: 105 OpenAI provider tests across 13 child
+modules and 42 session tool catalogue tests across seven child modules. Each
+extracted test module remains below 400 lines.
+
+Test bodies are preserved. Private helper visibility and import wiring change
+only as required by the new boundaries. Leading attributes and documentation
+comments follow their corresponding items; the formatting preflight caught and
+prompted correction of stranded item prefixes. Two function-local backend
+imports also account for the added module depth.
+
+The corrected layer passes formatting, lint, build and type-checking. All
+10,094 workspace tests pass (17 skipped), preserving the original discovery
+count; all 67 harness tests pass. The eight spelling and 13 Actions contracts
+pass. Advisory checks pass; the existing AST-grep target skips because the
+binary is unavailable. Four inherited rustdoc warnings remain for later source
+fixes. The handoff passes Nixie; final Markdown and spelling checks validate
+these notes. The tool-output test extraction remains a subsequent layer.
+
+## PR 72 after PR 71 merged
+
+PR #71 squash-merged into `main` as `f3f7c2f71`. This layer was replayed onto
+it with `git rebase --onto f3f7c2f71 b1b99cd0c`. The only conflict was this
+handoff file, which now keeps every earlier record. The earlier record above
+names the unmerged parent `630f2c758`; the replay moved the layer's own commit
+onto `f3f7c2f71` without changing its content. The gate evidence recorded above
+describes an earlier replay onto an unmerged parent and is not evidence for
+this head.
+
+## Changelog Markdown prerequisite
+
+This layer follows test-module PR #72. It gives changelog sections unique
+version-qualified headings while preserving non-heading history. The generated
+release sections follow the same heading contract. Hermetic fixtures exercise
+both release-script generators and the installed git-cliff without network
+access or ambient Git configuration.
+
+The fixture exposed a release-script defect: plain read loops skipped the final
+Git log record when it lacked a trailing newline. Both loops now retain a
+nonempty final record, preserving the oldest commit and contributor. Strict
+category, hash and ordering assertions remain in place.
+
+Offline checks passed the fixture and found no added Markdown diagnostics:
+8,425 remain against 11,233 in the exact source parent, with all 2,808
+differences being removals. Changelog duplicate-heading and multiple-title
+findings are zero. ShellCheck retains 21 exact-parent diagnostics. Current
+blobs match the audited candidate, and both parent document blobs match its
+exact parent, so the diagnostic identity mapping still applies.
+
+Current-layer formatting, lint, build, type-checking, all 10,094 workspace
+tests (17 skipped), all 67 harness tests, eight spelling contracts and 13
+Actions contracts pass. The generator fixture also passes on this branch.
+Advisory checks and Nixie pass; optional AST-grep is unavailable. Four
+inherited rustdoc warnings remain for later source fixes. Final handoff and
+spelling checks validate these notes; mechanical Markdown formatting follows in
+later layers.
+
+## PR 73 after PR 72 merged
+
+PR #72 squash-merged into `main` as `644464ed1`. This layer was replayed onto
+it with `git rebase --onto 644464ed1 88918340f`. The only conflict was this
+handoff file, which now keeps every earlier record. The earlier restack record
+above describes the layer's own preservation restack; the replay moved its
+commit onto `644464ed1` without changing its content. The gate evidence
+recorded above describes earlier replays onto unmerged parents and is not
+evidence for this head.
+
+## Agent test-module extraction
+
+This layer (`harden-lint-agent-test-modules`) follows parent PR #73 at
+`bfe2c66d`. It extracts four groups: 47 tool-output-handler tests, 60
+tool-outcome helper tests, 69 system-prompt tests and 27 execution-history
+tests, including two property-test blocks. Named, test-gated module roots
+connect the child files. Shared helpers remain private to the test subtree.
+
+Independent audits verify complete items, attached attributes and comments,
+required import scope and authored diagnostic fixtures. In particular, the
+synthetic `runner/tests.rs` strings remain unchanged. Child modules contain at
+most 315 lines after formatting. Compilation exposed two move-sensitive
+references: the system-prompt fixture include needs a parent-directory prefix,
+and the extent-coverage child needs a distinct name to avoid shadowing the
+production read-extent module. Both are corrected without changing fixture
+bytes or assertions.
+
+Formatting, lint, build, type-checking, all 10,094 workspace tests (17 skipped)
+and all 67 harness tests pass. Eight spelling contracts and 13 Actions
+contracts retain their passing results; their implementation is unchanged.
+Advisory checks, handoff Markdownlint and Nixie pass. Optional AST-grep is
+unavailable, and four inherited rustdoc warnings remain for later source fixes.
+
+## PR 74 after PR 73 merged
+
+PR #73 squash-merged into `main` as `238b97a99`. This layer was replayed onto
+it with `git rebase --onto 238b97a99 cb23da405`. The only conflict was this
+handoff file, which now keeps every earlier record. The earlier record above
+names the unmerged parent `bfe2c66d`; the replay moved the layer's own commit
+onto `238b97a99` without changing its content. The gate evidence recorded above
+describes an earlier replay onto an unmerged parent and is not evidence for
 this head.

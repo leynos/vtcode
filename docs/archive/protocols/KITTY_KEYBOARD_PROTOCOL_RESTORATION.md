@@ -104,7 +104,7 @@ PushKeyboardEnhancementFlags / PopKeyboardEnhancementFlags
 
 ### Integration Point - Session Setup
 
-#### src/agent/runloop/unified/session_setup.rs
+#### src/agent/runloop/unified/session_setup/mod.rs
 
 - **Status**: ✓ Updated
 - **Changes**:
@@ -180,7 +180,7 @@ export DIAPASON_KEYBOARD_PROTOCOL_MODE=full
 ## Data Flow
 
 1. **Config Load**: `DiapasonConfig` loads from `config.toml` and environment
-2. **Session Setup**: `session_setup.rs` reads `vt_cfg.ui.keyboard_protocol`
+2. **Session Setup**: `session_setup/mod.rs` reads `vt_cfg.ui.keyboard_protocol`
 3. **Session Spawn**: Passes config to `spawn_session_with_prompts()`
 4. **TUI Setup**: `run_tui()` or `run_modern_tui()` receives config
 5. **Flag Conversion**: `keyboard_protocol_to_flags()` converts to crossterm

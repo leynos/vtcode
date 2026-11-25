@@ -1822,8 +1822,8 @@ nine failed pre-merge rows. This round dispositions all of them.
   exclusion and contrasts it with the unfiltered restore.
 - **Spelling and read-boundary wording (outside diff).** The British spelling
   in that test's name became the Oxford `-ize` form, and the read-boundary
-  description now says "each successful
-  `_lody/subagents/output` read of the owned background task".
+  description now says "each successful `_lody/subagents/output` read of the
+  owned background task".
 - **User-facing documentation.** The 0.157.0 notes now list all four structs
   that gained a field, including `SubagentControllerConfig.output_reader` and
   `MetricsSummary.acp_extension`, and no longer claim that only two structs
@@ -2781,12 +2781,13 @@ follow-ups CodeRabbit posted to the replies on the same threads.
 ### Revision note (2026-11-25, r31 round: rebase onto the spelling baseline)
 
 - **The base moved under the branch.** Main advanced eleven commits, including a
-  repository-wide Oxford spelling gate (`typos.toml`, `scripts/check-spelling.sh`,
-  a `Spelling` workflow, and `spelling` and `github-actions-lint` added to
-  `make lint`). The merge therefore makes the spelling policy part of this
-  branch's own `make lint`, so every line this branch adds must use the Oxford
-  `-ize` forms. The words that need correcting are confined to lines this
-  branch added; the rest of the tree already complies.
+  repository-wide Oxford spelling gate (`typos.toml`,
+  `scripts/check-spelling.sh`, a `Spelling` workflow, and `spelling` and
+  `github-actions-lint` added to `make lint`). The merge therefore makes the
+  spelling policy part of this branch's own `make lint`, so every line this
+  branch adds must use the Oxford `-ize` forms. The words that need correcting
+  are confined to lines this branch added; the rest of the tree already
+  complies.
 - **Two merge conflicts, both mechanical.** `subagents/types.rs` is deleted on
   this branch (split into `types/{status,snapshot,ledger_view,foreground}.rs`)
   and modified on main, so the resolution keeps the split and ports main's

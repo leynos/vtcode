@@ -436,7 +436,7 @@ tool_registry.register_cgp_tool(
 
 ## File Locations
 
-- `crates/codegen/diapason-core/src/components.rs` — CGP substrate, provider
+- `crates/codegen/diapason-core/src/components/mod.rs` — CGP substrate, provider
   traits, facades, runtime contexts
 - `crates/codegen/diapason-core/src/tools/registry/cgp_facade.rs` — Registry
   integration (enable/register)

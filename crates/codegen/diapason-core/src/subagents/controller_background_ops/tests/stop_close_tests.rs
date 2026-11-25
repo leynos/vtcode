@@ -245,8 +245,10 @@ async fn an_interrupted_first_close_is_still_owed() {
 ///
 /// A record that settled `Error` keeps its error text and summary: they report
 /// the run's failure, and a stop's cleanup fault is additional information, not
-/// a replacement. The fault is still visible, and a later reconcile whose close
-/// succeeds leaves the original outcome intact.
+/// a replacement. The fault itself is the durable evidence that the close is
+/// unconfirmed, so a later reconcile whose close succeeds discharges it and
+/// leaves the run's own outcome — and nothing else — behind. Keeping the fault
+/// text would leave the row looking unclosed and block the next start.
 #[tokio::test]
 async fn a_close_fault_preserves_a_terminal_error() {
     let temp = TempDir::new().expect("tempdir");
@@ -296,10 +298,8 @@ async fn a_close_fault_preserves_a_terminal_error() {
     assert_eq!(entry.status, BackgroundSubprocessStatus::Error);
     assert_eq!(
         entry.error.as_deref(),
-        Some(
-            "Background subprocess exited unexpectedly; Failed to close the background subprocess's exec session: terminal close fault"
-        ),
-        "a successful close leaves the terminal outcome, and the recorded fault, intact"
+        Some("Background subprocess exited unexpectedly"),
+        "a successful close keeps the run's terminal outcome and drops the close fault it discharged"
     );
     assert!(!background_stop_close_is_pending(&controller.state, "background-worker", exec_session_id));
 

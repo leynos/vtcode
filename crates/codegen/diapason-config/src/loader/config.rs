@@ -1,4 +1,4 @@
-//! Top-level configuration structs deserialised from `config.toml`.
+//! Top-level configuration structs deserialized from `config.toml`.
 //!
 //! Defines the top-level configuration model and its deserialization defaults. The
 //! `DiapasonConfig` root carries the provider, feature, and workspace sections, and the
@@ -1095,7 +1095,7 @@ allowed_tools = [
     "grep_file",
 ]
 
-# Require profile acknowledgment before using full auto
+# Require profile acknowledgement before using full auto
 require_profile_ack = true
 
 # Path to full auto profile configuration

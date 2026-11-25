@@ -1,6 +1,6 @@
 //! MCP lifecycle updates during a turn.
 //!
-//! Attaches the MCP client once initialisation completes and defers tool-list
+//! Attaches the MCP client once initialization completes and defers tool-list
 //! refreshes to turn boundaries so the active turn's tool set stays stable.
 
 use anyhow::Result;
@@ -35,7 +35,7 @@ fn decide_refresh_action(pending_refresh: bool, tool_list_changed: bool) -> Refr
     }
 }
 
-/// Attach the MCP client once initialisation completes and refresh MCP tools at
+/// Attach the MCP client once initialization completes and refresh MCP tools at
 /// the configured interval. Tool-list changes are deferred to the next turn
 /// boundary to keep the active turn's tool set stable.
 #[expect(

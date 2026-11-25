@@ -1,3 +1,9 @@
+//! Unit tests for turn-context history shaping and continuation helpers.
+//!
+//! Covers diff-recap suppression, reasoning-detail merging, interim
+//! continuation decisions, and clarifying-question detection used while the
+//! unified run loop prepares and follows up assistant turns.
+
 use super::*;
 
 #[test]
@@ -16,7 +22,7 @@ fn suppresses_redundant_diff_recap_after_git_diff_view_request() {
 #[test]
 fn does_not_suppress_diff_recap_when_user_asked_for_analysis() {
     let history = vec![
-        uni::Message::user("analyze this diff and explain".to_string()),
+        uni::Message::user("show diff and analyse this diff and explain".to_string()),
         uni::Message::tool_response(
             "call_1".to_string(),
             r#"{"content_type":"git_diff","command":"git diff -- src/main.rs"}"#.to_string(),
@@ -115,7 +121,7 @@ fn clarifying_question_detected_with_trailing_whitespace() {
 #[test]
 fn clarifying_question_detected_with_preamble_and_blank_lines() {
     assert!(looks_like_clarifying_question(
-        "I analyzed the module.\n\nNext open decision: Do you want a unified branch or a reviewable exec-plan document?\n"
+        "I analysed the module.\n\nNext open decision: Do you want a unified branch or a reviewable exec-plan document?\n"
     ));
 }
 

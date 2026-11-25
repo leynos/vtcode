@@ -285,7 +285,8 @@ impl SubagentController {
                     BackgroundSubprocessStatus::Stopped
                 }
             } else if capture.desired_enabled
-                && restart_allowed(self.config.vt_cfg.subagents.background.auto_restore, capture.restart_attempts)
+                && ((capture.entry.status == BackgroundSubprocessStatus::Starting && launch_owed)
+                    || restart_allowed(self.config.vt_cfg.subagents.background.auto_restore, capture.restart_attempts))
             {
                 BackgroundSubprocessStatus::Starting
             } else if capture.desired_enabled {

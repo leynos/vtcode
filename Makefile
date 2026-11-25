@@ -1,4 +1,10 @@
 CARGO ?= cargo
+PYTHON ?= python3
+YAMLLINT ?= yamllint
+ACTIONLINT ?= actionlint
+GIT ?= git
+TYPOS ?= typos
+UV ?= uv
 BUILD_JOBS ?= --jobs 6
 NEXTEST_PROFILE ?= default
 
@@ -15,7 +21,8 @@ MDLINT ?= $(shell command -v markdownlint-cli2 2>/dev/null || printf '%s' "$$HOM
 
 .NOTPARALLEL:
 
-.PHONY: check check-fmt fmt lint lint-clippy lint-docs lint-policies lint-shell \
+.PHONY: check check-fmt fmt spelling test-spelling test-github-actions-validation \
+	lint lint-clippy lint-docs lint-policies lint-shell github-actions-lint \
 	advisory build typecheck test test-harness check-ast-grep
 
 # Run the complete local release/PR gate in the same sequential order as the
@@ -32,7 +39,21 @@ fmt:
 	$(MDTABLEFIX) --in-place $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
 	$(MDLINT) --fix "**/*.md"
 
-lint: lint-shell lint-policies lint-clippy lint-docs
+spelling:
+	GIT="$(GIT)" TYPOS="$(TYPOS)" ./scripts/check-spelling.sh
+
+test-spelling:
+	PYTHONPATH=scripts $(PYTHON) -m unittest discover -s scripts/tests -p 'test_spelling*.py'
+
+test-github-actions-validation:
+	PYTHONPATH=scripts $(UV) run --no-project --with 'PyYAML==6.0.3' $(PYTHON) -m unittest \
+		discover -s scripts/tests -p 'test_github_actions_validation*.py'
+
+lint: lint-shell lint-policies spelling github-actions-lint lint-clippy lint-docs
+
+github-actions-lint:
+	$(YAMLLINT) --config-file .yamllint.yml .github/workflows
+	$(ACTIONLINT)
 
 lint-shell:
 	for script in scripts/*.sh scripts/**/*.sh; do \
@@ -47,6 +68,7 @@ lint-shell:
 
 lint-policies:
 	./scripts/check_workflow_security.sh
+	./scripts/check-workflow-scripts.sh
 	python3 scripts/check_compiler_cache_wiring.py
 	./scripts/lint_structured_logging.sh
 

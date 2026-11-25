@@ -174,7 +174,7 @@ diagnostics off ACP stdout. Recheck the winning binary after the packaging
 change.
 
 Record the exact build feature and settings needed to restore the target
-package's deployed allocator, and retain a known baseline artifact for
+package's deployed allocator, and retain a known baseline artefact for
 deployment rollback. Do not implement automatic in-process allocator swapping
 or periodic forced purges. If the switch cannot fit the time box, retain the
 result as a recommendation and scope any larger implementation separately; do

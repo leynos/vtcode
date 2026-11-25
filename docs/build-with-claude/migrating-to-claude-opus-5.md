@@ -75,8 +75,8 @@ task_budget_tokens = 128000                # Opus 4.7+ only
 
 ### Developer: `ModelId` enum
 
-If you are developing against `diapason-config`, update the `ModelId` enum in
-`crates/codegen/diapason-config/src/models/model_id.rs` and its match arms
+Work on `diapason-config` requires updating the `ModelId` enum in
+`crates/codegen/diapason-config/src/models/model_id/mod.rs` and its match arms
 (`as_str.rs`, `display.rs`, `description.rs`, `parse.rs`, `provider.rs`,
 `capabilities.rs`, `collection.rs`). Use the
 [adding-llm-providers](/docs/development/ADDING_MODELS.md) workflow.
@@ -852,7 +852,7 @@ ______________________________________________________________________
 
 | Type                   | Location                                           | Role                                                               |
 | ---------------------- | -------------------------------------------------- | ------------------------------------------------------------------ |
-| `ModelId`              | `diapason-config/src/models/model_id.rs`           | Canonical model enum; add new models here                          |
+| `ModelId`              | `diapason-config/src/models/model_id/mod.rs`       | Canonical model enum; add new models here                          |
 | `AnthropicConfig`      | `diapason-config/src/core/provider.rs`             | All Anthropic-specific settings                                    |
 | `ReasoningEffortLevel` | `diapason-commons/src/reasoning.rs`                | Effort enum (`None`/`Minimal`/`Low`/`Medium`/`High`/`XHigh`/`Max`) |
 | `LLMRequest`           | `diapason-llm/src/provider/request.rs`             | Universal request struct                                           |

@@ -183,7 +183,7 @@ pub async fn run_acp_agent(
     run_acp_agent_runtime(startup).await
 }
 
-/// Prepares ACP agent startup by registering custom providers, initialising the
+/// Prepares ACP agent startup by registering custom providers, initializing the
 /// audit logger, applying session-history settings and workspace trust, and
 /// discovering the system prompt and primary agents.
 pub(super) async fn prepare_acp_agent_startup(

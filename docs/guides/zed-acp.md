@@ -516,10 +516,10 @@ and `[history]` settings do not control ACP audit output.
   inter-process lock, and is idempotent, so a second resume changes nothing. A
   missing ledger migrates nothing.
 
-  If the migration fails, the resume continues but the row stays ownerless.
-  The session controller retries the migration when it is built: a successful
-  retry makes the row this session's, while a failed retry leaves it ownerless
-  and restores nothing. A resumed attach also defers the workspace controller's
+  If the migration fails, the resume continues but the row stays ownerless. The
+  session controller retries the migration when it is built: a successful retry
+  makes the row this session's, while a failed retry leaves it ownerless and
+  restores nothing. A resumed attach also defers the workspace controller's
   restore of ownerless rows, whatever the migration outcome, until its required
   history checkpoint succeeds: a restored child can outlive an attach that then
   fails, because the fail-closed path releases the workspace lease but shutdown
@@ -539,8 +539,8 @@ and `[history]` settings do not control ACP audit output.
   durable ledger already records the owner, and the ledger merge refuses to
   write an ownerless copy over a copy of the same launch that records an owner,
   so a stale copy cannot become durable. If the adoption itself fails, the
-  resume keeps the workspace-scope restore deferred, so the workspace controller
-  cannot relaunch a row the ledger attributes to the session.
+  resume keeps the workspace-scope restore deferred, so the workspace
+  controller cannot relaunch a row the ledger attributes to the session.
 - **Provider request capacity** – For a custom provider with
   `max_in_flight_requests` configured, each ACP session's subagent controller
   caps its own child concurrency at one fewer than the provider limit, computed

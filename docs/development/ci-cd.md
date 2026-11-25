@@ -88,7 +88,7 @@ installing the toolchain, `Swatinem/rust-cache` and
 - **Build Linux**: Compiles `x86_64-unknown-linux-gnu`,
   `x86_64-unknown-linux-musl`, and `aarch64-unknown-linux-gnu` binaries
 - **Build Windows**: Compiles `x86_64-pc-windows-msvc` binary
-- **Upload Artifacts**: Stores compiled binaries + extension-stripped `.sha256`
+- **Upload Artefacts**: Stores compiled binaries + extension-stripped `.sha256`
   sidecars for release
 
 **Required release target matrix** (enforced by `scripts/release.sh`):
@@ -154,7 +154,46 @@ Cargo.toml so the size-optimized profiles are actually applied.
 - **Create Release**: Drafts GitHub Release with changelog
 - **Publish**: Publishes to crates.io and Homebrew
 
+### 6. Spelling (`spelling.yml`)
+
+**Triggers:**
+
+- Push and pull request to `main`, with no path filters
+- Manual `workflow_dispatch`
+
+**Jobs:**
+
+- **Check Typos**: Installs the pinned `typos-cli` and runs `make spelling`
+
+The workflow deliberately has no path filters. `make spelling` checks every
+tracked file, so a filtered trigger would skip file types such as HTML, CSS or
+Dockerfiles and let misspellings into the asserted baseline.
+
 ## Code Quality Tools
+
+### GitHub Actions workflow validation
+
+`make lint` preserves the existing shell and workflow-security policy checks,
+then runs `make github-actions-lint`. The focused target runs yamllint with the
+repository `.yamllint.yml` policy before actionlint, so malformed YAML fails
+before GitHub Actions-specific validation runs.
+
+CI pins yamllint 1.38.0 through `uv tool install`. It caches only the uv
+download cache and recreates the tool environment on every run, so a runner
+Python update cannot leave a stale interpreter path behind. CI downloads
+actionlint 1.7.12 from its pinned release URL, verifies archive SHA-256
+`8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8`, then passes
+that verified archive to the reviewed installer revision
+`914e7df21a07ef503a81201c76d2b11c789d3fca`. The CI lint invocation uses
+`/usr/bin/make` with `BUILD_JOBS` and `ACTIONLINT` set as environment variables
+rather than command-line assignments: a command-line assignment is exported
+through `MAKEFLAGS` into every nested make run, including the build scripts
+Cargo launches. This preserves CI's four-job limit and prevents a
+checkout-controlled `make` from replacing the system binary.
+
+Run `make test-github-actions-validation` to exercise the parsed workflow and
+controlled-linter contracts. It uses uv to provide PyYAML only for the test
+process; application code gains no Python runtime dependency.
 
 ### rustfmt
 

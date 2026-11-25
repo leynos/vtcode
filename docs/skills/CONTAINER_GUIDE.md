@@ -16,7 +16,7 @@ let container = SkillContainer::single(
 );
 
 // Execute
-executor.execute_container(container, "analyze this data").await?;
+executor.execute_container(container, "analyse this data").await?;
 ```
 
 ### Multiple Skills
@@ -59,9 +59,9 @@ container.add_anthropic("xlsx")?;
 container.add_anthropic("pptx")?;
 container.set_id("session-123");  // Set ID for reuse
 
-// Turn 1: Analyze data
+// Turn 1: Analyse data
 let result1 = executor.execute_container(&container, 
-    "analyze sales data from Q1"
+    "analyse sales data from Q1"
 ).await?;
 
 // Turn 2: Create presentation
@@ -170,7 +170,7 @@ diapason skills info my-skill
 
 # Create container with multiple skills
 diapason exec-container --skill xlsx --skill pptx --skill my-skill \
-  "analyze data and create presentation"
+  "analyse data and create presentation"
 
 # Use specific version
 diapason exec-container --skill my-skill:1759178010641129 \
@@ -258,7 +258,7 @@ let mut container = SkillContainer::new();
 container.add_anthropic("xlsx")?;   // Read Excel
 container.add_anthropic("pptx")?;   // Create PowerPoint
 
-let input = "analyze sales_data.xlsx and create a presentation";
+let input = "analyse sales_data.xlsx and create a presentation";
 executor.execute_container(container, input).await?;
 ```
 
@@ -267,10 +267,10 @@ executor.execute_container(container, input).await?;
 ```rust
 let mut container = SkillContainer::new();
 container.add_custom("data-cleaner")?;
-container.add_custom("statistical-analyzer")?;
+container.add_custom("statistical-analyser")?;
 container.add_custom("report-generator")?;
 
-let input = "clean and analyze customer_data.csv";
+let input = "clean and analyse customer_data.csv";
 executor.execute_container(container, input).await?;
 ```
 

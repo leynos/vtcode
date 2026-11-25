@@ -72,8 +72,9 @@ fn check_patch_boundaries(lines: &[&str]) -> Result<(), PatchError> {
         (Some(begin), Some(end)) if begin == BEGIN_PATCH_MARKER && end == END_PATCH_MARKER => Ok(()),
         (Some(_begin), _) if first != Some(BEGIN_PATCH_MARKER) => {
             // The first line is not the `*** Begin Patch` envelope header.
-            // Detect the two most common mis-formats and emit an actionable,
-            // one-shot recovery hint so the model does not waste a round-trip
+            // Detect the two most common malformed layouts and emit an
+            // actionable, one-shot recovery hint so the model does not waste a
+            // round-trip
             // guessing (see checkpoint turn_615, where a unified diff in the
             // `patch` field produced a bare "missing marker" error).
             let joined = lines.join("\n");

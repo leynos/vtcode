@@ -239,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn test_format_cell_center_align() {
+    fn test_format_cell_centre_align() {
         let formatter = TableFormatter::new(vec![], false);
         let result = formatter.format_cell("Hi", Alignment::Centre, 5);
         assert_eq!(result, " Hi  ");

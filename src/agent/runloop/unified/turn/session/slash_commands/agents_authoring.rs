@@ -27,13 +27,21 @@ use crate::agent::runloop::unified::session_setup::refresh_local_agents;
 use crate::agent::runloop::unified::wizard_modal::{WizardModalOutcome, show_wizard_modal_and_wait};
 
 const AUTHOR_ACTION_PREFIX: &str = "agents:author:";
+
 const FIELD_PROMPT_ID: &str = "agent-field";
+
 const KEEP_CURRENT_ACTION: &str = "agents:author:keep";
+
 const CLEAR_VALUE_ACTION: &str = "agents:author:clear";
+
 const TOOL_TOGGLE_PREFIX: &str = "agents:author:tool:toggle:";
+
 const TOOL_SAVE_ACTION: &str = "agents:author:tool:save";
+
 const TOOL_ADD_CUSTOM_ACTION: &str = "agents:author:tool:add-custom";
+
 const TOOL_CANCEL_ACTION: &str = "agents:author:tool:cancel";
+
 const EDITABLE_FRONTMATTER_KEYS: &[&str] = &[
     "name",
     "description",
@@ -1360,7 +1368,7 @@ Review the target changes."#,
         draft.description = "Review native colour handling".to_string();
         let rendered = draft.render_markdown().expect("the edited agent should render");
 
-        assert!(rendered.contains("color: orchid"), "the rendered agent should use the canonical color key");
+        assert!(rendered.contains("color: orchid"), "the rendered agent should use the fixed schema key");
         assert!(
             !rendered.contains("colour: orchid"),
             "the rendered agent should not retain the British alias alongside the canonical key"

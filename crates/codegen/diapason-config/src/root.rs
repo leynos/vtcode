@@ -835,7 +835,7 @@ mod tests {
             toml::from_str::<UiConfig>("color_scheme_mode = \"dark\"\ncolour_scheme_mode = \"light\"");
         assert!(
             duplicate_scheme.is_err(),
-            "both color-scheme spellings for one UI field should be rejected as duplicate aliases"
+            "both colour-scheme spellings for one UI field should be rejected as duplicate aliases"
         );
     }
 

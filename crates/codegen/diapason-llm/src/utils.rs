@@ -349,11 +349,11 @@ mod tests {
 
     #[test]
     fn test_extract_reasoning_content_think_tags() {
-        let content = "Let me think <think>I need to analyze this problem</think>The answer is 42";
+        let content = "Let me think <think>I need to analyse this problem</think>The answer is 42";
         let (reasoning, main) = extract_reasoning_content(content);
 
         assert_eq!(reasoning.len(), 1);
-        assert_eq!(reasoning[0], "I need to analyze this problem");
+        assert_eq!(reasoning[0], "I need to analyse this problem");
         assert_eq!(main.unwrap(), "Let me think The answer is 42");
     }
 
@@ -380,7 +380,7 @@ mod tests {
     #[test]
     fn test_extract_reasoning_content_multiple_tags() {
         // Multiple reasoning sections with different tag types
-        let content = "<think>Step 1: Plan</think> text <analysis>Step 2: Analyze</think> end";
+        let content = "<think>Step 1: Plan</think> text <analysis>Step 2: Analyse</think> end";
         let (reasoning, main) = extract_reasoning_content(content);
 
         // Note: Current implementation may merge adjacent reasoning segments

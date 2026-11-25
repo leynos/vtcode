@@ -53,7 +53,7 @@ OK: 42 files processed
 Best for: Code generation, document creation.
 
 ```markdown
-## Generated: [Artifact Name]
+## Generated: [Artefact Name]
 
 ### Preview
 

@@ -65,7 +65,7 @@ pub(crate) struct PlanningWorkflowSessionState {
 
 /// Maximum number of pseudo-tool-call-markup re-prompts per planning session.
 /// One re-prompt usually teaches the model to use the real tool-call channel;
-/// two covers a repeat offense. Beyond that the turn ends with the cleaned
+/// two covers a repeat offence. Beyond that the turn ends with the cleaned
 /// text so the user can steer.
 pub(crate) const MAX_PLAN_PSEUDO_TOOL_CALL_REPROMPTS: u32 = 2;
 

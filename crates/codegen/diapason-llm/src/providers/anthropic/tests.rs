@@ -1152,7 +1152,7 @@ mod request_builder_tests {
     fn test_convert_to_anthropic_format_includes_native_code_execution_tool() {
         let request = LLMRequest {
             model: models::CLAUDE_SONNET_5.to_string(),
-            messages: vec![Message::user("analyze this csv".to_string())].into(),
+            messages: vec![Message::user("analyse this csv".to_string())].into(),
             tools: Some(Arc::new(vec![ToolDefinition {
                 tool_type: "code_execution_20250825".to_string(),
                 function: None,

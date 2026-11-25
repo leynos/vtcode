@@ -25,6 +25,12 @@ validation. Partial extraction from diapason-core.
   plus keeps local sub-modules.
 - `templates/` contains template files; `src/skills/assets/samples/` has
   embedded samples.
+- `command_skills.rs` keeps `cmd-analyse` as the canonical command-skill ID and
+  `cmd-analyze` as its legacy pair, exposed as
+  `LEGACY_ANALYSE_COMMAND_SKILL_ID` and resolved by `command_skill_id_alias`.
+  Alias precedence follows `SkillScope`, not sorted order: `Repo` outranks
+  `User`, which outranks `Admin`, which outranks bundled `System`. Within one
+  scope the first discovered root wins.
 
 ## Dependencies
 

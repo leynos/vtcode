@@ -172,7 +172,7 @@ fn info_warning_error_blocks_render_distinct_fieldset_fills() {
 
         let rendered = rendered_transcript_widget_lines(&mut session, VIEW_WIDTH, VIEW_ROWS);
 
-        // Top rule carries a center-aligned label flanked by the kind's fill.
+        // Top rule carries a centre-aligned label flanked by the kind's fill.
         // The fill glyph follows terminal Unicode capabilities.
         assert!(
             rendered

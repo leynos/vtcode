@@ -1,3 +1,4 @@
+---
 name: Coverage
 permissions: {}
 
@@ -41,7 +42,7 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -53,10 +54,10 @@ jobs:
         with:
           components: llvm-tools-preview
 
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16  # v2
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cf7daf8c8c61b7fb3ec452e903208764aeca2f56 # cargo-llvm-cov
+        uses: taiki-e/install-action@cf7daf8c8c61b7fb3ec452e903208764aeca2f56  # cargo-llvm-cov
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190 # v2
@@ -79,7 +80,7 @@ jobs:
         run: cargo llvm-cov nextest --locked --workspace --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f  # v6
         with:
           files: lcov.info
           fail_ci_if_error: true

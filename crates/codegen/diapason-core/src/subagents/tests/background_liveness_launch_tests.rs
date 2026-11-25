@@ -55,9 +55,16 @@ async fn failed_background_spawn_settles_the_record_as_an_error() {
     );
     let message = entry.error.expect("a settled failure must be explained");
     assert!(message.contains("background-demo"), "the failure must name the agent, got: {message}");
+    // The record's error reaches a client as the task's `stopReason`, so it is a
+    // bounded category: the spawn cause is named, and no path or exec session
+    // from this process travels with it. The full chain is logged instead.
     assert!(
-        message.contains("failed to spawn pipe session") || message.contains("No such file"),
-        "the failure must include the spawn error, got: {message}"
+        message.contains("the subprocess could not be spawned"),
+        "the failure must report the spawn category, got: {message}"
+    );
+    assert!(
+        !message.contains('/') && !message.contains("No such file"),
+        "the failure must name no local path, got: {message}"
     );
     assert!(entry.ended_at.is_some(), "a settled failure carries a terminal instant");
     assert!(entry.desired_enabled, "settling a failed launch must not clear the desired state");

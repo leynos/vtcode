@@ -37,7 +37,7 @@ proptest! {
                                 admission
                                     .acquire()
                                     .await
-                                    .expect("available modeled capacity should admit")
+                                    .expect("available modelled capacity should admit")
                                     .expect("configured capacity should return a permit"),
                             );
                         } else {

@@ -570,11 +570,13 @@ pub struct ThreadCompactBoundaryEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_prefix_hash: Option<String>,
     /// Hash of the ordered tool catalogue before compaction.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub previous_catalog_hash: Option<String>,
+    /// Wire key `previous_catalog_hash` is fixed by the event schema.
+    #[serde(rename = "previous_catalog_hash", skip_serializing_if = "Option::is_none")]
+    pub previous_catalogue_hash: Option<String>,
     /// Hash of the ordered tool catalogue after compaction.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub new_catalog_hash: Option<String>,
+    /// Wire key `new_catalog_hash` is fixed by the event schema.
+    #[serde(rename = "new_catalog_hash", skip_serializing_if = "Option::is_none")]
+    pub new_catalogue_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -1674,10 +1676,15 @@ mod tests {
             new_segment_id: Some("segment-0002".to_string()),
             previous_prefix_hash: Some("prefix-before".to_string()),
             new_prefix_hash: Some("prefix-after".to_string()),
-            previous_catalog_hash: Some("catalog-before".to_string()),
-            new_catalog_hash: Some("catalog-after".to_string()),
+            previous_catalogue_hash: Some("catalogue-before".to_string()),
+            new_catalogue_hash: Some("catalogue-after".to_string()),
         });
 
+        let serialized = serde_json::to_value(&event).expect("compact boundary should serialize");
+        assert_eq!(serialized["previous_catalog_hash"], "catalogue-before");
+        assert_eq!(serialized["new_catalog_hash"], "catalogue-after");
+        assert!(serialized.get("previous_catalogue_hash").is_none());
+        assert!(serialized.get("new_catalogue_hash").is_none());
         assert_json_round_trip(&event);
     }
 
@@ -1704,7 +1711,7 @@ mod tests {
         assert_eq!(event.new_segment_id, None);
         assert_eq!(event.previous_prefix_hash, None);
         assert_eq!(event.new_prefix_hash, None);
-        assert_eq!(event.previous_catalog_hash, None);
-        assert_eq!(event.new_catalog_hash, None);
+        assert_eq!(event.previous_catalogue_hash, None);
+        assert_eq!(event.new_catalogue_hash, None);
     }
 }

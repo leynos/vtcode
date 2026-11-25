@@ -147,7 +147,7 @@ async fn build_spool_chunk_guard_error_content(path: &str, max_reads_per_turn: u
             "next_action".to_string(),
             Value::String(
                 "STOP requesting this spool. Use the `inline_content` below \
-                 and the existing conversation history to synthesise your final \
+                 and the existing conversation history to synthesize your final \
                  answer. If additional inspection is still required, use \
                  `exec_command` for targeted shell inspection, `write_stdin` \
                  for session continuation, or `apply_patch` for edits."

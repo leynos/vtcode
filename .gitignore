@@ -1,4 +1,4 @@
-# Rust Build Artifacts
+# Rust Build Artefacts
 target/
 Cargo.lock
 
@@ -61,7 +61,7 @@ benches/results/
 criterion/
 *.profraw
 
-# Testing Artifacts
+# Testing Artefacts
 coverage/
 *.profraw
 *.profdata
@@ -146,7 +146,7 @@ debug/
 .cargo/registry/
 .cargo/git/
 
-# Rust Analyzer
+# rust-analyzer
 rust-project.json
 
 # Flamegraphs (performance profiling)
@@ -767,6 +767,9 @@ benchmark_results/
 analysis_reports/
 debug_logs/
 performance_data/
+test_artefacts/
+build_artefacts/
+# Keep ignoring the pre-rename directories that existing tooling still creates.
 test_artifacts/
 build_artifacts/
 

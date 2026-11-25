@@ -136,10 +136,22 @@ impl SessionWorkspaceRuntime {
     /// acquire the runtime afterwards. The returned guard must be confirmed
     /// once the restore succeeds; dropping it first reinstates the debt.
     pub(in crate::zed::agent) fn claim_owed_background_restore(&self) -> Option<OwedBackgroundRestore<'_>> {
-        let mut pending = self.pending_restore_guard();
-        let (state, claimed) = pending.claimed();
-        *pending = state;
-        claimed.then_some(OwedBackgroundRestore { runtime: self, confirmed: false })
+        // The state lock is released before the guard exists. `then_some`
+        // would build its argument eagerly and drop it again when nothing was
+        // claimed, and that drop reinstates the debt — which takes this same
+        // non-reentrant lock. The claim therefore hands the value out only
+        // after the guard is gone.
+        let claimed = {
+            let mut pending = self.pending_restore_guard();
+            let (state, claimed) = pending.claimed();
+            *pending = state;
+            claimed
+        };
+        if claimed {
+            Some(OwedBackgroundRestore { runtime: self, confirmed: false })
+        } else {
+            None
+        }
     }
 
     /// Records the outcome of a claimed restore.

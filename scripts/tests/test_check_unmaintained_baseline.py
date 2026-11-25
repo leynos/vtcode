@@ -33,7 +33,7 @@ def finding(
 def baseline_entry(
     package: dict[str, object],
     classification: str = "repository-layout",
-    rationale: str = "The scanner reports this package because its repository layout is not recognised.",
+    rationale: str = "The scanner reports this package because its repository layout is not recognized.",
 ) -> dict[str, object]:
     return {
         **package,

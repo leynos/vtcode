@@ -46,7 +46,7 @@ pub struct ToolExecution {
     result: EnhancedToolResult,
     duration_ms: u64,
 
-    /// Did this tool help fulfill the intent?
+    /// Did this tool help fulfil the intent?
     contributed_to_intent: bool,
 }
 
@@ -482,7 +482,7 @@ mod wire_compatibility_tests {
 
         assert!(
             object.contains_key("intent_fulfillment"),
-            "renamed field should keep the historical intent_fulfillment wire key: {encoded}"
+            "renamed field should keep its historical wire key: {encoded}"
         );
         assert!(
             !object.contains_key("intent_fulfilment"),
@@ -495,11 +495,7 @@ mod wire_compatibility_tests {
         let encoded = serde_json::to_value(ToolIntent::Analyse("config".to_owned()))
             .expect("ToolIntent serialization should succeed");
 
-        assert_eq!(
-            encoded,
-            serde_json::json!({"Analyze": "config"}),
-            "Analyse should retain the historical Analyze wire key",
-        );
+        assert_eq!(encoded, serde_json::json!({"Analyze": "config"}), "Analyse should retain the historical wire key",);
     }
 
     #[test]
@@ -516,7 +512,7 @@ mod wire_compatibility_tests {
             panic!("native wire name should decode to ToolIntent::Analyse");
         };
 
-        assert_eq!(historical_target, "config", "historical Analyze payload should preserve its target");
+        assert_eq!(historical_target, "config", "historical wire payload should preserve its target");
         assert_eq!(native_target, "config", "native Analyse payload should preserve its target");
     }
 }

@@ -846,7 +846,7 @@ mod tests {
         let result = compute_diff(old, new, opts, identity_formatter);
 
         assert!(!result.is_empty);
-        // With 0 context, only the changed line and its neighbors should appear
+        // With 0 context, only the changed line and its neighbours should appear
         let hunk = &result.hunks[0];
         // Should be minimal: just the deletion and addition
         let context_count = hunk.lines.iter().filter(|l| l.kind == DiffLineKind::Context).count();

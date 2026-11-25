@@ -36,7 +36,8 @@ namespace.
       provider/model IDs
 - [ ] If the model is OpenRouter-only, mirror its metadata in
       `build_data/openrouter_models.json`
-- [ ] Add enum variant (`crates/codegen/diapason-config/src/models/model_id.rs`)
+- [ ] Add enum variant
+      (`crates/codegen/diapason-config/src/models/model_id/mod.rs`)
 - [ ] Update `as_str.rs` - string mapping
 - [ ] Update `display.rs` - human-readable name
 - [ ] Update `description.rs` - model description
@@ -106,9 +107,9 @@ pub const GPT_5_6_LUNA: &str = "gpt-5.6-luna";
 
 Verify JSON: `python3 -m json.tool docs/models.json > /dev/null`
 
-### Step 3: Add Enum Variant (model_id.rs)
+### Step 3: Add Enum Variant (model_id/mod.rs)
 
-**File:** `crates/codegen/diapason-config/src/models/model_id.rs`
+**File:** `crates/codegen/diapason-config/src/models/model_id/mod.rs`
 
 Add in the appropriate provider section (OpenAI, Anthropic, etc.):
 
@@ -261,7 +262,7 @@ Input: ["text"]
 --- Files to Update ---
 1. openai.rs - SUPPORTED_MODELS + constant
 2. models.json - full metadata
-3. model_id.rs - enum variant
+3. model_id/mod.rs - enum variant
 4. as_str.rs - ModelId::GPT56Luna => models::openai::GPT_5_6_LUNA
 5. display.rs - "GPT-5.4 Nano"
 6. description.rs - description string

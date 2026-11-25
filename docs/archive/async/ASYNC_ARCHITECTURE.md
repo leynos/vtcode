@@ -69,7 +69,7 @@ non-blocking execution and excellent responsiveness.
 
 ### 1. PTY Manager (Async)
 
-**File**: `crates/codegen/diapason-core/src/tools/pty.rs`
+**File**: `crates/codegen/diapason-core/src/tools/pty/mod.rs`
 
 ```rust
 impl PtyManager {
@@ -120,7 +120,7 @@ impl ToolRegistry {
 
 ### 3. Tool Execution Pipeline (Async)
 
-**File**: `src/agent/runloop/unified/tool_pipeline.rs`
+**File**: `src/agent/runloop/unified/tool_pipeline/mod.rs`
 
 ```rust
 pub async fn execute_tool_with_timeout(
@@ -178,7 +178,7 @@ tokio::fs::create_dir_all(path).await?;
 **Files Using Async I/O**:
 
 - `tree_sitter/refactoring.rs`
-- `tree_sitter/analyzer.rs`
+- `tools/tree_sitter_runtime.rs`
 - `srgn.rs`
 - `file_search.rs`
 - `curl_tool.rs`

@@ -20,10 +20,15 @@ consistent, and easy to maintain across projects.
   - suffix -ogue in words such as _analogue_ and _catalogue_,
   - and so forth.
 - The words **"outwith"** and **"caveat"** are acceptable.
-- Keep United States (US) spelling when used in an API, for example, `color`.
-  Wrap such API names in backticks: the spelling gate ignores backticked spans,
-  so quoting an identifier both documents its origin and exempts it from the
-  Oxford-spelling check.
+- Diapason-authored identifiers use the native spelling rather than the United
+  States (US) one: Rust items say `colour`, `catalogue`, `analyse` and
+  `cancelled`.
+- Fixed foreign API names, such as `anstyle::Color`, and fixed external keys,
+  such as Git's `color.*` configuration, keep their published spelling. Quote
+  them in backticks to document their origin, and add a narrowly scoped
+  `typos.toml` exemption: `typos` does not exempt backticked spans by itself,
+  and the explicit exemption keeps the Oxford-spelling check active for prose
+  and for every name that is not externally fixed.
 - The project uses the filename `LICENSE` for community consistency.
 - Markdown prose is checked against this spelling policy with
   [`typos`](https://github.com/crate-ci/typos).
@@ -817,7 +822,7 @@ structure; it does not map one-to-one to GIST's four layers:
   - Phases: 1, 2, 3, …
   - Steps: 1.1, 1.2, 1.3, …
   - Headline tasks: 1.1.1, 1.1.2, 1.1.3, …
-- **Checkboxes:** Precede task and sub-task items with a GitHub Flavored
+- **Checkboxes:** Precede task and sub-task items with a GitHub Flavoured
   Markdown (GFM) checkbox (`[ ]`) to track completion status.
 - **Dependencies:** Note non-linear dependencies explicitly. Where a task
   depends on another task outside its immediate sequence, cite the dependency

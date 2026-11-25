@@ -52,6 +52,10 @@ Compatibility applies only to spellings that leave the Rust API:
 - Configuration keys, wire protocol fields and telemetry metric names keep
   their canonical `catalog` spelling. Rename the Rust item, not the serialized
   name, and keep an explicit `#[serde(rename = "...")]` where a field moves.
+- `ThreadCompactBoundaryEvent` has the Rust fields `previous_catalogue_hash`
+  and `new_catalogue_hash`. The serde wire keys stay `previous_catalog_hash` and
+  `new_catalog_hash`, pinned by `#[serde(rename = "...")]`, so the event
+  schema is unchanged.
 - The pod store keeps reading and writing `catalog.json`. Only the accessor
   name changes, so existing deployment profiles continue to load.
 - Runtime prompt metadata uses the `[Runtime Tool Catalogue]` header.
@@ -61,6 +65,69 @@ Compatibility applies only to spellings that leave the Rust API:
 
 Do not add aliases for the old Rust names, and do not rewrite persisted data to
 match the new spelling.
+
+The skill-installer sample follows the same rule inside its helper script:
+`fetch_catalogue` and `EMBEDDED_CATALOGUE` replace the American spellings.
+Those names are internals of
+`crates/codegen/diapason-skills/src/skills/assets/samples/skill-installer/scripts/list-curated-skills.py`,
+not a published reuse API, so no external caller depends on them.
+
+## Zed extension API
+
+The Zed extension uses the native `analyse` spelling in its Rust API. The old
+names are removed rather than deprecated:
+
+- `CommandBuilder::analyze()` is now `CommandBuilder::analyse()`, which builds
+  the `analyse` command.
+- `analyze_workspace` and `analyze_workspace_with_context` are now
+  `analyse_workspace` and `analyse_workspace_with_context`.
+- `analyze_workspace_command` is now `analyse_workspace_command`.
+- `WorkspaceConfig::analyze_on_startup` is now
+  `WorkspaceConfig::analyse_on_startup`.
+
+`WorkspaceConfig` keeps the serialized TOML key `analyze_on_startup` through
+`#[serde(rename = "analyze_on_startup")]`, so existing `config.toml` files need
+no edit. `execute_command` still accepts the legacy `analyze` command and
+selects the same 60-second workspace-analysis duration for both spellings.
+Command execution does not yet enforce a deadline, a limitation that predates
+this layer. See the
+[Zed extension quick start](../extensions/zed-extension/docs/QUICK_START.md).
+
+## Analyse command skill compatibility
+
+The bundled analysis command skill has the canonical ID `cmd-analyse` and the
+bundled path `.system/cmd-analyse`. In
+`crates/codegen/diapason-skills/src/command_skills.rs`,
+`LEGACY_ANALYSE_COMMAND_SKILL_ID` holds the legacy ID `cmd-analyze`, and
+`command_skill_id_alias` maps either spelling to the other.
+`find_command_skill_by_skill_name` accepts both IDs, so `/skills info` and
+`/skills use` resolve the same skill from either spelling, and the `analyze`
+slash alias continues to route to it.
+
+Alias precedence is one rule, expressed by `SkillScope`: `Repo` outranks
+`User`, which outranks `Admin`, which outranks the bundled `System` scope.
+Within one scope the first discovered root wins, so the pair is never resolved
+by sorted order. Direct resolution by `skill_metadata_by_name` and the
+persisted preload lookup (`loop_skills` via `preloaded_skill_metadata_by_name`)
+in `crates/codegen/diapason-core/src/skills/manager.rs` share that rule.
+Unrelated exact-name duplicates keep their separate contract: the preload
+lookup keeps the last entry by design, not as a second precedence rule.
+
+Command skills never enter the model-invocable catalogue. Both IDs are excluded
+from the `## Skills` prompt section, so use slash completion or `/skills`
+discovery to reach them.
+
+## Workflow validation tooling
+
+`make lint` runs yamllint with the repository `.yamllint.yml` policy and then
+actionlint through `make github-actions-lint`, so malformed YAML fails before
+the GitHub Actions-specific checks. The full configuration details are in
+[docs/development/ci-cd.md](./development/ci-cd.md).
+
+- `make test-github-actions-validation` runs the controlled-linter contract
+  tests through `uv` with PyYAML 6.0.3.
+- CI pins yamllint 1.38.0 and actionlint 1.7.12, and verifies the actionlint
+  archive checksum before running the reviewed installer.
 
 ## ACP interrupted tool recovery
 

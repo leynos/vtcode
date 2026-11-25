@@ -265,7 +265,7 @@ an archive with ambiguous terminal results is rejected before continuation.
   `VTCode`→`Diapason`, `VTCODE_`→`DIAPASON_`, `crates/codegen/vtcode-`→
   `crates/codegen/diapason-`), leaving repository URLs, `/tmp` log paths and
   user config paths (`github.com/leynos/vtcode`, `~/.config/vtcode`) untouched.
-  Weave auto-resolved the textual conflicts but left low-confidence artifacts —
+  Weave auto-resolved the textual conflicts but left low-confidence artefacts —
   an interstitial duplicate `pub use` block in `metrics/mod.rs`,
   `// refused_by:` markers, and a dropped struct-literal terminator inside
   `core/threads.rs` — so each affected file was rebuilt: pure-rename files were
@@ -905,7 +905,7 @@ while the original cause is preserved for diagnosis.
 out-of-module call sites keep their message and field visibility.
 
 None of the packet tests have been executed. Each packet cancelled its focused
-run when the shared artifact lock and compile-admission queue stalled, so the
+run when the shared artefact lock and compile-admission queue stalled, so the
 scrutineer's single sequential gate run is the first execution evidence for
 this round. Two risks are carried forward explicitly: the boundary-pause test
 depends on `exec_command` blocking on a gate file rather than failing fast, and

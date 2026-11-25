@@ -12,11 +12,11 @@ registry, TUI framework. Consolidated from `diapason-design` and
 
 ## Modules
 
-| Area           | Path                                                                         |
-| -------------- | ---------------------------------------------------------------------------- |
-| Design system  | `design/` — color conversion, style bridging, layout, diff, panel primitives |
-| Theme registry | `theme/` — ThemeStyles, runtime state, syntax theme resolution               |
-| TUI framework  | `tui/` — session, widgets, runner, markdown rendering, config                |
+| Area           | Path                                                                          |
+| -------------- | ----------------------------------------------------------------------------- |
+| Design system  | `design/` — colour conversion, style bridging, layout, diff, panel primitives |
+| Theme registry | `theme/` — ThemeStyles, runtime state, syntax theme resolution                |
+| TUI framework  | `tui/` — session, widgets, runner, markdown rendering, config                 |
 
 ## Rules
 
@@ -28,7 +28,7 @@ registry, TUI framework. Consolidated from `diapason-design` and
   `tui/core_tui/app/session/task_panel.rs` owns compact TODO-panel
   wrapping/height/header helpers; `tui/ui/` has reusable widgets (Markdown,
   interactive list). Headered Markdown tables use intrinsic width when
-  available and labeled wrapped blocks below it, so callers must pass content
+  available and labelled wrapped blocks below it, so callers must pass content
   width after transcript framing. Bridge prompts use the bounded deferred-event
   queue while transient overlays own input; keep them prompt-only so
   slash-command parsing remains terminal-only.
@@ -55,7 +55,7 @@ registry, TUI framework. Consolidated from `diapason-design` and
 - The shared active-PTY counter is also a global loading observer; compact PTY
   rendering may hide live rows, so keep its footer status fallback in
   `session/state.rs`.
-- PTY/tool reflow must preserve explicit status color on the `•` prefix; apply
+- PTY/tool reflow must preserve explicit status colour on the `•` prefix; apply
   action/tool styling only to the verb so success, failure, and warning remain
   visually distinct; fullscreen `Ctrl+T` opens ordered session-local Transcript
   Review (rich/raw via `r`) but remains text transpose outside fullscreen, and
@@ -63,7 +63,7 @@ registry, TUI framework. Consolidated from `diapason-design` and
   are the only normal-transcript open target; derive their label from the
   primary binding and rebuild their hit regions after transcript reflow.
 - Tool and PTY blocks reserve at least one blank line above and below; shell
-  syntax highlighting is accepted only when it produces distinct token colors,
+  syntax highlighting is accepted only when it produces distinct token colours,
   otherwise semantic token styles are the fallback.
 - Task-panel tree rows use the shared hanging-prefix wrapper in
   `session/text_utils.rs`; keep panel row heights derived from wrapped content

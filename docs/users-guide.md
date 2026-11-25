@@ -8,7 +8,10 @@
 - [MCP integration](./mcp/MCP_INTEGRATION_GUIDE.md)
 - [User data directories](./guides/user-data-directories.md)
 - [0.157.0 release notes](./releases/0.157.0.md) - Breaking API renames, the
-  `--no-colour` flag, and configuration spelling aliases.
+  `--no-colour` flag, the Zed `analyse` command rename, and configuration
+  spelling aliases. See
+  [native spelling renames](./releases/0.157.0.md#native-spelling-renames-beyond-the-catalogue)
+  for the identifiers renamed outside the catalogue API.
 - [Catalogue API migration](./releases/0.157.0.md#catalogue-spelling-renames) -
   the `catalog` to `catalogue` Rust API rename, the removed names, and the
   external spellings that stay unchanged. Library consumers must update their

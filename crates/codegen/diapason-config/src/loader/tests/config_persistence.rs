@@ -1,4 +1,4 @@
-//! Tests for configuration persistence and save behavior.
+//! Tests for configuration persistence and save behaviour.
 
 use super::*;
 
