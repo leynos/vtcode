@@ -18,7 +18,8 @@ ASSET_MAPPINGS = {
 def sync_assets(dry_run: bool = False) -> None:
     """Copy each mapped asset to its destination when the contents differ.
 
-    When dry_run is True, only print the updates that would be made.
+    The destination directory is created in either mode. When dry_run is True,
+    only print the file updates that would be made.
     """
     for source, dest in ASSET_MAPPINGS.items():
         if not source.is_file():
