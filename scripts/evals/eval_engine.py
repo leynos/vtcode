@@ -1,3 +1,4 @@
+"""Run tool-capable diapason evaluations over JSON test cases."""
 import argparse
 import json
 import os
@@ -28,7 +29,9 @@ def load_env():
 load_env()
 
 class EvaluationEngine:
+    """Run evaluation test cases against a diapason provider and model."""
     def __init__(self, provider="anthropic", model="claude-haiku-4-5"):
+        """Create an engine for a provider and model with the built-in metrics."""
         self.provider = provider
         self.model = model
         self.metrics = {
@@ -83,6 +86,11 @@ class EvaluationEngine:
                 return {"error": str(error)}
 
     def evaluate_test_case(self, test_case):
+        """Run one test case, grade its output, and return a result dict.
+
+        The dict has an "error" key instead of grading results when the run
+        or the metric lookup fails.
+        """
         print(f"Running test case: {test_case['id']} - {test_case['task']}")
 
         start_time = time.time()
@@ -140,6 +148,7 @@ class EvaluationEngine:
         }
 
     def run_suite(self, test_cases_path):
+        """Run every test case in a JSON file and return the list of results."""
         with open(test_cases_path, 'r') as f:
             test_cases = json.load(f)
 

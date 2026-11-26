@@ -1,3 +1,4 @@
+"""Unit tests for the evaluation engine command construction."""
 import os
 import json
 import sys
@@ -9,10 +10,13 @@ from eval_engine import EvaluationEngine
 
 
 class EvaluationEngineCommandTests(unittest.TestCase):
+    """Tests for the diapason command built by EvaluationEngine."""
     def setUp(self):
+        """Create an engine with test provider and model settings."""
         self.engine = EvaluationEngine(provider="test-provider", model="test-model")
 
     def test_advanced_profile_is_explicit(self):
+        """Check the advanced profile is set explicitly and exec args are kept."""
         command = self.engine.build_command(
             "find symbols", "advanced_diapason", "/tmp/final-message.txt"
         )
@@ -31,6 +35,7 @@ class EvaluationEngineCommandTests(unittest.TestCase):
         )
 
     def test_default_profile_is_explicit(self):
+        """Check the default diapason profile is set as an explicit override."""
         command = self.engine.build_command(
             "list files", "diapason", "/tmp/final-message.txt"
         )
@@ -38,12 +43,14 @@ class EvaluationEngineCommandTests(unittest.TestCase):
         self.assertIn("tools.profile=diapason", command)
 
     def test_unknown_profile_is_rejected(self):
+        """Check that an unsupported eval profile raises ValueError."""
         with self.assertRaisesRegex(ValueError, "Unsupported eval profile"):
             self.engine.build_command(
                 "archival case", "archived_baseline", "/tmp/final-message.txt"
             )
 
     def test_ai_tool_surface_suite_has_only_executable_profiles(self):
+        """Check AI tool-surface eval cases use only executable profiles."""
         cases_path = os.path.join(
             os.path.dirname(__file__),
             "..",

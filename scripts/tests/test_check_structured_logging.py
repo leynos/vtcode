@@ -13,6 +13,7 @@ import check_structured_logging as scanner  # noqa: E402 -- Import after adding 
 
 
 def test_test_module_name_requires_exact_path_component() -> None:
+    """Check that only an exact tests.rs component marks a module as test code."""
     test_path = scanner.REPO_ROOT / "crates/example/src/tests.rs"
     lookalike_path = scanner.REPO_ROOT / "crates/example/src/contests.rs"
 

@@ -25,11 +25,13 @@ RAW_STRING_PREFIX_RE = re.compile(r"(?:br|rb|r)(?P<hashes>#{0,255})\"")
 
 @dataclass
 class AllowRule:
+    """One allowlist rule matching a path, optionally scoped to one line."""
     pattern: str
     line: int | None = None
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse the --mode, --allowlist and --max-findings command-line options."""
     parser = argparse.ArgumentParser(
         description="Validate production Rust code uses tracing instead of println!/eprintln!."
     )
@@ -55,6 +57,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def list_tracked_rust_files() -> list[Path]:
+    """Return the absolute paths of all git-tracked Rust files."""
     proc = subprocess.run(
         ["git", "ls-files", "-z", "*.rs"],
         cwd=REPO_ROOT,
@@ -66,6 +69,7 @@ def list_tracked_rust_files() -> list[Path]:
 
 
 def is_test_path(path: Path) -> bool:
+    """Report whether a path holds test, bench, fuzz or example code."""
     rel = path.relative_to(REPO_ROOT).as_posix()
     filename = path.name
     return (
@@ -82,6 +86,7 @@ def is_test_path(path: Path) -> bool:
 
 
 def is_ignored_path(path: Path) -> bool:
+    """Report whether a path is outside the production scan scope."""
     rel = path.relative_to(REPO_ROOT).as_posix()
     return (
         rel == "build.rs"
@@ -94,6 +99,7 @@ def is_ignored_path(path: Path) -> bool:
 
 
 def parse_allow_rules(path: Path) -> list[AllowRule]:
+    """Parse allowlist lines into rules, skipping blank lines and comments."""
     if not path.is_absolute():
         path = REPO_ROOT / path
     if not path.exists():
@@ -121,6 +127,7 @@ def parse_allow_rules(path: Path) -> list[AllowRule]:
 
 
 def is_allowlisted(rel_path: str, line_no: int, rules: list[AllowRule]) -> bool:
+    """Report whether a finding matches an allowlist rule for its path and line."""
     for rule in rules:
         if not fnmatch(rel_path, rule.pattern):
             continue
@@ -130,6 +137,7 @@ def is_allowlisted(rel_path: str, line_no: int, rules: list[AllowRule]) -> bool:
 
 
 def raw_string_prefix_length(source: str, index: int) -> int:
+    """Return the length of a raw string prefix at index, or 0 if there is none."""
     if index > 0 and (source[index - 1].isalnum() or source[index - 1] == "_"):
         return 0
 
@@ -140,6 +148,7 @@ def raw_string_prefix_length(source: str, index: int) -> int:
 
 
 def strip_non_code(source: str) -> str:
+    """Blank out comments and string literals while keeping line breaks."""
     out: list[str] = []
     i = 0
     block_depth = 0
@@ -238,6 +247,10 @@ def strip_non_code(source: str) -> str:
 
 
 def scan_file(path: Path, rules: list[AllowRule]) -> list[tuple[str, int, str]]:
+    """Return println!/eprintln! findings in a file's production code.
+
+    Test modules and test functions are skipped.
+    """
     if not path.exists():
         return []
     rel_path = path.relative_to(REPO_ROOT).as_posix()
@@ -312,6 +325,11 @@ def scan_file(path: Path, rules: list[AllowRule]) -> list[tuple[str, int, str]]:
 
 
 def main() -> int:
+    """Scan tracked production Rust files and return the exit code.
+
+    Returns 1 for a missing allowlist or, in enforce mode, any finding;
+    otherwise 0.
+    """
     args = parse_args()
 
     try:

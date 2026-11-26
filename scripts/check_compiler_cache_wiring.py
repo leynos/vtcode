@@ -42,6 +42,7 @@ REQUIRED_JOBS = {
 
 
 def _env_violations(where: str, env: Any) -> list[str]:
+    """Return messages for env entries that set RUSTC_WRAPPER or SCCACHE_*."""
     if not isinstance(env, dict):
         return []
     return [
@@ -82,6 +83,10 @@ def violations(name: str, workflow: dict[str, Any]) -> list[str]:
 
 
 def main(root: Path) -> int:
+    """Check the listed workflow files under root and report violations.
+
+    Returns 1 if any violation is found, otherwise 0.
+    """
     failed: list[str] = []
     for name in REQUIRED_JOBS:
         path = root / ".github" / "workflows" / name

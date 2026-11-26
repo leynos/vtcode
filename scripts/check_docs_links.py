@@ -25,6 +25,11 @@ URI_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
 
 def normalize_target(raw_target: str) -> str | None:
+    """Return the local file target of a markdown link, or None if not local.
+
+    Strips angle brackets and anchors and decodes %20 spaces. Empty targets,
+    pure anchors and URIs with a scheme return None.
+    """
     target = raw_target.strip()
     if not target:
         return None
@@ -43,6 +48,11 @@ def normalize_target(raw_target: str) -> str | None:
 
 
 def resolve_target(doc_path: Path, target: str) -> Path:
+    """Resolve a link target to a filesystem path.
+
+    Targets starting with a slash resolve from REPO_ROOT; other targets resolve
+    relative to the directory of the linking document.
+    """
     if target.startswith("/"):
         return REPO_ROOT / target.lstrip("/")
 
@@ -50,6 +60,10 @@ def resolve_target(doc_path: Path, target: str) -> Path:
 
 
 def main() -> int:
+    """Check local links in the core docs and report problems on stderr.
+
+    Returns 1 if an entrypoint file is missing or a link is broken, else 0.
+    """
     missing_entrypoints: list[str] = []
     broken_links: list[tuple[str, str]] = []
 

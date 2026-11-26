@@ -288,6 +288,7 @@ def package_skill(skill_dir, output_dir=None, validate_only=False):
 
 
 def main():
+    """Parse arguments and package a skill directory into a .skill file."""
     parser = argparse.ArgumentParser(
         description="Package a skill directory into a distributable .skill file.",
     )

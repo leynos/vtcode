@@ -107,6 +107,7 @@ def render_markdown_table(report_path):
     return "\n".join(md)
 
 def main():
+    """Print a report as a console table and save a markdown summary beside it."""
     if len(sys.argv) < 2:
         print("Usage: python render_benchmark_chart.py <report_path>")
         sys.exit(1)

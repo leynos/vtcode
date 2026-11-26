@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SWE-bench Lite (DRY) – agent latency/behaviour; free-tier friendly
+"""Run a dry SWE-bench Lite latency benchmark through the diapason CLI."""
 import os, json, random, re, time, subprocess, pathlib
 from datetime import datetime
 from datasets import load_dataset
@@ -24,6 +25,7 @@ FENCE = re.compile(r"```diff(.*?)```", re.S)
 SAFE = lambda s: re.sub(r'[^A-Za-z0-9._-]+', '_', s)
 
 def now_stamp():
+    """Return the current local time as a YYYYMMDD-HHMMSS string."""
     return datetime.now().strftime("%Y%m%d-%H%M%S")
 
 def vt_ask(prompt: str):

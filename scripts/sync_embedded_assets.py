@@ -16,6 +16,11 @@ ASSET_MAPPINGS = {
 
 
 def sync_assets(dry_run: bool = False) -> None:
+    """Copy each mapped asset to its destination when the contents differ.
+
+    The destination directory is created in either mode. When dry_run is True,
+    only print the file updates that would be made.
+    """
     for source, dest in ASSET_MAPPINGS.items():
         if not source.is_file():
             raise FileNotFoundError(f"Source asset missing: {source}");
@@ -35,6 +40,7 @@ def sync_assets(dry_run: bool = False) -> None:
 
 
 def main() -> None:
+    """Parse the --dry-run option and synchronize the embedded assets."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--dry-run", action="store_true", help="Show actions without copying"

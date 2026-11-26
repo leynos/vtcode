@@ -31,6 +31,7 @@ CARGO_SCHEMA_CMD = [
 
 @dataclass
 class FieldEntry:
+    """One flattened configuration field in the generated reference."""
     path: str
     type_name: str
     required: bool
@@ -39,6 +40,7 @@ class FieldEntry:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse the command-line arguments for the reference generator."""
     parser = argparse.ArgumentParser(
         description="Generate config field reference docs from diapason-config schema."
     )
@@ -52,6 +54,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_schema_from_cargo() -> dict[str, Any]:
+    """Run the schema example through cargo and return the parsed JSON schema.
+
+    Raises RuntimeError if cargo fails or its stdout is not valid JSON.
+    """
     result = subprocess.run(
         CARGO_SCHEMA_CMD,
         cwd=REPO_ROOT,
@@ -82,10 +88,12 @@ def load_schema_from_cargo() -> dict[str, Any]:
 
 
 def decode_json_pointer_segment(segment: str) -> str:
+    """Decode one JSON Pointer segment by undoing the ~1 and ~0 escapes."""
     return segment.replace("~1", "/").replace("~0", "~")
 
 
 def resolve_pointer(document: dict[str, Any], pointer: str) -> Any:
+    """Resolve a local #/ JSON Pointer against the root schema document."""
     if not pointer.startswith("#/"):
         raise KeyError(f"Unsupported schema reference pointer: {pointer}")
     current: Any = document
@@ -96,10 +104,16 @@ def resolve_pointer(document: dict[str, Any], pointer: str) -> Any:
 
 
 def deep_copy(value: Any) -> Any:
+    """Return a deep copy of a JSON-compatible value."""
     return json.loads(json.dumps(value))
 
 
 def merge_schema(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of base with the overlay applied.
+
+    Overlay ``$ref`` keys are ignored, ``required`` names are unioned and
+    sorted, and ``properties`` are merged key by key.
+    """
     merged = deep_copy(base)
     for key, value in overlay.items():
         if key == "$ref":
@@ -122,6 +136,11 @@ def normalize_schema_node(
     root_schema: dict[str, Any],
     ref_stack: tuple[str, ...] = (),
 ) -> dict[str, Any]:
+    """Expand ``$ref`` and ``allOf`` entries so the node can be inspected.
+
+    A reference already on ``ref_stack`` is treated as recursive and stops
+    expansion at that node.
+    """
     normalized = deep_copy(node)
 
     while "$ref" in normalized:
@@ -145,6 +164,11 @@ def normalize_schema_node(
 
 
 def format_default(value: Any, float_format: str | None = None) -> str:
+    """Render a schema default as JSON text, truncated to 120 characters.
+
+    Floats marked with ``float_format == "float"`` are shortened to the
+    shortest decimal that round-trips through float32.
+    """
     if isinstance(value, float) and float_format == "float":
         # schemars widens `f32` defaults to `f64`, leaving binary tails like
         # 0.699999988079071 for 0.7. Render the shortest decimal that still
@@ -162,6 +186,7 @@ def format_default(value: Any, float_format: str | None = None) -> str:
 
 
 def _shortest_f32_text(value: float) -> str | None:
+    """Return the shortest decimal text that round-trips to the same float32."""
     try:
         packed = struct.pack("<f", value)
     except OverflowError:
@@ -179,6 +204,7 @@ def _shortest_f32_text(value: float) -> str | None:
 
 
 def format_type_name(node: dict[str, Any]) -> str:
+    """Return a display name for the type of a normalized schema node."""
     type_value = node.get("type")
     if isinstance(type_value, list):
         return " | ".join(sorted(str(item) for item in type_value))
@@ -216,15 +242,22 @@ def format_type_name(node: dict[str, Any]) -> str:
 
 
 def normalize_description(text: str | None) -> str:
+    """Collapse runs of whitespace in a description, or return an empty string."""
     if not text:
         return ""
     return " ".join(text.strip().split())
 
 
 def collect_fields(root_schema: dict[str, Any]) -> list[FieldEntry]:
+    """Flatten the schema into FieldEntry rows sorted by dotted path.
+
+    Entries sharing a path are merged, and entries with an empty path are
+    dropped.
+    """
     field_map: dict[str, FieldEntry] = {}
 
     def upsert(entry: FieldEntry) -> None:
+        """Insert an entry, or merge it into the existing entry for its path."""
         existing = field_map.get(entry.path)
         if existing is None:
             field_map[entry.path] = entry
@@ -250,6 +283,7 @@ def collect_fields(root_schema: dict[str, Any]) -> list[FieldEntry]:
     MAX_WALK_DEPTH = 32
 
     def walk_properties(node: dict[str, Any], path: str, depth: int) -> None:
+        """Walk each property of an object node in sorted name order."""
         properties = node.get("properties", {})
         required_set = set(node.get("required", []))
         for prop_name in sorted(properties):
@@ -257,6 +291,7 @@ def collect_fields(root_schema: dict[str, Any]) -> list[FieldEntry]:
             walk(properties[prop_name], child_path, prop_name in required_set, depth)
 
     def walk(node: dict[str, Any], path: str, required: bool, depth: int) -> None:
+        """Record a schema node as field entries and recurse into its children."""
         # Real config nesting stays under ~10 levels; the cap only guards
         # against pathological self-referential `$ref` schemas.
         if depth > MAX_WALK_DEPTH:
@@ -398,10 +433,12 @@ def apply_reference_overrides(entries: list[FieldEntry]) -> None:
 
 
 def escape_cell(value: str) -> str:
+    """Escape pipes and newlines so a value fits in a Markdown table cell."""
     return value.replace("|", "\\|").replace("\n", " ").strip()
 
 
 def render_markdown(entries: list[FieldEntry]) -> str:
+    """Render the field entries as the Markdown config reference document."""
     lines = [
         "# Config Field Reference",
         "",
@@ -430,6 +467,10 @@ def render_markdown(entries: list[FieldEntry]) -> str:
 
 
 def main() -> int:
+    """Generate the config field reference and write it to the output path.
+
+    Returns 0 on success and 1 when schema export or collection fails.
+    """
     args = parse_args()
     output_path = args.output
     if not output_path.is_absolute():

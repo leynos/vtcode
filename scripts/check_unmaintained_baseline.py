@@ -36,6 +36,7 @@ class ValidationError(ValueError):
 
 
 def _invalid_json_constant(value: str) -> NoReturn:
+    """Reject the non-standard JSON constants NaN, Infinity and -Infinity."""
     raise ValidationError(f"invalid JSON constant {value!r}")
 
 
@@ -68,6 +69,10 @@ def _require_exact_keys(
 
 
 def _repo_status_identity(value: object, label: str) -> str:
+    """Return the ratchet identity of a repository status, collapsing Age.
+
+    The Age value is checked but excluded so identities stay stable across scans.
+    """
     if isinstance(value, str):
         if value not in REPOSITORY_STATUSES:
             raise ValidationError(f"{label} has unknown repository status {value!r}")
@@ -81,6 +86,7 @@ def _repo_status_identity(value: object, label: str) -> str:
 
 
 def _finding_identity(value: object, label: str) -> tuple[object, ...]:
+    """Validate one scanner finding and return its ratchet identity tuple."""
     finding = _require_exact_keys(value, SCANNER_KEYS, label)
     name = _require_string(finding["name"], f"{label}.name")
     version = _require_string(finding["version"], f"{label}.version")
@@ -115,6 +121,7 @@ def _finding_identity(value: object, label: str) -> tuple[object, ...]:
 
 
 def _read_baseline_document() -> dict[str, object]:
+    """Read the reviewed baseline file and return its validated object."""
     try:
         text = BASELINE_PATH.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
@@ -128,6 +135,7 @@ def _read_baseline_document() -> dict[str, object]:
 
 
 def _validate_baseline_metadata(baseline: dict[str, object]) -> None:
+    """Check the baseline schema version and repository name."""
     schema_version = baseline["schema_version"]
     if type(schema_version) is not int or schema_version != SCHEMA_VERSION:
         raise ValidationError(f"baseline.schema_version must be {SCHEMA_VERSION}")
@@ -136,6 +144,7 @@ def _validate_baseline_metadata(baseline: dict[str, object]) -> None:
 
 
 def _baseline_entries(baseline: dict[str, object]) -> list[object]:
+    """Return the baseline entries list, raising if it is not a list."""
     entries = baseline["entries"]
     if not isinstance(entries, list):
         raise ValidationError("baseline.entries must be a list")
@@ -145,6 +154,7 @@ def _baseline_entries(baseline: dict[str, object]) -> list[object]:
 def _parse_baseline_entry(
     entry: object, index: int
 ) -> tuple[tuple[object, ...], dict[str, object]]:
+    """Validate one baseline entry and split it into identity and metadata."""
     label = f"baseline.entries[{index}]"
     entry_object = _require_exact_keys(entry, BASELINE_ENTRY_KEYS, label)
     classification = _require_string(
@@ -170,6 +180,7 @@ def _parse_baseline_entry(
 def _index_baseline_entries(
     entries: list[object],
 ) -> dict[tuple[object, ...], dict[str, object]]:
+    """Index baseline entries by identity, rejecting duplicate identities."""
     by_identity: dict[tuple[object, ...], dict[str, object]] = {}
     for index, entry in enumerate(entries):
         identity, metadata = _parse_baseline_entry(entry, index)
@@ -182,12 +193,14 @@ def _index_baseline_entries(
 
 
 def _load_baseline() -> dict[tuple[object, ...], dict[str, object]]:
+    """Load, validate and index the reviewed repository baseline."""
     baseline = _read_baseline_document()
     _validate_baseline_metadata(baseline)
     return _index_baseline_entries(_baseline_entries(baseline))
 
 
 def _run_scanner(scanner: str) -> subprocess.CompletedProcess[str]:
+    """Run the scanner's unmaintained subcommand and capture its output."""
     command = [scanner, "unmaintained", "--json", "--no-warnings"]
     try:
         return subprocess.run(
@@ -204,6 +217,7 @@ def _run_scanner(scanner: str) -> subprocess.CompletedProcess[str]:
 def _parse_scanner_output(
     completed: subprocess.CompletedProcess[str], scanner: str
 ) -> list[object]:
+    """Parse the scanner's stdout as a JSON list of findings."""
     try:
         output = _load_json(completed.stdout, f"scanner {scanner!r}")
     except ValidationError as error:
@@ -217,6 +231,7 @@ def _parse_scanner_output(
 
 
 def _validate_scanner_status(status: int, output: list[object]) -> None:
+    """Check that the exit status agrees with the number of findings."""
     if status not in (0, 1):
         raise ValidationError(f"scanner exited with unexpected status {status}")
     if (status == 0) != (not output):
@@ -226,6 +241,7 @@ def _validate_scanner_status(status: int, output: list[object]) -> None:
 
 
 def _load_scanner_output(scanner: str) -> tuple[int, list[object]]:
+    """Run the scanner and return its exit status and validated findings."""
     completed = _run_scanner(scanner)
     output = _parse_scanner_output(completed, scanner)
     _validate_scanner_status(completed.returncode, output)
@@ -235,6 +251,7 @@ def _load_scanner_output(scanner: str) -> tuple[int, list[object]]:
 def _validate_findings(
     findings: object,
 ) -> list[tuple[tuple[object, ...], dict[str, object]]]:
+    """Validate each scanner finding and reject duplicate identities."""
     if not isinstance(findings, list):
         raise ValidationError("scanner output must be a list")
 
@@ -251,6 +268,7 @@ def _validate_findings(
 
 
 def _parse_arguments(argv: list[str] | None) -> str | None:
+    """Parse the --scanner option, returning None for invalid arguments."""
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--scanner", default="cargo")
     try:
@@ -266,6 +284,7 @@ def _load_current_state(
     list[tuple[tuple[object, ...], dict[str, object]]],
     dict[tuple[object, ...], dict[str, object]],
 ]:
+    """Return the validated scanner findings and the indexed baseline."""
     _scanner_status, raw_findings = _load_scanner_output(scanner)
     return _validate_findings(raw_findings), _load_baseline()
 
@@ -274,6 +293,7 @@ def _report_unexpected_findings(
     findings: list[tuple[tuple[object, ...], dict[str, object]]],
     baseline: dict[tuple[object, ...], dict[str, object]],
 ) -> bool:
+    """Print unreviewed or changed findings and report whether any exist."""
     unexpected = [
         identity for identity, _finding in findings if identity not in baseline
     ]
@@ -294,6 +314,7 @@ def _report_accepted_findings(
     findings: list[tuple[tuple[object, ...], dict[str, object]]],
     baseline: dict[tuple[object, ...], dict[str, object]],
 ) -> None:
+    """Print each finding that matches an accepted baseline entry."""
     for identity, finding in findings:
         metadata = baseline[identity]
         print(
@@ -307,6 +328,7 @@ def _report_removable_baseline_entries(
     findings: list[tuple[tuple[object, ...], dict[str, object]]],
     baseline: dict[tuple[object, ...], dict[str, object]],
 ) -> None:
+    """Print baseline entries that no longer match any current finding."""
     current_identities = {identity for identity, _finding in findings}
     for identity, metadata in baseline.items():
         if identity not in current_identities:

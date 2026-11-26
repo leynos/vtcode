@@ -229,6 +229,7 @@ def install_skill(skill_dir, install_path, skill_name, force=False):
 
 
 def main():
+    """Parse arguments and install skills from a GitHub repository."""
     parser = argparse.ArgumentParser(
         description="Install skills from GitHub repositories.",
     )

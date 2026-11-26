@@ -22,7 +22,7 @@ MDLINT ?= $(shell command -v markdownlint-cli2 2>/dev/null || printf '%s' "$$HOM
 .NOTPARALLEL:
 
 .PHONY: check check-fmt fmt spelling test-spelling test-github-actions-validation \
-	lint lint-clippy lint-docs lint-policies lint-shell github-actions-lint \
+	interrogate lint lint-clippy lint-docs lint-policies lint-shell github-actions-lint \
 	advisory build typecheck test test-harness check-ast-grep
 
 # Run the complete local release/PR gate in the same sequential order as the
@@ -48,6 +48,22 @@ test-spelling:
 test-github-actions-validation:
 	PYTHONPATH=scripts $(UV) run --no-project --with 'PyYAML==6.0.3' $(PYTHON) -m unittest \
 		discover -s scripts/tests -p 'test_github_actions_validation*.py'
+
+# Interrogate measures docstring presence in the Python files under
+# INTERROGATE_TARGETS; add a new Python directory there. Test fixtures are the
+# only exclusion: they are data for tests, not code this repository maintains.
+# No `--python` pin: a managed interpreter would be downloaded.
+INTERROGATE_VERSION ?= 1.7.0
+INTERROGATE_TARGETS ?= crates patches scripts tests
+INTERROGATE = $(UV) tool run --from 'interrogate==$(INTERROGATE_VERSION)' interrogate --fail-under 100 --exclude '*/fixtures'
+
+# To list each undocumented definition, run
+# `make interrogate INTERROGATE_TARGETS="-vv crates patches scripts tests"`.
+interrogate:
+	$(INTERROGATE) $(INTERROGATE_TARGETS)
+
+# Make adds this prerequisite to the `lint` rule below, which stays as it was.
+lint: interrogate
 
 lint: lint-shell lint-policies spelling github-actions-lint lint-clippy lint-docs
 
