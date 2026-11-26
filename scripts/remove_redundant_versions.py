@@ -29,6 +29,7 @@ def fix_cargo_toml(filepath: str) -> int:
     original = content
 
     def remove_version(match: re.Match) -> str:
+        """Strip version keys from a diapason-* dependency block."""
         dep_line = match.group(1)
         body = match.group(2)
         closing = match.group(3)
@@ -57,6 +58,7 @@ def fix_cargo_toml(filepath: str) -> int:
 
 
 def main():
+    """Remove redundant version keys from every crate Cargo.toml and print totals."""
     total_files = 0
     total_replacements = 0
 

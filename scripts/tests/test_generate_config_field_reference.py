@@ -16,6 +16,7 @@ import generate_config_field_reference as generator  # noqa: E402 -- Import afte
 
 
 def test_override_requires_every_configured_schema_field() -> None:
+    """Check that overrides fail when a configured schema field is missing."""
     entries = [
         generator.FieldEntry(
             path="acp.audit.enabled",

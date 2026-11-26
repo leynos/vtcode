@@ -297,6 +297,7 @@ def init_skill(skill_name, path, resources, include_examples):
 
 
 def main():
+    """Parse arguments and create a new skill directory from the template."""
     parser = argparse.ArgumentParser(
         description="Create a new skill directory with a SKILL.md template.",
     )

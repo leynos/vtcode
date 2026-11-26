@@ -69,6 +69,7 @@ class SkillFile:
     load_count: int = 0
     
     def __post_init__(self):
+        """Compute the token count and byte size from the content."""
         self.token_count = self.count_tokens()
         self.size_bytes = len(self.content.encode('utf-8'))
     
@@ -99,6 +100,7 @@ class SkillInstruction:
     dependencies: List[str] = field(default_factory=list)
     
     def __post_init__(self):
+        """Compute the token count from the instruction text."""
         self.token_count = self.count_tokens()
     
     def count_tokens(self) -> int:
@@ -148,6 +150,7 @@ class DiapasonEnhancedSkills:
     """Enhanced Diapason Skills implementation with optimization."""
     
     def __init__(self):
+        """Set up the skill registry and create the skills directory."""
         self.skills_dir = Path("skills")
         self.loaded_skills = {}
         self.metrics = {}

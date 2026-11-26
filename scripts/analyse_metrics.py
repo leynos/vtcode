@@ -13,7 +13,9 @@ from typing import Dict, List, Tuple
 
 
 class PerformanceAnalyser:
+    """Load performance metrics from a CSV file and summarize them."""
     def __init__(self, csv_file: str):
+        """Store the CSV path and load its metrics immediately."""
         self.csv_file = csv_file
         self.metrics: List[Dict] = []
         self.load_metrics()
@@ -324,6 +326,7 @@ class PerformanceAnalyser:
         print(f"\nv HTML report saved to: {output_file}")
 
 def main():
+    """Analyse the metrics CSV named on the command line and print a summary."""
     if len(sys.argv) < 2:
         print("Usage: python3 scripts/analyse_metrics.py <csv_file>")
         sys.exit(1)

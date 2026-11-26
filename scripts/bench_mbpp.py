@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # MBPP pass@1 + latency; free-tier friendly (sleep/retries/backoff)
+"""Run the MBPP pass@1 and latency benchmark through the diapason CLI."""
 import os, re, json, time, tempfile, subprocess, sys, random, pathlib
 from datetime import datetime
 from datasets import load_dataset
@@ -32,6 +33,7 @@ USAGE_JSON = re.compile(r'"usage"\s*:\s*\{.*?\}', re.S)
 SAFE = lambda s: re.sub(r'[^A-Za-z0-9._-]+', '_', s)
 
 def now_stamp():
+    """Return the current local time as a YYYYMMDD-HHMMSS string."""
     return datetime.now().strftime("%Y%m%d-%H%M%S")
 
 def extract_code(txt: str) -> str:
@@ -145,6 +147,7 @@ def summarize(results):
     lat_ok = sorted(r["latency_s"] for r in results if not r.get("gen_timeout"))
     
     def pct(v, q):
+        """Return the q-th quantile of sorted values, or None when empty."""
         if not v:
             return None
         return v[min(len(v) - 1, max(0, int(round(q * (len(v) - 1)))))]

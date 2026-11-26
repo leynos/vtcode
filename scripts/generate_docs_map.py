@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Generate the documentation map consumed by the self-documentation system."""
 import os
 import re
 from pathlib import Path
@@ -122,6 +123,7 @@ def generate_questions(title, topics):
     return questions
 
 def main():
+    """Build the documentation map from docs/ and write it to docs/modules."""
     root_dir = Path(__file__).parent.parent
     docs_dir = root_dir / "docs"
     output_file = docs_dir / "modules" / "diapason_docs_map.md"

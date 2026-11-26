@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the allowlist hygiene check."""
     parser = argparse.ArgumentParser(
         description="Validate scripts/zen_allowlist.txt entries are explicit and scoped.",
     )
@@ -33,6 +34,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def list_tracked_paths() -> list[str]:
+    """List git-tracked file paths relative to the repository root."""
     proc = subprocess.run(
         ["git", "ls-files", "-z"],
         cwd=REPO_ROOT,
@@ -44,6 +46,7 @@ def list_tracked_paths() -> list[str]:
 
 
 def parse_rule(line: str) -> tuple[str, str | None]:
+    """Split an allowlist line into its pattern and optional rationale."""
     token = line.strip()
     if "|" not in token:
         return token, None
@@ -55,6 +58,7 @@ def parse_rule(line: str) -> tuple[str, str | None]:
 
 
 def matches_any(pattern: str, tracked: list[str]) -> bool:
+    """Return True when a rule pattern matches at least one tracked path."""
     # Normalize optional line-scoped rules: path.rs:123
     if ":" in pattern:
         prefix, _, suffix = pattern.rpartition(":")
@@ -76,6 +80,7 @@ def matches_any(pattern: str, tracked: list[str]) -> bool:
 
 
 def main() -> int:
+    """Check allowlist rationale, staleness, and duplicates; return exit code."""
     args = parse_args()
     allowlist_path = args.allowlist
     if not allowlist_path.is_absolute():

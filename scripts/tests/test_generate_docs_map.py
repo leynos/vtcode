@@ -13,7 +13,9 @@ GENERATOR = REPO_ROOT / "scripts" / "generate_docs_map.py"
 
 
 class GenerateDocsMapArchiveExclusionTests(unittest.TestCase):
+    """Test that the docs map generator excludes the archive subtree."""
     def test_cli_excludes_archive_subtree_and_keeps_similarly_named_docs(self):
+        """Check that archive docs are excluded while lookalike paths are kept."""
         with tempfile.TemporaryDirectory() as temporary_directory:
             fixture_root = Path(temporary_directory)
             fixture_scripts = fixture_root / "scripts"

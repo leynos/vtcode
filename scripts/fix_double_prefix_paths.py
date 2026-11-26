@@ -28,11 +28,17 @@ EXTENSIONS = {
 
 
 def should_process(filepath: str) -> bool:
+    """Return True if the file has an extension listed in EXTENSIONS."""
     _, ext = os.path.splitext(filepath)
     return ext in EXTENSIONS
 
 
 def update_file(filepath: str, dry_run: bool = False) -> int:
+    """Rewrite stale crate prefixes in a file and return the replacement count.
+
+    Returns 0 if the file cannot be read or nothing changes. The file is not
+    written when dry_run is True.
+    """
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
@@ -53,6 +59,7 @@ def update_file(filepath: str, dry_run: bool = False) -> int:
 
 
 def main():
+    """Fix double-prefixed paths in all scanned directories and print totals."""
     total_files = 0
     total_replacements = 0
 
