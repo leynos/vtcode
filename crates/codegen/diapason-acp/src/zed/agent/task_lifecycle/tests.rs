@@ -1,6 +1,7 @@
 //! Regression coverage for lifecycle queueing, mapping, and ACP forwarding.
 
-use super::queue_accounting::{LifecycleQueueDropKind, lifecycle_queue_drop_kind};
+use super::projection_tests::{live, subagent_event};
+use super::queue_accounting::LifecycleQueueDropKind;
 use super::*;
 use diapason_core::metrics::MetricsCollector;
 use std::fmt::Write as FmtWrite;
@@ -59,17 +60,9 @@ impl Visit for CapturedFields {
     }
 }
 
-#[test]
-fn classifies_lifecycle_queue_full_and_closed_errors() {
-    let (sender, _receiver) = mpsc::channel::<()>(1);
-    sender.try_send(()).expect("first send fits in the queue");
-    let full_error = sender.try_send(()).expect_err("second send should find a full queue");
-    assert_eq!(lifecycle_queue_drop_kind(full_error), LifecycleQueueDropKind::Full);
-
-    let (sender, receiver) = mpsc::channel::<()>(1);
-    drop(receiver);
-    let closed_error = sender.try_send(()).expect_err("closed receiver should reject a send");
-    assert_eq!(lifecycle_queue_drop_kind(closed_error), LifecycleQueueDropKind::Closed);
+/// A queue entry for the accounting regressions, which do not inspect state.
+fn queue_entry() -> QueuedLifecycleUpdate {
+    live(subagent_event("running"))
 }
 
 #[test]
@@ -79,20 +72,22 @@ fn lifecycle_queue_metrics_track_depth_and_bounded_drop_categories() {
     let queue = LifecycleQueueTracker::new(observer);
     let (sender, mut receiver) = mpsc::channel(1);
 
-    queue.try_send(&sender, ()).expect("first queue entry should fit");
+    queue.try_send(&sender, queue_entry()).expect("first queue entry should fit");
     assert_eq!(metrics.get_task_lifecycle_notification_queue_metrics().queue_depth, 1);
     let full = queue
-        .try_send(&sender, ())
+        .try_send(&sender, queue_entry())
         .expect_err("second queue entry should find a full queue");
     assert_eq!(full, LifecycleQueueDropKind::Full);
     assert_eq!(queue.record_drop(full), 1);
 
-    receiver.try_recv().expect("first queue entry should be available");
+    let _first = receiver.try_recv().expect("first queue entry should be available");
     queue.dequeued();
     assert_eq!(metrics.get_task_lifecycle_notification_queue_metrics().queue_depth, 0);
 
     drop(receiver);
-    let closed = queue.try_send(&sender, ()).expect_err("closed queue should reject an entry");
+    let closed = queue
+        .try_send(&sender, queue_entry())
+        .expect_err("closed queue should reject an entry");
     assert_eq!(closed, LifecycleQueueDropKind::Closed);
     assert_eq!(queue.record_drop(closed), 1);
 
@@ -106,7 +101,7 @@ fn lifecycle_forwarder_shutdown_drains_queued_depth_before_closing_tracker() {
     let observer: Arc<dyn TaskLifecycleNotificationQueueMetricsObserver> = metrics.clone();
     let queue = LifecycleQueueTracker::new(observer);
     let (sender, _receiver) = mpsc::channel(1);
-    queue.try_send(&sender, ()).expect("queue entry should fit");
+    queue.try_send(&sender, queue_entry()).expect("queue entry should fit");
     assert_eq!(metrics.get_task_lifecycle_notification_queue_metrics().queue_depth, 1);
 
     queue.close_and_drain();
@@ -114,7 +109,7 @@ fn lifecycle_forwarder_shutdown_drains_queued_depth_before_closing_tracker() {
     assert_eq!(metrics.get_task_lifecycle_notification_queue_metrics().queue_depth, 0);
     assert_eq!(
         queue
-            .try_send(&sender, ())
+            .try_send(&sender, queue_entry())
             .expect_err("closed tracker should reject new entries"),
         LifecycleQueueDropKind::Closed
     );
@@ -166,7 +161,7 @@ fn lifecycle_queue_depth_matches_the_reference_model() {
             for op in ops {
                 match op {
                     QueueOp::Enqueue => {
-                        let result = queue.try_send(&sender, ());
+                        let result = queue.try_send(&sender, queue_entry());
                         match result {
                             Ok(()) => {
                                 prop_assert!(!model.closed, "a closed tracker must reject entries");
@@ -214,7 +209,9 @@ fn lifecycle_queue_depth_matches_the_reference_model() {
             // Closure is terminal.
             if model.closed {
                 prop_assert_eq!(
-                    queue.try_send(&sender, ()).expect_err("closed tracker must reject entries"),
+                    queue
+                        .try_send(&sender, queue_entry())
+                        .expect_err("closed tracker must reject entries"),
                     LifecycleQueueDropKind::Closed
                 );
                 queue.close_and_drain();

@@ -84,13 +84,14 @@ pub(super) fn persisted_background_row_is_desired(record: &PersistedBackgroundRe
 /// The flag makes the next refresh retry the write before any caller can
 /// observe the record. Entries are keyed by the tree's shared state allocation,
 /// so every clone observes one history, and a dropped tree's entry is pruned on
-/// the next access.
+/// the next access. A cleared entry stays registered until its tree is dropped,
+/// so the generation it reached is never reissued to a later obligation.
 fn pending_ledger_writes() -> &'static Mutex<Vec<PendingLedgerWrite>> {
     static PENDING: std::sync::OnceLock<Mutex<Vec<PendingLedgerWrite>>> = std::sync::OnceLock::new();
     PENDING.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-/// One controller tree that owes the ledger a write.
+/// One controller tree's ledger-write history.
 struct PendingLedgerWrite {
     /// Keeps the key bound to a live state allocation so a dropped tree's entry
     /// can be pruned before its address is reused.
@@ -103,7 +104,16 @@ struct PendingLedgerWrite {
     /// obligation survives. Without it, the clear would discard a mark that
     /// arrived after the retry began, and the next reuse could report an
     /// unwritten record as durable.
+    ///
+    /// The counter is monotonic for the whole life of the tree: an entry whose
+    /// obligation clears keeps its highest generation instead of being removed,
+    /// because restarting from one would let a retry that captured the old
+    /// value acknowledge a later obligation with it. Such a stale clear would
+    /// remove a write that was still owed, and the next reuse would report an
+    /// unwritten record as durable.
     generation: u64,
+    /// Whether the tree still owes the ledger a write.
+    pending: bool,
 }
 
 /// Applies `update` to the registry, pruning dropped trees first.
@@ -129,9 +139,14 @@ pub(super) fn mark_background_ledger_write_pending(state: &Arc<RwLock<Controller
             .find(|entry| std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)))
         {
             entry.generation = entry.generation.saturating_add(1);
+            entry.pending = true;
             return entry.generation;
         }
-        registry.push(PendingLedgerWrite { state: Arc::downgrade(state), generation: 1 });
+        registry.push(PendingLedgerWrite {
+            state: Arc::downgrade(state),
+            generation: 1,
+            pending: true,
+        });
         1
     })
 }
@@ -141,7 +156,7 @@ pub(super) fn pending_background_ledger_write_generation(state: &Arc<RwLock<Cont
     with_pending_ledger_writes(|registry| {
         registry
             .iter()
-            .find(|entry| std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)))
+            .find(|entry| std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)) && entry.pending)
             .map(|entry| entry.generation)
     })
 }
@@ -150,12 +165,19 @@ pub(super) fn pending_background_ledger_write_generation(state: &Arc<RwLock<Cont
 ///
 /// Only the obligation the caller observed is cleared. A failed save that
 /// arrives while the retry is writing bumps the generation, and the newer
-/// obligation must survive this clear.
+/// obligation must survive this clear. The cleared entry keeps its generation
+/// so the next mark continues the sequence: an entry removed here would restart
+/// at one, and a retry still holding the old value could then clear an
+/// obligation raised after it.
 pub(super) fn clear_background_ledger_write_pending(state: &Arc<RwLock<ControllerState>>, observed_generation: u64) {
     with_pending_ledger_writes(|registry| {
-        registry.retain(|entry| {
-            !std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)) || entry.generation != observed_generation
-        });
+        if let Some(entry) = registry
+            .iter_mut()
+            .find(|entry| std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)))
+            && entry.generation == observed_generation
+        {
+            entry.pending = false;
+        }
     });
 }
 
@@ -248,13 +270,21 @@ impl SubagentController {
         error: &anyhow::Error,
         honour_restart_allowance: bool,
     ) {
-        // This launch is finished. Whether it settles `Error` or leaves a
-        // remaining allowance for an inline retry, the claim it reserved no
-        // longer owes a launch; a replacement records its own key, so clearing
-        // this session's obligation cannot hide one.
-        clear_background_launch_owed(&self.state, record_id, exec_session_id);
         let write_generation = {
             let mut state = self.state.write().await;
+            // This launch is finished. Whether it settles `Error` or leaves a
+            // remaining allowance for an inline retry, the claim it reserved no
+            // longer owes a launch; a replacement records its own key, so
+            // clearing this session's obligation cannot hide one.
+            //
+            // The obligation is cleared under the same lock that stores the
+            // outcome below. Clearing it before this handler obtained the lock
+            // let a refresh that took the lock first record the generic
+            // missing-session failure in place of the failure category this
+            // settlement writes, and a settled `Error` is not settled again.
+            // A failure handler cancelled before it reaches the lock still owes
+            // its cleanup to the claim guard that dropped it.
+            clear_background_launch_owed(&self.state, record_id, exec_session_id);
             let Some(record) = state.background_children.get_mut(record_id) else {
                 return;
             };
@@ -600,46 +630,18 @@ mod terminal_failure_write_tests {
     //! Pins that a settled launch failure stays owed to the ledger until a save
     //! records it.
 
-    use std::path::PathBuf;
-
     use tempfile::TempDir;
 
-    use crate::config::DiapasonConfig;
-    use crate::config::types::ReasoningEffortLevel;
     use crate::subagents::background::{
         background_state_lock_path_for_tests, load_background_state, persist_background_state,
     };
-    use crate::tools::exec_session::ExecSessionManager;
-    use crate::tools::registry::PtySessionManager;
 
+    use super::super::tests::support::test_controller_config;
     use super::*;
 
     const WORKER: &str = "background-worker";
     const WORKER_AGENT: &str = "worker";
     const LAUNCH_EXEC: &str = "exec-launch";
-
-    fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
-        let vt_cfg = DiapasonConfig::default();
-        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
-        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
-        SubagentControllerConfig {
-            workspace_root,
-            parent_session_id: "parent-session".to_string(),
-            parent_model: "gpt-5.6-sol".to_string(),
-            parent_provider: "openai".to_string(),
-            parent_reasoning_effort: ReasoningEffortLevel::Medium,
-            api_key: "test-key".to_string(),
-            vt_cfg,
-            openai_chatgpt_auth: None,
-            depth: 0,
-            workspace_gated: false,
-            exec_sessions,
-            output_reader: None,
-            pty_manager: pty_sessions.manager().clone(),
-            managed_background_runtime: false,
-            lock_scope: None,
-        }
-    }
 
     /// The durable claim a failed launch leaves behind.
     fn starting_record() -> BackgroundRecord {
@@ -692,7 +694,7 @@ mod terminal_failure_write_tests {
         persist_background_state(temp.path(), vec![starting_record().into_persisted()])
             .await
             .expect("seed the durable Starting claim");
-        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+        let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf()))
             .await
             .expect("controller");
         {

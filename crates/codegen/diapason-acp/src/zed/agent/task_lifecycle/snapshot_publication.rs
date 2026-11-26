@@ -77,22 +77,20 @@ pub(super) async fn publish_initial_task_snapshots(
 
 /// Counts the snapshots this pass queued, plus the first queue rejection.
 ///
-/// # Residual terminal-update drop
+/// # Refused live updates
 ///
 /// This pass waits for room on the same bounded queue live observers use with a
 /// non-blocking send. While it waits, and for every snapshot it wins a slot
 /// for, a live transition published in the same window can find the queue full
-/// and be dropped under the `full` queue-drop category. A dropped transition
-/// may be a task's terminal state, so the client can keep showing that task as
-/// active even though this pass did not replace its record.
+/// and be refused under the `full` queue-drop category. A refusal is not a
+/// loss: the tracker keeps the newest refused update, and the forwarder
+/// delivers it as soon as it has drained a slot, so a task that completes in
+/// this window still reaches the client in its terminal state.
 ///
-/// The shared revision ordering does not prevent this: a snapshot carries the
-/// base revision reserved before the observer was registered, so a live capture
-/// still supersedes it whenever both are delivered. The loss is a delivery gap,
-/// not a reordering. Reserving headroom for live updates would need a delivery
-/// priority the single-channel forwarder does not have; the client reconciles
-/// with `_lody/subagents/list`, which is the same recovery the non-blocking
-/// live path already relies on.
+/// The shared revision ordering still decides what is newest: a snapshot
+/// carries the base revision reserved before the observer was registered, so a
+/// live capture supersedes it whenever both are delivered, and a refused
+/// update replaced by a newer one is dropped rather than reordered.
 async fn queue_initial_task_snapshots(
     controller: &Arc<diapason_core::subagents::SubagentController>,
     session_id: &acp::SessionId,

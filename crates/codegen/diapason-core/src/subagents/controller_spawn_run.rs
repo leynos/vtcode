@@ -210,7 +210,16 @@ impl SubagentController {
                 record.queued_prompts.clear();
                 record.queued_prompts.push_back(prompt.clone());
                 true
-            } else if matches!(record.status, SubagentStatus::Running | SubagentStatus::Queued) {
+            } else if matches!(
+                record.status,
+                SubagentStatus::Running | SubagentStatus::Queued | SubagentStatus::Waiting
+            ) {
+                // Input that does not ask to interrupt a run only queues. A
+                // record already `Waiting` is the same live loop it was on the
+                // first call: the prompt is added behind the queued one and the
+                // loop is left for its next dequeue. Restarting here would set
+                // `Queued` and relaunch, and the launch would abort the very
+                // loop that is about to run both prompts.
                 record.status = SubagentStatus::Waiting;
                 record.queued_prompts.push_back(prompt.clone());
                 false

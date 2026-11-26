@@ -6,45 +6,17 @@
 //! durable row kept reporting a run that had ended, and a resumed session
 //! restored a task that could never come back.
 
-use std::path::PathBuf;
-
 use tempfile::TempDir;
 
-use crate::config::DiapasonConfig;
-use crate::config::types::ReasoningEffortLevel;
 use crate::subagents::background::{load_background_state, persist_background_state};
-use crate::tools::exec_session::ExecSessionManager;
-use crate::tools::registry::PtySessionManager;
 use crate::tools::types::{DiapasonExecSession, DiapasonSessionLifecycleState};
 
+use super::super::tests::support::test_controller_config;
 use super::*;
 
 const WORKER: &str = "background-worker";
 const WORKER_AGENT: &str = "worker";
 const LIVE_EXEC: &str = "exec-live";
-
-fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
-    let vt_cfg = DiapasonConfig::default();
-    let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
-    let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
-    SubagentControllerConfig {
-        workspace_root,
-        parent_session_id: "parent-session".to_string(),
-        parent_model: "gpt-5.6-sol".to_string(),
-        parent_provider: "openai".to_string(),
-        parent_reasoning_effort: ReasoningEffortLevel::Medium,
-        api_key: "test-key".to_string(),
-        vt_cfg,
-        openai_chatgpt_auth: None,
-        depth: 0,
-        workspace_gated: false,
-        exec_sessions,
-        output_reader: None,
-        pty_manager: pty_sessions.manager().clone(),
-        managed_background_runtime: false,
-        lock_scope: None,
-    }
-}
 
 /// The durable row a refresh starts from: a live launch with no owed write.
 fn running_record() -> BackgroundRecord {
@@ -138,9 +110,8 @@ async fn a_terminal_settlement_reaches_the_ledger(
     persist_background_state(temp.path(), vec![record.clone().into_persisted()])
         .await
         .expect("seed the durable row");
-    let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
-        .await
-        .expect("controller");
+    let config = test_controller_config(temp.path().to_path_buf());
+    let controller = SubagentController::new(config).await.expect("controller");
     {
         let mut state = controller.state.write().await;
         state.background_children.insert(WORKER.to_string(), record);
@@ -200,9 +171,8 @@ async fn a_refresh_pass_persists_the_terminal_outcome_it_settles() {
     persist_background_state(temp.path(), vec![running_record().into_persisted()])
         .await
         .expect("seed the durable live row");
-    let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
-        .await
-        .expect("controller");
+    let config = test_controller_config(temp.path().to_path_buf());
+    let controller = SubagentController::new(config).await.expect("controller");
     {
         let mut state = controller.state.write().await;
         state.background_children.insert(WORKER.to_string(), running_record());
@@ -248,9 +218,8 @@ async fn an_unchanged_live_row_owes_no_write() {
     persist_background_state(temp.path(), vec![running_record().into_persisted()])
         .await
         .expect("seed the durable live row");
-    let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
-        .await
-        .expect("controller");
+    let config = test_controller_config(temp.path().to_path_buf());
+    let controller = SubagentController::new(config).await.expect("controller");
     {
         let mut state = controller.state.write().await;
         state.background_children.insert(WORKER.to_string(), running_record());

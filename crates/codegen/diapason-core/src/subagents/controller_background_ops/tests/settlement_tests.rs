@@ -10,10 +10,15 @@ use crate::tools::types::{DiapasonExecSession, DiapasonSessionLifecycleState};
 
 use super::support::{background_record, background_test_controller};
 
-/// Builds a snapshot for an exited process.
-fn exited_snapshot() -> DiapasonExecSession {
+/// Builds a snapshot for an exited process with the given launch identity.
+///
+/// The id is a parameter because an observation describes one launch: a test
+/// that reports an exit for `exec-old` must hand over a snapshot that also
+/// names `exec-old`, or a guard rejecting an inconsistent observation can make
+/// the test pass without ever checking what it claims to check.
+fn exited_snapshot(exec_session_id: &str) -> DiapasonExecSession {
     DiapasonExecSession {
-        id: "exec-launch".to_string().into(),
+        id: exec_session_id.to_string().into(),
         backend: "pipe".to_string(),
         command: "sh".to_string(),
         args: Vec::new(),
@@ -61,7 +66,7 @@ async fn a_scheduled_replacement_clears_the_previous_end_instant() {
     insert_record(&controller, record).await;
 
     let respawn = controller
-        .update_background_record_state("background-worker", Some("exec-launch"), Some(exited_snapshot()))
+        .update_background_record_state("background-worker", Some("exec-launch"), Some(exited_snapshot("exec-launch")))
         .await
         .expect("the observed exit settles the record");
 
@@ -118,7 +123,7 @@ async fn a_snapshot_from_a_replaced_launch_does_not_settle_the_replacement() {
     insert_record(&controller, record).await;
 
     let respawn = controller
-        .update_background_record_state("background-worker", Some("exec-old"), Some(exited_snapshot()))
+        .update_background_record_state("background-worker", Some("exec-old"), Some(exited_snapshot("exec-old")))
         .await
         .expect("an observation of a replaced launch is not a failure");
 
@@ -263,6 +268,118 @@ async fn a_retry_keeps_an_obligation_that_arrived_while_it_was_writing() {
         None,
         "the next retry discharges the newer obligation"
     );
+
+    controller.signal_shutdown().await;
+}
+
+/// A cleared obligation must not restart the generation it reached.
+///
+/// The registry used to drop a tree's entry when its last obligation cleared,
+/// so the next failure started again at generation 1. A retry that captured
+/// that value before the clear could outlive the next mark and acknowledge the
+/// new obligation with it; its clear would then remove a write that was still
+/// owed, and the next reuse would report an unwritten record as durable. A
+/// stale acknowledgement must match nothing once the entry has a newer
+/// generation.
+#[tokio::test]
+async fn a_stale_clear_does_not_discharge_a_later_obligation() {
+    use super::super::controller_background_settlement::{
+        clear_background_ledger_write_pending, mark_background_ledger_write_pending,
+        pending_background_ledger_write_generation,
+    };
+
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+
+    let first = mark_background_ledger_write_pending(&controller.state);
+    assert_eq!(first, 1, "the first failure creates the first obligation");
+    clear_background_ledger_write_pending(&controller.state, first);
+    assert_eq!(
+        pending_background_ledger_write_generation(&controller.state),
+        None,
+        "the successful write discharges the obligation it observed"
+    );
+
+    let second = mark_background_ledger_write_pending(&controller.state);
+    assert_eq!(second, 2, "the generation continues after a cleared obligation");
+    // A retry that captured the first generation and clears late must not
+    // discharge the obligation raised after it.
+    clear_background_ledger_write_pending(&controller.state, first);
+    assert_eq!(
+        pending_background_ledger_write_generation(&controller.state),
+        Some(second),
+        "a stale acknowledgement must leave the newer obligation in place"
+    );
+
+    clear_background_ledger_write_pending(&controller.state, second);
+    assert_eq!(
+        pending_background_ledger_write_generation(&controller.state),
+        None,
+        "the obligation's own acknowledgement discharges it"
+    );
+
+    controller.signal_shutdown().await;
+}
+
+/// A launch dropped after its spawn is left to reconciliation.
+///
+/// The spawn registers its exec session before it returns, so a caller dropped
+/// between the spawn and its commit owns a live process. Settling it as a
+/// failed start would report a running process as gone, and leaving the claim's
+/// non-retryable obligation in place would exempt the record from every later
+/// observation, including an observed exit. The guard therefore clears only the
+/// obligation, and refresh then observes the same session rather than starting
+/// another process.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_launch_dropped_after_its_spawn_is_settled_by_refresh() {
+    use super::super::controller_background_lifecycle::{background_launch_is_owed, mark_background_launch_owed};
+    use super::super::controller_background_run::SpawnedLaunchGuard;
+
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+    let exec_session_id = "exec-spawned";
+    super::support::start_sleep_session(&controller, exec_session_id).await;
+    // The claim a launch leaves while its spawn is in flight: `Starting`, wanted,
+    // and owed a non-retryable launch by the call that is about to spawn.
+    insert_record(
+        &controller,
+        background_record(
+            "background-worker",
+            None,
+            "worker",
+            exec_session_id,
+            BackgroundSubprocessStatus::Starting,
+            true,
+        ),
+    )
+    .await;
+    mark_background_launch_owed(&controller.state, "background-worker", "worker", 0, exec_session_id, false);
+
+    // The caller is dropped after its spawn and before its commit.
+    drop(SpawnedLaunchGuard::arm(&controller.state, "background-worker", exec_session_id));
+
+    assert!(
+        !background_launch_is_owed(&controller.state, "background-worker", exec_session_id),
+        "a dropped launch must not keep exempting its record from observation"
+    );
+
+    controller
+        .refresh_background_processes()
+        .await
+        .expect("refresh settles the session the dropped launch registered");
+    let state = controller.state.read().await;
+    let record = state.background_children.get("background-worker").expect("record");
+    assert_eq!(
+        record.exec_session_id, exec_session_id,
+        "the record still names the session the dropped launch registered"
+    );
+    assert_eq!(
+        record.status,
+        BackgroundSubprocessStatus::Running,
+        "refresh observes the same session and settles it as running, not as a failed start"
+    );
+    drop(state);
 
     controller.signal_shutdown().await;
 }

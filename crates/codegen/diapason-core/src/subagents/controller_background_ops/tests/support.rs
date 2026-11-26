@@ -17,7 +17,24 @@ use crate::tools::exec_session::ExecSessionManager;
 use crate::tools::registry::PtySessionManager;
 
 /// Builds the controller configuration the background tests run against.
-pub(super) fn test_controller_config(workspace_root: PathBuf, vt_cfg: DiapasonConfig) -> SubagentControllerConfig {
+///
+/// Every background test module builds its controller through this one
+/// fixture, so a new required `SubagentControllerConfig` field has one place
+/// to be added instead of one per module.
+pub(in crate::subagents::controller_background_ops) fn test_controller_config(
+    workspace_root: PathBuf,
+) -> SubagentControllerConfig {
+    test_controller_config_with(workspace_root, DiapasonConfig::default())
+}
+
+/// Builds the same fixture with an explicit configuration.
+///
+/// Used by the cases that need a non-default setting, such as automatic
+/// restore, so they still start from the one baseline.
+pub(in crate::subagents::controller_background_ops) fn test_controller_config_with(
+    workspace_root: PathBuf,
+    vt_cfg: DiapasonConfig,
+) -> SubagentControllerConfig {
     let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
     let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
     SubagentControllerConfig {
@@ -186,7 +203,7 @@ pub(crate) fn write_sleeping_demo_script(workspace_root: &Path) {
 
 /// Builds a controller over a fresh workspace with the supplied configuration.
 pub(super) async fn background_test_controller(workspace_root: &Path, vt_cfg: DiapasonConfig) -> SubagentController {
-    SubagentController::new(test_controller_config(workspace_root.to_path_buf(), vt_cfg))
+    SubagentController::new(test_controller_config_with(workspace_root.to_path_buf(), vt_cfg))
         .await
         .expect("background controller")
 }

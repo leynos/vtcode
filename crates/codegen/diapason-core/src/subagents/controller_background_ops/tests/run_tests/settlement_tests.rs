@@ -70,14 +70,23 @@ async fn a_launch_does_not_revive_a_record_that_stopped_wanting_it() {
     );
 
     release.notify_one();
-    let entry = launch.await.expect("the declined launch reports the record it left");
-
-    assert!(!entry.desired_enabled, "the cancelled record stays cancelled");
-    assert_eq!(
-        entry.status,
-        BackgroundSubprocessStatus::Starting,
-        "the declined commit must not write over the cancellation"
+    let error = launch
+        .await
+        .expect_err("a launch that lost its record is rejected rather than answered for another one");
+    assert!(
+        format!("{error:#}").contains("was stopped or replaced before its launch could be recorded"),
+        "the caller is told its launch never reached a record: {error:#}"
     );
+    {
+        let state = controller.state.read().await;
+        let record = state.background_children.get("background-worker").expect("record");
+        assert!(!record.desired_enabled, "the cancelled record stays cancelled");
+        assert_eq!(
+            record.status,
+            BackgroundSubprocessStatus::Starting,
+            "the declined commit must not write over the cancellation"
+        );
+    }
     assert!(
         session_is_gone(&controller, &spawned_exec_session_id).await,
         "a declined commit must close the session it spawned; no record names it"

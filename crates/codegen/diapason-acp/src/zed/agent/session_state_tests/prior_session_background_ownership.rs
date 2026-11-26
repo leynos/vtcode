@@ -25,7 +25,10 @@ use diapason_core::subagents::{BackgroundSubprocessStatus, TaskOwner, background
 async fn new_session_does_not_restore_a_background_record_owned_by_another_session() {
     let temp = TempDir::new().unwrap();
     let workspace = temp.path();
-    let state_dir = workspace.join(".diapason/state");
+    // The launch controller reads the ledger from the workspace data
+    // directory, so the seeded row must live in the directory the shared
+    // helper names.
+    let state_dir = workspace.join(diapason_commons::workspace_dir_name()).join("state");
     fs::create_dir_all(&state_dir).unwrap();
     let marker = workspace.join("background-restored-marker");
     // The demo worker resolves to the workspace script, so a restore by either
@@ -158,8 +161,11 @@ async fn new_session_does_not_restore_a_background_record_owned_by_another_sessi
 ///
 /// The resume-site migration fails on an obstructed ledger lock, so the
 /// workspace controller loads the row ownerless. The session controller's retry
-/// then succeeds and writes the owner. The fixture script appends one line per
-/// launch, so the count shows whether a workspace restore duplicated the row.
+/// then succeeds and writes the owner. Only the session scope may then launch
+/// the row: the ledger must hold that one owned record, and the workspace
+/// controller must hold no workspace-owned copy of it. The launch counter only
+/// proves the restore executed the row, because the owning scope may restart a
+/// row whose process has exited.
 #[tokio::test]
 async fn a_migration_retry_that_succeeds_is_adopted_before_the_workspace_restore() {
     let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
@@ -184,7 +190,7 @@ async fn a_migration_retry_that_succeeds_is_adopted_before_the_workspace_restore
         .with_file_ops_tool_construction(Arc::new(ClearLedgerLockOnBuild { lock_path: lock_path.clone() }));
     let listing = archived_listing("background-retried-adoption", &session_workspace, "continue");
 
-    let _handle = agent
+    let handle = agent
         .attach_thread_from_listing(
             &session_id,
             &AcpSessionWorkspace::from_client_cwd(&session_workspace)
@@ -198,9 +204,8 @@ async fn a_migration_retry_that_succeeds_is_adopted_before_the_workspace_restore
     // The retry wrote the owner, so the session's own restore launched the row.
     let ledger = fs::read_to_string(&ledger_path).expect("read the ledger after the attach");
     let persisted: serde_json::Value = serde_json::from_str(&ledger).expect("parse the ledger after the attach");
-    let owned = persisted["records"]
-        .as_array()
-        .expect("ledger records")
+    let records = persisted["records"].as_array().expect("ledger records");
+    let owned = records
         .iter()
         .find(|record| record["owner_session_id"].as_str() == Some(session_id.0.as_ref()))
         .expect("the retry must have given the row to the resumed session");
@@ -208,20 +213,43 @@ async fn a_migration_retry_that_succeeds_is_adopted_before_the_workspace_restore
         owned["exec_session_id"], "exec-missing",
         "the resumed session must restore the row it now owns: {persisted}"
     );
+    // The workspace scope may restore only rows nobody owns. A copy it kept
+    // would be persisted under its ownerless id beside the migrated record, so
+    // one owned record and no second one is what proves the session scope is
+    // the only scope that launched the row. The script counter cannot decide
+    // that on its own: the owning session's own refresh may restart a row whose
+    // process has exited, and that restart is the same launch, not a copy of it.
+    assert_eq!(records.len(), 1, "no scope may persist a second copy of the migrated row: {persisted}");
+    let workspace_runtime = {
+        let data = handle.data.lock().expect("lock the attached session data");
+        data.workspace_runtime
+            .clone()
+            .expect("attach must retain its workspace runtime")
+    };
+    let workspace_controller = workspace_runtime
+        .local_tool_registry
+        .subagent_controller()
+        .expect("the workspace runtime must carry its controller");
+    // The workspace scope may only restore rows nobody owns, so it must hold no
+    // ownerless copy of the migrated row; the copy it adopted carries the
+    // session as its owner and is not a launch candidate.
+    let workspace_entries = workspace_controller.background_status_entries(TaskOwner::Workspace).await;
+    assert!(
+        workspace_entries.iter().all(|entry| entry.owner_session_id.is_some()),
+        "the workspace scope must hold no ownerless copy of the migrated row"
+    );
 
-    // A duplicate workspace launch would record its own line shortly after the
-    // attach returns, so poll briefly before asserting the count.
+    // The worker must never launch twice because two scopes each drove it, but
+    // the counter alone cannot show that: a restart of the row the session owns
+    // runs the same script again. It proves the restore actually executed the
+    // row, which the ledger alone cannot show either.
     for _ in 0..40 {
-        if launch_count(&launches) >= 2 {
+        if launch_count(&launches) >= 1 {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
-    assert_eq!(
-        launch_count(&launches),
-        1,
-        "only the session scope may launch the migrated row; a workspace launch would duplicate it"
-    );
+    assert!(launch_count(&launches) >= 1, "the session's restore must launch the row it owns");
 }
 
 /// One session's reconciled ownership must not release another session's

@@ -4,43 +4,15 @@
 //! Declared by `controller_background_launch.rs`. The fixtures live here so the
 //! production module keeps only the launch entry point and its reuse logic.
 
-use std::path::PathBuf;
-
 use tempfile::TempDir;
 
-use crate::config::DiapasonConfig;
-use crate::config::types::ReasoningEffortLevel;
 use crate::subagents::background::{background_state_lock_path_for_tests, load_background_state};
-use crate::tools::exec_session::ExecSessionManager;
-use crate::tools::registry::PtySessionManager;
 
 use super::super::controller_background_settlement::{
     mark_background_ledger_write_pending, pending_background_ledger_write_generation,
 };
+use super::super::tests::support::test_controller_config;
 use super::*;
-
-fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
-    let vt_cfg = DiapasonConfig::default();
-    let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
-    let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
-    SubagentControllerConfig {
-        workspace_root,
-        parent_session_id: "parent-session".to_string(),
-        parent_model: "gpt-5.6-sol".to_string(),
-        parent_provider: "openai".to_string(),
-        parent_reasoning_effort: ReasoningEffortLevel::Medium,
-        api_key: "test-key".to_string(),
-        vt_cfg,
-        openai_chatgpt_auth: None,
-        depth: 0,
-        workspace_gated: false,
-        exec_sessions,
-        output_reader: None,
-        pty_manager: pty_sessions.manager().clone(),
-        managed_background_runtime: false,
-        lock_scope: None,
-    }
-}
 
 fn background_record(model_override: Option<&str>) -> BackgroundRecord {
     BackgroundRecord {
@@ -90,9 +62,8 @@ fn prepared_launch(request_model: Option<&str>, spec_model: Option<&str>) -> Pre
 }
 
 async fn active_record_controller(workspace: &TempDir, model_override: Option<&str>) -> SubagentController {
-    let controller = SubagentController::new(test_config(workspace.path().to_path_buf()))
-        .await
-        .expect("controller");
+    let config = test_controller_config(workspace.path().to_path_buf());
+    let controller = SubagentController::new(config).await.expect("controller");
     let record = background_record(model_override);
     {
         let mut state = controller.state.write().await;

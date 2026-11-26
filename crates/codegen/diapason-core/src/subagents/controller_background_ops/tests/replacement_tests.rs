@@ -212,12 +212,11 @@ async fn a_stop_of_a_replacement_displaces_the_launch_it_replaced() {
 /// Completing the claim write must already leave the replacement as the only
 /// row under the record's canonical id — the claim carries the replacement's
 /// exec session and is the launch this snapshot started, so it displaces the
-/// predecessor the merge could otherwise keep. The stop then makes its own
-/// save, as a cancellation always does, and settles that same launch: the
-/// stopped copy names the replacement's exec session, so it wins within the
-/// launch and the ledger ends with the stopped replacement alone. The ledger
-/// checkpoint is the harness's own seam for pausing a save, so the window is
-/// deterministic rather than a race.
+/// predecessor the merge could otherwise keep. The stop then settles that same
+/// launch, and the reservation must answer `Declined`: a `Reserved` answer
+/// would let the caller spawn the process the stop exists to prevent. The
+/// ledger checkpoint is the harness's own seam for pausing a claim write, so
+/// the window is deterministic rather than a race.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_stop_applied_while_the_claim_write_is_paused_leaves_only_the_stopped_replacement() {
@@ -256,11 +255,38 @@ async fn a_stop_applied_while_the_claim_write_is_paused_leaves_only_the_stopped_
 
     // The parked write is only resumed when the reservation is polled again, so
     // the reservation must run to completion before the claim can be on disk.
-    let reservation = reserve.await.expect("the replacement launch reserves the record");
-    assert!(matches!(reservation, BackgroundRunReservation::Reserved));
+    let reservation = reserve.await.expect("a stopped claim is declined, not an error");
+    assert!(
+        matches!(reservation, BackgroundRunReservation::Declined),
+        "a stop that landed during the claim write must prevent the spawn: {reservation:?}"
+    );
+    {
+        let state = controller.state.read().await;
+        let record = state.background_children.get(WORKER).expect("the claimed record");
+        assert_eq!(
+            record.status,
+            BackgroundSubprocessStatus::Stopped,
+            "the claim the stop landed on settles stopped rather than staying active"
+        );
+        assert!(!record.desired_enabled, "the stop keeps the claim it settled");
+    }
 
-    // A cancellation's own save is what carries the stop to the ledger; the
-    // claim write above could only carry the record as it stood when it began.
+    // The claim write is what must already name the replacement: the stop's
+    // own save below would hide a claim write that kept the replaced launch,
+    // so the ledger is read before that save can run.
+    let claimed = load_background_state(temp.path()).await.expect("read the claim on disk");
+    assert_eq!(
+        claimed
+            .records
+            .iter()
+            .map(|record| record.exec_session_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["exec-replacement"],
+        "the claim write alone leaves the replacement as the only row"
+    );
+
+    // The settlement above is in memory only; its save is what carries it to
+    // the ledger.
     controller.save_background_state().await.expect("save the stop");
 
     let ledger = load_background_state(temp.path()).await.expect("read the ledger");

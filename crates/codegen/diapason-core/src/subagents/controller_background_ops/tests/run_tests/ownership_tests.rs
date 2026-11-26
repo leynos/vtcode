@@ -74,7 +74,7 @@ async fn a_launch_does_not_adopt_another_owners_record_through_a_legacy_alias() 
 #[tokio::test]
 async fn a_session_resolves_its_own_record_past_an_ownerless_legacy_row() {
     let temp = TempDir::new().expect("tempdir");
-    let mut config = test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default());
+    let mut config = test_controller_config(temp.path().to_path_buf());
     config.output_reader = Some(std::sync::Arc::new(FakeOutputReader::for_task(
         "background-worker@session-owner",
         FakeOutput::Live("owned output"),
@@ -154,8 +154,11 @@ async fn a_parent_override_rebinds_a_terminal_record_without_stealing_its_owner(
     let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.subagents.background.enabled = true;
     let controller = background_test_controller(temp.path(), vt_cfg).await;
+    // The canonical owner-scoped id, not the bare key: the retention rule is
+    // about a record an owner holds, and a bare id would test only the case
+    // where the id carries no owner to keep.
     let record = background_record(
-        "background-worker",
+        "background-worker@session-a",
         Some("session-a"),
         "background-demo",
         "exec-previous",
@@ -173,7 +176,7 @@ async fn a_parent_override_rebinds_a_terminal_record_without_stealing_its_owner(
     let entry = controller
         .ensure_background_record_running(BackgroundRunRequest {
             agent_name: "background-demo".to_string(),
-            stable_id: Some("background-worker".to_string()),
+            stable_id: Some("background-worker@session-a".to_string()),
             restart_attempts: 0,
             overrides: Some(BackgroundLaunchOverrides {
                 prompt: None,
@@ -193,7 +196,7 @@ async fn a_parent_override_rebinds_a_terminal_record_without_stealing_its_owner(
         "an owner-scoped record keeps the owner its id encodes"
     );
     let state = controller.state.read().await;
-    let record = state.background_children.get("background-worker").expect("record");
+    let record = state.background_children.get("background-worker@session-a").expect("record");
     assert_eq!(record.owner_session_id.as_deref(), Some("session-a"), "the reserved record keeps its owner");
     assert_eq!(
         record.parent_session_id, "other-session",
@@ -208,9 +211,9 @@ async fn a_parent_override_rebinds_a_terminal_record_without_stealing_its_owner(
 
     let published = observer.background_entries();
     assert!(
-        published
-            .iter()
-            .any(|entry| entry.id == "background-worker" && entry.status == BackgroundSubprocessStatus::Running),
+        published.iter().any(|entry| {
+            entry.id == "background-worker@session-a" && entry.status == BackgroundSubprocessStatus::Running
+        }),
         "the snapshot routes by parent_session_id, so the overridden parent's observer receives it"
     );
 

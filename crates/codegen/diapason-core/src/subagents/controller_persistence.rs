@@ -334,7 +334,11 @@ pub(crate) mod ledger_write_checkpoints {
     }
 
     /// Parks here when `workspace_root` has an armed checkpoint.
-    pub(super) async fn pass(workspace_root: &Path) {
+    ///
+    /// `pub(crate)` because the reservation writes its claim through the ledger
+    /// module rather than through [`persist_background_records`], and its write
+    /// is a save the same seam has to be able to park.
+    pub(crate) async fn pass(workspace_root: &Path) {
         let checkpoint = {
             let mut registry = checkpoints().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             registry.retain(|checkpoint| Arc::strong_count(&checkpoint.entered) > 1);

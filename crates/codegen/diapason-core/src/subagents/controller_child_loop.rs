@@ -113,12 +113,11 @@ impl SubagentController {
         launch_checkpoints::pass(&self.state).await;
 
         // Spawn the task and publish its handle in one state-lock section. A
-        // cancel takes the same lock, so it either lands before this section —
-        // leaving the record closed, which refuses the launch — or after it,
-        // where the handle is already published and is aborted with the
-        // record. Releasing the lock in between would let a cancel find no
-        // handle, mark the record closed and return success while the launcher
-        // then started the task and dequeued the prompt back into `Running`.
+        // cancel either lands before it — leaving the record closed, which
+        // refuses the launch — or after it, where the handle is already
+        // published and is aborted with the record. Releasing the lock between
+        // the two would let a cancel find no handle and report success while
+        // the launcher started the task anyway.
         let mut state = self.state.write().await;
         let (status, current_handle) = {
             let record = state
@@ -132,18 +131,23 @@ impl SubagentController {
         }
         // A close and a resume can both land in the window since this launch
         // published the queued state, and the resume starts a loop of its own.
-        // If that loop is already running it has dequeued a prompt, and
-        // replacing its handle would abort the run in progress and leave the
-        // record with no loop left to settle it. Declining here leaves the
-        // resumed loop owning the record; it also dequeues any prompt queued
-        // after it, so there is nothing left for this launch to start.
-        if status == SubagentStatus::Running && current_handle.is_some() {
+        // Replacing a running loop's handle would abort the run in progress and
+        // leave the record with no loop to settle it, so this launch declines:
+        // the resumed loop also dequeues any prompt queued after it.
+        //
+        // `Waiting` is the same loop: input that did not ask to interrupt a run
+        // queues onto it and leaves it waiting for the next prompt, so it is
+        // still live and must not be displaced. `Queued` is deliberately not
+        // included: this launch published that status itself above, so it
+        // cannot distinguish a loop that is coming from one that is only
+        // finishing bookkeeping, and declining for it would strand the prompt
+        // this launch just queued.
+        if matches!(status, SubagentStatus::Running | SubagentStatus::Waiting) && current_handle.is_some() {
             return Ok(());
         }
         // A live handle this launch did not see when it published the queued
-        // state was published by another launch after it — a resume that has
-        // not dequeued its prompt yet. Replacing it would abort that launch's
-        // task before it starts. Declining leaves it to run the queued prompt.
+        // state belongs to another launch, such as a resume that has not
+        // dequeued yet; declining leaves that launch to run the queued prompt.
         if let Some(current) = current_handle
             && Some(current) != observed_handle
         {
@@ -179,14 +183,9 @@ impl SubagentController {
             .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
         // A resume can reach this point while the previous loop is still
         // finishing its bookkeeping, and the record then still carries that
-        // loop's handle. Publishing over it would leave that task running with
-        // no handle to abort, so a later close would stop only the new loop and
-        // the old one would go on to clear the new loop's handle. The displaced
-        // loop is aborted instead, so exactly one loop owns the record and the
-        // handle the record carries is the one a close aborts.
-        if let Some(displaced) = record.handle.replace(handle) {
-            displaced.abort();
-        }
+        // loop's handle. The replacement aborts it rather than overwriting it,
+        // so exactly one loop owns the record and a close aborts that one.
+        publish_child_loop_handle(record, handle);
         Ok(())
     }
 
@@ -388,6 +387,15 @@ impl SubagentController {
     #[cfg(test)]
     pub(super) fn runtime_capture_count(&self) -> u64 {
         runtime_capture_witness::capture_count(&self.state)
+    }
+}
+
+/// Publishes a freshly spawned loop's handle, aborting a displaced one.
+///
+/// Only a loop that was finishing bookkeeping is displaced, never a live run.
+fn publish_child_loop_handle(record: &mut ChildRecord, handle: tokio::task::JoinHandle<()>) {
+    if let Some(displaced) = record.handle.replace(handle) {
+        displaced.abort();
     }
 }
 

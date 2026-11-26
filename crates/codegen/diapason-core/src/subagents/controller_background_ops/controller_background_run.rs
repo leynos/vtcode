@@ -73,7 +73,7 @@ impl SubagentController {
     /// itself committed names the exec session it minted, which is what makes
     /// this the entry that launch may report instead of whatever the id names
     /// afterwards.
-    async fn background_entry_for_launch(
+    pub(super) async fn background_entry_for_launch(
         &self,
         record_id: &str,
         exec_session_id: &str,
@@ -215,7 +215,17 @@ impl SubagentController {
                     continue;
                 }
             };
-            let Some(write_generation) = self.record_background_run_started(&plan, metadata).await? else {
+            let started = {
+                // The exec session is registered from here, so a caller dropped
+                // before its commit owns a live process. The guard hands that
+                // session to reconciliation rather than settling a failure for
+                // a process that may still be running.
+                let spawned_guard = SpawnedLaunchGuard::arm(&self.state, &plan.record_id, &plan.exec_session_id);
+                let started = self.record_background_run_started(&plan, metadata).await;
+                spawned_guard.disarm();
+                started
+            };
+            let Some(write_generation) = started? else {
                 // The record stopped wanting this launch while the spawn was in
                 // flight. The session exists now and nothing records it, so
                 // close it rather than leave an untracked process running. A
@@ -227,7 +237,14 @@ impl SubagentController {
                 // This launch owns no record now, so its claim obligation is
                 // dead. The launch that took the record recorded its own.
                 clear_background_launch_owed(&self.state, &plan.record_id, &plan.exec_session_id);
-                return self.background_status_for(&plan.record_id).await;
+                // An explicit spawn answers for the launch it started. Reporting
+                // the record by id here would name whichever launch holds it
+                // now, so a caller that asked for this launch would be told a
+                // different one - with settings it never used - had started.
+                return Err(anyhow!(
+                    "Background subprocess '{}' was stopped or replaced before its launch could be recorded",
+                    plan.spec.name
+                ));
             };
             // The record is committed in memory but the ledger is not. The
             // commit raised the owed-write obligation under the lock that made
@@ -660,6 +677,51 @@ impl Drop for BackgroundLaunchClaimGuard {
     }
 }
 
+/// Hands a spawned launch that is dropped before its commit to reconciliation.
+///
+/// The spawn registers its exec session before it returns, so a caller dropped
+/// after that point owns a live process. Settling the record as a failed start
+/// would report a process that may still be running as gone, and leaving the
+/// claim's non-retryable obligation in place would exempt the record from every
+/// later observation, including an observed exit. The drop therefore only
+/// clears that obligation: the record still names the registered session, so
+/// the next refresh observes that same session instead of starting another.
+pub(super) struct SpawnedLaunchGuard {
+    state: Arc<RwLock<ControllerState>>,
+    record_id: String,
+    exec_session_id: String,
+    armed: bool,
+}
+
+impl SpawnedLaunchGuard {
+    /// Arms the guard for one launch whose process has started.
+    pub(super) fn arm(state: &Arc<RwLock<ControllerState>>, record_id: &str, exec_session_id: &str) -> Self {
+        Self {
+            state: Arc::clone(state),
+            record_id: record_id.to_owned(),
+            exec_session_id: exec_session_id.to_owned(),
+            armed: true,
+        }
+    }
+
+    /// Reports that the commit answered, so its drop owes nothing.
+    fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for SpawnedLaunchGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        // The handler runs on the dropping thread and must not await. Clearing
+        // the obligation needs no state lock, and it is exactly what lets the
+        // next refresh settle or adopt the registered session.
+        clear_background_launch_owed(&self.state, &self.record_id, &self.exec_session_id);
+    }
+}
+
 /// A test gate between a successful spawn and the commit that records it.
 ///
 /// The commit runs without the state lock, so a cancellation or replacement can
@@ -815,48 +877,21 @@ fn take_background_retry_spec_removal(state: &Arc<RwLock<ControllerState>>) -> b
 mod reservation_error_tests {
     //! Pins the settlement of a bound restart whose reservation fails.
 
-    use std::path::PathBuf;
     use std::time::Duration;
 
     use tempfile::TempDir;
 
-    use crate::config::DiapasonConfig;
-    use crate::config::types::ReasoningEffortLevel;
     use crate::subagents::background::{lock_background_state, persist_background_state};
-    use crate::tools::exec_session::ExecSessionManager;
-    use crate::tools::registry::PtySessionManager;
 
     use super::super::BackgroundRunRequest;
     use super::super::controller_background_lifecycle::background_launch_is_owed;
     use super::super::controller_background_settlement::pending_background_ledger_write_generation;
+    use super::super::tests::support::test_controller_config;
     use super::*;
 
     const WORKER: &str = "background-worker";
     const WORKER_AGENT: &str = "worker";
     const OBSERVED_EXEC: &str = "exec-observed";
-
-    fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
-        let vt_cfg = DiapasonConfig::default();
-        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
-        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
-        SubagentControllerConfig {
-            workspace_root,
-            parent_session_id: "parent-session".to_string(),
-            parent_model: "gpt-5.6-sol".to_string(),
-            parent_provider: "openai".to_string(),
-            parent_reasoning_effort: ReasoningEffortLevel::Medium,
-            api_key: "test-key".to_string(),
-            vt_cfg,
-            openai_chatgpt_auth: None,
-            depth: 0,
-            workspace_gated: false,
-            exec_sessions,
-            output_reader: None,
-            pty_manager: pty_sessions.manager().clone(),
-            managed_background_runtime: false,
-            lock_scope: None,
-        }
-    }
 
     fn background_record() -> BackgroundRecord {
         BackgroundRecord {
@@ -899,7 +934,7 @@ mod reservation_error_tests {
     #[tokio::test]
     async fn a_reservation_fault_settles_the_restart_that_spent_its_allowance() {
         let temp = TempDir::new().expect("tempdir");
-        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+        let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf()))
             .await
             .expect("controller");
         {
@@ -1029,7 +1064,7 @@ mod reservation_error_tests {
     #[tokio::test]
     async fn an_explicit_start_declines_a_competing_persisted_claim() {
         let temp = TempDir::new().expect("tempdir");
-        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+        let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf()))
             .await
             .expect("controller");
         persist_background_state(temp.path(), vec![persisted_claim("exec-other")])
@@ -1068,7 +1103,7 @@ mod reservation_error_tests {
     #[tokio::test]
     async fn a_launch_dropped_before_its_spawn_settles_the_unstarted_claim() {
         let temp = TempDir::new().expect("tempdir");
-        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+        let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf()))
             .await
             .expect("controller");
         let (entered, _release) = gate_next_background_spawn(&controller.state);

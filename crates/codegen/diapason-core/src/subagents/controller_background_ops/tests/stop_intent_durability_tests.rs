@@ -9,7 +9,7 @@
 use tempfile::TempDir;
 
 use crate::config::DiapasonConfig;
-use crate::subagents::background::load_background_state;
+use crate::subagents::background::{load_background_state, persist_background_state};
 use crate::subagents::{BackgroundSubprocessStatus, TaskOwner};
 use crate::utils::session_archive::override_sessions_dir_for_tests;
 
@@ -96,6 +96,12 @@ async fn clearing_a_terminal_intent_raises_the_write_obligation() {
     let temp = TempDir::new().expect("tempdir");
     let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
     let record = background_record(WORKER, None, "worker", "", BackgroundSubprocessStatus::Error, true);
+    // Restore selects on this flag alone, so the durable row must begin
+    // enabled; otherwise a later pass that wrote nothing would still leave the
+    // assertion below satisfied.
+    persist_background_state(temp.path(), vec![record.clone().into_persisted()])
+        .await
+        .expect("seed the enabled row a resume would restore");
     {
         let mut state = controller.state.write().await;
         state.background_children.insert(record.id.clone(), record);
@@ -117,6 +123,24 @@ async fn clearing_a_terminal_intent_raises_the_write_obligation() {
     assert!(
         pending_background_ledger_write_generation(&controller.state).is_some(),
         "the cleared intent must owe the ledger the write that reaches restore selection"
+    );
+
+    // The obligation is only worth raising if a later pass actually persists
+    // the interrupted stop: a marker nothing drives would still pass the
+    // assertion above. Refresh is the pass that retries the owed write.
+    controller
+        .refresh_background_processes()
+        .await
+        .expect("the next refresh persists the interrupted stop");
+    let persisted = load_background_state(temp.path()).await.expect("reload the ledger");
+    let stored = persisted
+        .records
+        .iter()
+        .find(|row| row.id == WORKER)
+        .expect("the interrupted stop reaches the ledger");
+    assert!(
+        !stored.desired_enabled,
+        "the reconciliation pass must persist the cleared intent a resume selects on"
     );
 
     controller.signal_shutdown().await;
@@ -181,6 +205,62 @@ async fn an_archive_fault_does_not_lose_a_confirmed_stop() {
     );
 
     drop(registration);
+    controller.signal_shutdown().await;
+}
+
+/// A stop answers with the archive paths the refresh attached.
+///
+/// The close captures the stop's entry before `finish_background_cancellation`
+/// refreshes the archive, so answering with that copy reports no archive while
+/// the saved record has one. The refresh's paths belong to the launch the close
+/// settled, so the stop re-reads that launch and never a replacement.
+#[tokio::test]
+async fn a_stop_reports_the_archive_paths_attached_after_its_close() {
+    use std::path::PathBuf;
+
+    use super::super::controller_background_archive::attach_background_archive_paths;
+
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+    let exec_session_id = "exec-archive";
+    let record = background_record(WORKER, None, "worker", exec_session_id, BackgroundSubprocessStatus::Stopped, false);
+    let session_id = record.session_id.clone();
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(record.id.clone(), record);
+    }
+    let closed = controller
+        .background_status_for(WORKER)
+        .await
+        .expect("the launch the close settled");
+    assert!(closed.archive_path.is_none(), "the close's copy predates the refresh");
+
+    let archive = PathBuf::from("/archive/session-background-worker.json");
+    {
+        let mut state = controller.state.write().await;
+        attach_background_archive_paths(&mut state, WORKER, &session_id, exec_session_id, &archive);
+    }
+    let reported = controller
+        .refreshed_settled_background_stop(WORKER, Some(closed))
+        .await
+        .expect("the stop reports its own launch");
+    assert_eq!(reported.exec_session_id, exec_session_id);
+    assert_eq!(reported.archive_path, Some(archive.clone()), "the stop reports the archive the refresh attached");
+    assert_eq!(reported.transcript_path, Some(archive), "the transcript path came from the same refresh");
+
+    // A replacement launch is never reported as this stop's outcome.
+    let own = controller.background_status_for(WORKER).await.expect("the stop's own entry");
+    let replacement = background_record(WORKER, None, "worker", "exec-next", BackgroundSubprocessStatus::Running, true);
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(replacement.id.clone(), replacement);
+    }
+    let reported = controller
+        .refreshed_settled_background_stop(WORKER, Some(own))
+        .await
+        .expect("a stop whose launch moved keeps its own entry");
+    assert_eq!(reported.exec_session_id, exec_session_id, "a replacement is not the stop's outcome");
+
     controller.signal_shutdown().await;
 }
 

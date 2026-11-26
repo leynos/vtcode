@@ -220,9 +220,10 @@ session archive. See the
 
 `diapason acp` serves the Agent Client Protocol over stdio. During
 `initialize`, Diapason advertises Lody extensions at
-`result.agentCapabilities._meta.lody`. `usage` is always present, and subagent
-`lifecycle`, `list`, `cancel`, and `output` are advertised when a subagent
-controller exists for the launch workspace.
+`result.agentCapabilities._meta.lody`. `usage` is always present directly under
+`lody`. When a subagent controller exists for the launch workspace, the
+capability object at `result.agentCapabilities._meta.lody.subagents` is
+advertised with `version`, `lifecycle`, `list`, `cancel`, and `output`.
 `result.agentCapabilities._meta.lody.tasks.background` appears only when
 background subagents are enabled. These capabilities describe the launch
 workspace. Management is session-scoped, so a request can still fail with

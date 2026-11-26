@@ -2,8 +2,6 @@
 
 use super::*;
 
-use std::collections::{BTreeMap, BTreeSet};
-
 use super::super::background_ledger;
 use super::controller_background_lifecycle::clear_background_launch_owed;
 use super::controller_background_settlement::{
@@ -344,7 +342,22 @@ impl SubagentController {
     /// writing the claim it observed would resurrect a stopped task in the
     /// ledger. A record that has moved to another launch writes nothing, and
     /// the caller's later save carries whatever it became.
-    pub(super) async fn persist_reserved_background_claim(&self, record_id: &str, exec_session_id: &str) -> Result<()> {
+    ///
+    /// The claim is written as one transition rather than through the ordinary
+    /// save merge. That merge keeps a persisted row which recorded its start
+    /// over a claim that has not begun, which is what stops a refresh from
+    /// erasing a live replacement; a reservation replacing exactly that row is
+    /// the one writer allowed to displace it. Only the predecessor the locked
+    /// admission decision named is removed, so a stop, a migrated launch or a
+    /// competing claim that decision refused is left untouched. The following
+    /// save maintains the migration evidence and drops stale aliases exactly as
+    /// it does for every other write.
+    pub(super) async fn persist_reserved_background_claim(
+        &self,
+        record_id: &str,
+        exec_session_id: &str,
+        replaced_exec_session_id: Option<&str>,
+    ) -> Result<()> {
         let claimed = {
             let state = self.state.read().await;
             let Some(record) = state.background_children.get(record_id) else {
@@ -357,14 +370,29 @@ impl SubagentController {
         };
         let mut persisted = claimed.into_persisted();
         persisted.canonicalize_id();
-        controller_persistence::persist_background_records(
-            &self.config.workspace_root,
-            self.background_owner_session_id.as_deref(),
-            vec![persisted],
-            &BTreeSet::new(),
-            &BTreeMap::new(),
-        )
-        .await
-        .with_context(|| format!("Failed to persist the background claim for {record_id}"))
+        // The claim write is the reservation's save, so the seam that parks an
+        // ordinary save parks here too: the claim exists in memory and the
+        // caller can be dropped before it reaches the ledger, which is the
+        // window the reservation's claim guard exists to cover.
+        #[cfg(all(test, unix))]
+        controller_persistence::ledger_write_checkpoints::pass(&self.config.workspace_root).await;
+        let ledger = background_ledger::load_background_ledger(&self.config.workspace_root).await?;
+        let mut records = ledger.records;
+        // The predecessor the decision examined is dropped, and so is a stale
+        // copy of this claim itself: one launch is never stored twice, even when
+        // a retried write runs after an interrupted one.
+        records.retain(|row| {
+            let mut canonical = row.clone();
+            canonical.canonicalize_id();
+            if canonical.id != persisted.id {
+                return true;
+            }
+            canonical.exec_session_id != persisted.exec_session_id
+                && replaced_exec_session_id.is_none_or(|replaced| canonical.exec_session_id != replaced)
+        });
+        records.push(persisted);
+        background_ledger::persist_background_ledger(&self.config.workspace_root, records, &ledger.migrated_launches)
+            .await
+            .with_context(|| format!("Failed to persist the background claim for {record_id}"))
     }
 }

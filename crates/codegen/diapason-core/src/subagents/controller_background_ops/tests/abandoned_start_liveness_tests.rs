@@ -7,6 +7,7 @@
 //! The orphan is left for the refresh path to settle; the list must not claim it
 //! is alive in the meantime.
 
+use rstest::rstest;
 use tempfile::TempDir;
 
 use crate::config::DiapasonConfig;
@@ -20,155 +21,94 @@ const WORKER: &str = "background-worker";
 const WORKER_AGENT: &str = "worker";
 const EXEC: &str = "exec-abandoned";
 
-/// A locally driven `Starting` record with no obligation is not active.
+/// A background record's liveness projection follows the launch it is owed.
 ///
-/// The claim a launch writes is `Starting` with its obligation recorded. When
-/// that driver disappears the obligation is cleared but the record keeps the
-/// status until a refresh settles it. The list must not read that window as a
-/// live task: the exec session never registered, and nothing will start one.
-#[tokio::test]
-async fn a_starting_record_without_a_launch_obligation_is_not_active() {
-    let temp = TempDir::new().expect("tempdir");
-    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
-    let record = background_record(WORKER, None, WORKER_AGENT, EXEC, BackgroundSubprocessStatus::Starting, true);
-    {
-        let mut state = controller.state.write().await;
-        state.background_children.insert(WORKER.to_string(), record);
-    }
-    // The claim still owes its write, so the projection is not answering from a
-    // record the ledger has received either.
-    mark_background_ledger_write_pending(&controller.state);
-
-    let entries = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
-    let entry = entries
-        .iter()
-        .find(|entry| entry.entry.id == WORKER)
-        .expect("the record is listed");
-
-    assert!(
-        !entry.entry.status.is_active(),
-        "an abandoned Starting claim must not be projected as an active launch: {:?}",
-        entry.entry.status
-    );
-
-    controller.signal_shutdown().await;
-}
-
-/// A `Starting` record with an in-flight launch is still active.
+/// One body covers every arm of the projection. `status` and
+/// `restart_attempts` are the record as refresh last left it; `auto_restore` is
+/// the configuration the projection reads; `obligation` is the launch still
+/// owed, as `(restart_attempts, retry_from_refresh)`; and `ledger_write_debt`
+/// marks a write the ledger has not received. The debt is deliberately separate
+/// from the obligation: one cannot substitute for the other, so an orphan claim
+/// with a pending write must still project as settled.
 ///
-/// The positive control: the same fixture with its obligation recorded is the
-/// launch the caller is waiting for, and it must stay `Starting` rather than be
-/// reported as a failure while the process is still coming up.
+/// The cases are the pairs that must stay distinguishable. A claim with its
+/// launch in flight is active whichever budget spent it; a claim nothing drives
+/// is not, even when automatic restore would permit one, because this read
+/// starts nothing; and a missing `Running` record predicts the replacement
+/// refresh will schedule.
+#[rstest]
+#[case::an_abandoned_claim_is_not_active(
+    BackgroundSubprocessStatus::Starting,
+    0,
+    false,
+    None,
+    true,
+    BackgroundSubprocessStatus::Error
+)]
+#[case::an_in_flight_launch_stays_active(
+    BackgroundSubprocessStatus::Starting,
+    0,
+    false,
+    Some((0, false)),
+    false,
+    BackgroundSubprocessStatus::Starting
+)]
+#[case::a_restart_with_a_spent_budget_stays_active(
+    BackgroundSubprocessStatus::Starting,
+    1,
+    false,
+    Some((1, true)),
+    false,
+    BackgroundSubprocessStatus::Starting
+)]
+#[case::a_running_record_follows_the_exit_projection(
+    BackgroundSubprocessStatus::Running,
+    0,
+    false,
+    None,
+    false,
+    BackgroundSubprocessStatus::Error
+)]
+#[case::an_orphan_is_inactive_while_restore_is_allowed(
+    BackgroundSubprocessStatus::Starting,
+    0,
+    true,
+    None,
+    false,
+    BackgroundSubprocessStatus::Error
+)]
+#[case::a_missing_running_record_predicts_its_restart(
+    BackgroundSubprocessStatus::Running,
+    0,
+    true,
+    None,
+    false,
+    BackgroundSubprocessStatus::Starting
+)]
 #[tokio::test]
-async fn a_starting_record_with_an_in_flight_launch_stays_active() {
-    let temp = TempDir::new().expect("tempdir");
-    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
-    let record = background_record(WORKER, None, WORKER_AGENT, EXEC, BackgroundSubprocessStatus::Starting, true);
-    {
-        let mut state = controller.state.write().await;
-        state.background_children.insert(WORKER.to_string(), record);
-    }
-    mark_background_launch_owed(&controller.state, WORKER, WORKER_AGENT, 0, EXEC, false);
-
-    let entries = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
-    let entry = entries
-        .iter()
-        .find(|entry| entry.entry.id == WORKER)
-        .expect("the record is listed");
-
-    assert_eq!(
-        entry.entry.status,
-        BackgroundSubprocessStatus::Starting,
-        "a claim with its launch still in flight must stay Starting"
-    );
-    assert!(entry.entry.status.is_active(), "the launch is active while it is still owed");
-
-    controller.signal_shutdown().await;
-}
-
-/// A restart in flight stays active after the budget is spent.
-///
-/// Refresh increments the restart counter before the replacement exec session is
-/// registered, so a record can be `Starting` with its one allowance already
-/// spent and a replacement on its way. The obligation is what distinguishes
-/// that from an abandoned claim with the same counters: the positive control
-/// above covers a fresh start, and this covers the restart, so the projection
-/// cannot be narrowed to "an unspent budget" without failing one of them.
-#[tokio::test]
-async fn a_starting_restart_with_a_spent_budget_stays_active() {
-    let temp = TempDir::new().expect("tempdir");
-    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
-    let mut record = background_record(WORKER, None, WORKER_AGENT, EXEC, BackgroundSubprocessStatus::Starting, true);
-    record.restart_attempts = 1;
-    {
-        let mut state = controller.state.write().await;
-        state.background_children.insert(WORKER.to_string(), record);
-    }
-    mark_background_launch_owed(&controller.state, WORKER, WORKER_AGENT, 1, EXEC, true);
-
-    let entries = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
-    let entry = entries
-        .iter()
-        .find(|entry| entry.entry.id == WORKER)
-        .expect("the record is listed");
-
-    assert_eq!(
-        entry.entry.status,
-        BackgroundSubprocessStatus::Starting,
-        "a restart still in flight must stay Starting however its budget was spent"
-    );
-
-    controller.signal_shutdown().await;
-}
-
-/// A running record is unaffected by the obligation rule.
-///
-/// The rule narrows one projection arm only. A `Running` record with no
-/// obligation, whose session read fails as missing, still follows the existing
-/// path rather than being confused with an abandoned claim.
-#[tokio::test]
-async fn a_running_record_is_untouched_by_the_launch_obligation_rule() {
-    let temp = TempDir::new().expect("tempdir");
-    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
-    let record =
-        background_record(WORKER, None, WORKER_AGENT, "exec-running", BackgroundSubprocessStatus::Running, true);
-    {
-        let mut state = controller.state.write().await;
-        state.background_children.insert(WORKER.to_string(), record);
-    }
-
-    let entries = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
-    let entry = entries
-        .iter()
-        .find(|entry| entry.entry.id == WORKER)
-        .expect("the record is listed");
-    // Auto-restore is off by default, so the missing session settles it.
-    assert_eq!(
-        entry.entry.status,
-        BackgroundSubprocessStatus::Error,
-        "a Running record with no obligation follows the ordinary exit projection"
-    );
-
-    controller.signal_shutdown().await;
-}
-
-/// An orphaned claim stays inactive even while automatic restore is enabled.
-///
-/// The restart budget is not a driver. With `auto_restore` enabled and an
-/// unspent attempt, the projection used to report an obligation-free
-/// `Starting` claim as active because `restart_allowed` was consulted for every
-/// status. This read starts nothing, so it must leave the orphan to the refresh
-/// path and not claim it is alive in the meantime.
-#[tokio::test]
-async fn an_orphaned_claim_is_not_active_when_auto_restore_is_enabled() {
+async fn a_backgrounds_liveness_projection_follows_the_launch_it_owes(
+    #[case] status: BackgroundSubprocessStatus,
+    #[case] restart_attempts: u8,
+    #[case] auto_restore: bool,
+    #[case] obligation: Option<(u8, bool)>,
+    #[case] ledger_write_debt: bool,
+    #[case] expected: BackgroundSubprocessStatus,
+) {
     let temp = TempDir::new().expect("tempdir");
     let mut config = DiapasonConfig::default();
-    config.subagents.background.auto_restore = true;
+    config.subagents.background.auto_restore = auto_restore;
     let controller = background_test_controller(temp.path(), config).await;
-    let record = background_record(WORKER, None, WORKER_AGENT, EXEC, BackgroundSubprocessStatus::Starting, true);
+    let mut record = background_record(WORKER, None, WORKER_AGENT, EXEC, status, true);
+    record.restart_attempts = restart_attempts;
     {
         let mut state = controller.state.write().await;
         state.background_children.insert(WORKER.to_string(), record);
+    }
+    if let Some((attempts, retry_from_refresh)) = obligation {
+        mark_background_launch_owed(&controller.state, WORKER, WORKER_AGENT, attempts, EXEC, retry_from_refresh);
+    }
+    if ledger_write_debt {
+        mark_background_ledger_write_pending(&controller.state);
     }
 
     let entries = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
@@ -178,43 +118,14 @@ async fn an_orphaned_claim_is_not_active_when_auto_restore_is_enabled() {
         .expect("the record is listed");
 
     assert_eq!(
-        entry.entry.status,
-        BackgroundSubprocessStatus::Error,
-        "an orphaned claim must not be projected as active merely because a restart is allowed"
+        entry.entry.status, expected,
+        "the liveness projection must report the phase the record's launch is really in"
     );
-
-    controller.signal_shutdown().await;
-}
-
-/// A missing `Running` record still predicts the restart its budget allows.
-///
-/// The separation the orphan rule needs: a process observed gone with an
-/// unspent allowance is a launch refresh will replace, so it keeps projecting
-/// `Starting`. Only an obligation-free `Starting` claim is left to settlement.
-#[tokio::test]
-async fn a_missing_running_record_predicts_its_permitted_restart() {
-    let temp = TempDir::new().expect("tempdir");
-    let mut config = DiapasonConfig::default();
-    config.subagents.background.auto_restore = true;
-    let controller = background_test_controller(temp.path(), config).await;
-    let record =
-        background_record(WORKER, None, WORKER_AGENT, "exec-vanished", BackgroundSubprocessStatus::Running, true);
-    {
-        let mut state = controller.state.write().await;
-        state.background_children.insert(WORKER.to_string(), record);
+    // `BackgroundSubprocessStatus` has `is_active`; a settled projection is the
+    // inverse, and only a settled projection carries an end instant.
+    if !expected.is_active() {
+        assert!(entry.entry.ended_at.is_some(), "a terminal projection carries an end instant");
     }
-
-    let entries = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
-    let entry = entries
-        .iter()
-        .find(|entry| entry.entry.id == WORKER)
-        .expect("the record is listed");
-
-    assert_eq!(
-        entry.entry.status,
-        BackgroundSubprocessStatus::Starting,
-        "a permitted restart is still predicted for an exited launch"
-    );
 
     controller.signal_shutdown().await;
 }

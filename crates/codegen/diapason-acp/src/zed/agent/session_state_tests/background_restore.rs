@@ -455,6 +455,107 @@ async fn a_resumed_attach_defers_the_workspace_restore_until_its_checkpoint() {
     assert!(!marker.exists(), "a resumed attach must restore nothing before its required checkpoint succeeds");
 }
 
+/// A failed attach releases the blocker it put on the shared restore.
+///
+/// A resumed attach records itself as an unresolved owner when it defers the
+/// workspace restore, and `release_workspace_lease` does not clear that blocker.
+/// A failure after ownership is reconciled has nothing left to protect, so the
+/// blocker must go: otherwise every other session that shares the runtime stays
+/// blocked until this session resumes again or the runtime shuts down. The
+/// holder lease stands in for such a session, keeping the runtime and its debt
+/// alive after the failed attach has released its own lease.
+#[tokio::test]
+async fn a_failed_attach_releases_its_workspace_restore_blocker() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp = TempDir::new().expect("create temporary workspace for the failed-attach release test");
+    let launch_workspace = temp.path();
+    let session_workspace = launch_workspace.join("session-workspace");
+    fs::create_dir_all(&session_workspace).expect("create the session workspace");
+    let marker = session_workspace.join("background-restored-marker");
+    write_background_restore_fixture_with_marker(&session_workspace, Some(&marker));
+    let state_dir = session_workspace.join(diapason_commons::workspace_dir_name()).join("state");
+    fs::create_dir_all(&state_dir).expect("create the background state directory");
+    let ledger_path = seed_restorable_background_ledger(&state_dir, "failed-attach-release");
+    let mut vt_config = diapason_core::config::DiapasonConfig::default();
+    vt_config.subagents.enabled = true;
+    vt_config.subagents.background.enabled = true;
+    vt_config.subagents.background.auto_restore = true;
+    let agent = build_agent_with_vt_config(launch_workspace, "duck", Some(&vt_config)).await;
+    let workspace = AcpSessionWorkspace::from_client_cwd(&session_workspace)
+        .await
+        .expect("build the ACP session workspace from the session directory");
+    // The runtime can be built before any session resumes, so a lease taken
+    // here keeps it, and the debt it carries, alive across the failed attach.
+    let holder_session = acp::SessionId::new("background-failed-attach-holder");
+    let holder = agent
+        .workspace_runtime_for(&workspace, Some(&holder_session))
+        .await
+        .expect("hold the shared workspace runtime");
+    let workspace_runtime = Arc::clone(holder.runtime());
+
+    let session_id = acp::SessionId::new("background-failed-attach-session");
+    let mut listing = archived_listing("background-failed-attach", &session_workspace, "continue");
+    listing.snapshot.messages = vec![SessionMessage::from(&Message::assistant_with_tools(
+        String::new(),
+        vec![ToolCall::function(
+            "deferred-restore-call".to_string(),
+            "apply_patch".to_string(),
+            "{}".to_string(),
+        )],
+    ))];
+    listing.snapshot.total_messages = 1;
+    fs::create_dir(&listing.path).expect("occupy the archive path with a directory");
+    let error = match agent.attach_thread_from_listing(&session_id, &workspace, listing).await {
+        Ok(_) => panic!("a directory at the archive path must make the required checkpoint fail"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.to_string(),
+        "Failed to persist repaired ACP tool-call history: archive_write_failed",
+        "the deadline must fail at the required checkpoint"
+    );
+
+    // The failed attach reconciled ownership, so only the holder may still
+    // block the debt; its release must be enough to make the restore payable.
+    workspace_runtime.release_background_restore(holder_session.0.as_ref());
+    assert!(
+        workspace_runtime.pending_background_restore_is_payable(),
+        "a failed attach whose ownership is reconciled must not hold the shared restore"
+    );
+    let ledger = fs::read_to_string(&ledger_path).expect("read the ledger after the failed attach");
+    let persisted: serde_json::Value = serde_json::from_str(&ledger).expect("parse the ledger after the failed attach");
+    assert_eq!(
+        persisted["records"][0]["exec_session_id"], "exec-missing",
+        "a failed attach must not restore a child before its checkpoint: {persisted}"
+    );
+
+    // A later acquisition reuses the runtime and claims the debt the failure
+    // kept, rather than waiting for a resume of this session that may never
+    // come.
+    let retry = agent
+        .workspace_runtime_for(&workspace, None)
+        .await
+        .expect("a later acquisition must reuse the runtime that carries the debt");
+    assert!(
+        Arc::ptr_eq(retry.runtime(), &workspace_runtime),
+        "the retry must reuse the runtime that carries the debt"
+    );
+    assert!(
+        !workspace_runtime.pending_background_restore_is_payable(),
+        "a successful pass must discharge the debt"
+    );
+    drop(retry);
+    for _ in 0..20 {
+        if marker.exists() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert!(marker.exists(), "the released debt must be restored by the next acquisition");
+    drop(holder);
+}
+
 /// A restore that fails keeps its obligation for a later attempt.
 ///
 /// The first pass cannot take the ledger lock, so it restores nothing. The debt

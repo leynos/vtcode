@@ -200,16 +200,18 @@ fn empty_launch_evidence_does_not_drop_an_ownerless_row() {
     assert!(record.exec_session_id.is_empty(), "the saved row keeps its identity");
 }
 
-/// An identified persisted launch survives empty rows under its canonical id.
+/// An identified persisted launch survives unidentified rows under its id.
 ///
-/// Two rows with empty exec ids make their canonical id ambiguous, so neither
-/// can be resolved. A third row under that id names `exec-live`, and that is an
-/// identified launch: dropping the whole id discards a live task the load should
-/// list and a save should keep.
+/// Two rows that name neither an exec session nor a child session make their
+/// canonical id ambiguous, so neither can be resolved. A third row under that
+/// id names `exec-live`, and that is an identified launch: dropping the whole
+/// id discards a live task the load should list and a save should keep.
 #[test]
-fn an_identified_launch_survives_empty_launch_rows_under_its_id() {
-    let stopped = launch_copy("worker", Some("session-a"), "", false, "2026-08-28T00:00:01Z");
-    let desired = launch_copy("worker", Some("session-a"), "", true, "2026-08-28T00:00:02Z");
+fn an_identified_launch_survives_unidentified_rows_under_its_id() {
+    let mut stopped = launch_copy("worker", Some("session-a"), "", false, "2026-08-28T00:00:01Z");
+    stopped.session_id = String::new();
+    let mut desired = launch_copy("worker", Some("session-a"), "", true, "2026-08-28T00:00:02Z");
+    desired.session_id = String::new();
     let live = launch_copy("worker", Some("session-a"), "exec-live", true, "2026-08-28T00:00:03Z");
     let records = vec![stopped, desired, live];
 

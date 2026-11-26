@@ -864,7 +864,7 @@ impl SubagentController {
     /// A settled record also raises the owed-write marker, in the same lock
     /// that clears its close obligation: from that moment the outcome exists
     /// only in memory, so an interrupted save must leave the write retryable.
-    async fn settle_background_stop_closed(
+    pub(super) async fn settle_background_stop_closed(
         &self,
         record_id: &str,
         exec_session_id: &str,
@@ -1220,7 +1220,30 @@ impl SubagentController {
         }
         self.save_background_state().await?;
         clear_background_ledger_write_pending(&self.state, generation);
+        let settled = self.refreshed_settled_background_stop(target, settled).await;
         self.publish_settled_background_stop(target, settled).await
+    }
+
+    /// Re-reads a stop's own entry after an archive refresh attached paths.
+    ///
+    /// The archive refresh attaches the archive and transcript paths after the
+    /// close captured this stop's entry, so answering with the earlier copy
+    /// reports a stop with no archive while the saved record has one. Only the
+    /// launch the close settled is re-read: the re-read keeps the identity
+    /// guarantee in [`Self::publish_settled_background_stop`] by matching the
+    /// exec session, so a replacement launch is never reported as this stop's
+    /// outcome.
+    pub(super) async fn refreshed_settled_background_stop(
+        &self,
+        record_id: &str,
+        settled: Option<BackgroundSubprocessEntry>,
+    ) -> Option<BackgroundSubprocessEntry> {
+        let entry = settled?;
+        Some(
+            self.background_entry_for_launch(record_id, entry.exec_session_id.as_str())
+                .await
+                .unwrap_or(entry),
+        )
     }
 }
 
@@ -1343,43 +1366,15 @@ mod stop_close_settlement_tests {
     //! owed to the ledger across an interrupted save, and a later close must
     //! not leave the pending-stop summary claiming the stop is in progress.
 
-    use std::path::PathBuf;
-
     use tempfile::TempDir;
 
-    use crate::config::DiapasonConfig;
-    use crate::config::types::ReasoningEffortLevel;
     use crate::subagents::background::load_background_state;
-    use crate::tools::exec_session::ExecSessionManager;
-    use crate::tools::registry::PtySessionManager;
 
+    use super::super::tests::support::test_controller_config;
     use super::*;
 
     const WORKER: &str = "background-worker";
     const EXEC: &str = "exec-attempt";
-
-    fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
-        let vt_cfg = DiapasonConfig::default();
-        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
-        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
-        SubagentControllerConfig {
-            workspace_root,
-            parent_session_id: "parent-session".to_string(),
-            parent_model: "gpt-5.6-sol".to_string(),
-            parent_provider: "openai".to_string(),
-            parent_reasoning_effort: ReasoningEffortLevel::Medium,
-            api_key: "test-key".to_string(),
-            vt_cfg,
-            openai_chatgpt_auth: None,
-            depth: 0,
-            workspace_gated: false,
-            exec_sessions,
-            output_reader: None,
-            pty_manager: pty_sessions.manager().clone(),
-            managed_background_runtime: false,
-            lock_scope: None,
-        }
-    }
 
     fn background_record() -> BackgroundRecord {
         BackgroundRecord {
@@ -1421,7 +1416,7 @@ mod stop_close_settlement_tests {
     #[tokio::test]
     async fn a_confirmed_stop_close_drains_its_attempt_registry_entry() {
         let temp = TempDir::new().expect("tempdir");
-        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+        let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf()))
             .await
             .expect("controller");
         {
@@ -1458,7 +1453,7 @@ mod stop_close_settlement_tests {
     #[tokio::test]
     async fn a_reconciled_stop_dropped_before_its_save_stays_owed() {
         let temp = TempDir::new().expect("tempdir");
-        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+        let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf()))
             .await
             .expect("controller");
         {
@@ -1527,7 +1522,7 @@ mod stop_close_settlement_tests {
     #[tokio::test]
     async fn a_later_confirmed_close_clears_the_pending_stop_summary() {
         let temp = TempDir::new().expect("tempdir");
-        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+        let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf()))
             .await
             .expect("controller");
         let mut record = background_record();

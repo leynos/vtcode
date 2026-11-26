@@ -2,7 +2,9 @@
 //!
 //! Declared by `tests.rs`. Both cases turn on the ledger row the reservation
 //! reads under the lock it writes its own claim with, which is the only place
-//! two controllers' claims can be ordered.
+//! two controllers' claims can be ordered. The companion rule - what a
+//! reservation may replace, rather than refuse - is pinned in
+//! `reserve_tests.rs`, next to the reservation it belongs to.
 
 use tempfile::TempDir;
 
@@ -173,16 +175,19 @@ async fn a_reuse_for_another_parent_session_is_refused_without_an_invocation_con
     controller.signal_shutdown().await;
 }
 
-/// A bound replacement must confirm the ledger kept the claim it wrote.
+/// A bound replacement displaces the launch it observed before it spawns.
 ///
-/// The save merges rather than replaces, and a persisted launch that recorded
-/// its start outranks a claim that has not begun, so the ledger still names the
-/// previous launch. Reporting `Reserved` then would start a process beside a
-/// launch the ledger names. The persisted start is seeded ahead of the wall
-/// clock so the fixture also covers the clock skew between writers that first
-/// exposed this; the refusal must not depend on that ordering.
+/// The save merge keeps a persisted row that recorded its start over a claim
+/// that has not begun, which is what stops a refresh from erasing a live
+/// replacement. A reservation replacing exactly that launch is the one writer
+/// allowed to displace it, so the claim is written as a transition that removes
+/// only the predecessor the locked decision named. Without it, every restart of
+/// a launch that had already run failed before spawning: the readback found the
+/// old launch still in the ledger and the caller was told a launch that never
+/// started had failed. The persisted start is seeded ahead of the wall clock so
+/// the transition is also shown not to depend on clock order between writers.
 #[tokio::test]
-async fn a_bound_replacement_the_ledger_did_not_record_is_refused() {
+async fn a_bound_replacement_displaces_the_launch_that_recorded_its_start() {
     let temp = TempDir::new().expect("tempdir");
     // Derived from the wall clock: a fixed date would stop exercising the merge
     // once that date had passed.
@@ -203,28 +208,25 @@ async fn a_bound_replacement_the_ledger_did_not_record_is_refused() {
     let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
     insert_observed_record(&controller).await;
 
-    let error = controller
+    let reservation = controller
         .reserve_background_run(&plan(worker_spec(), "exec-replacement", Some(OBSERVED_EXEC)))
         .await
-        .expect_err("a claim the ledger did not keep must refuse the replacement");
+        .expect("an eligible replacement reaches the ledger before the readback");
+
     assert!(
-        format!("{error:#}").contains("did not keep the claim"),
-        "the caller is told the ledger did not record the claim: {error:#}"
+        matches!(reservation, BackgroundRunReservation::Reserved),
+        "a replacement whose claim the ledger holds may spawn: {reservation:?}"
     );
     let ledger = load_background_state(temp.path()).await.expect("read the ledger");
     assert_eq!(
-        ledger.records.first().map(|record| record.exec_session_id.as_str()),
-        Some(OBSERVED_EXEC),
-        "the ledger must still name the launch it kept, with no second launch claimed"
+        ledger
+            .records
+            .iter()
+            .map(|record| record.exec_session_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["exec-replacement"],
+        "the claim replaces the launch it observed and no other row"
     );
-    let state = controller.state.read().await;
-    let record = state.background_children.get(WORKER).expect("record");
-    assert_eq!(
-        record.status,
-        BackgroundSubprocessStatus::Error,
-        "a refused replacement settles the launch it never started"
-    );
-    drop(state);
 
     controller.signal_shutdown().await;
 }
@@ -516,6 +518,19 @@ async fn a_contended_claim_drop_leaves_the_record_for_refresh_to_settle() {
 #[case::competing_claim(
     Some(persisted_row(WORKER, None, WORKER_AGENT, "exec-other", true)),
     false,
+    ExplicitStartAdmission::CompetingClaim
+)]
+// A pending local stop must not outrank a blocker the ledger carries. Passing
+// the blockers together is what proves the persisted checks come first: a local
+// check that was moved ahead of them would answer `StopClosePending` here.
+#[case::an_unconfirmed_close_outranks_a_pending_stop(
+    Some(persisted_row_with_status(WORKER, None, WORKER_AGENT, OBSERVED_EXEC, false, PERSISTED_RUNNING_STATUS)),
+    true,
+    ExplicitStartAdmission::CloseUnconfirmed
+)]
+#[case::a_competing_claim_outranks_a_pending_stop(
+    Some(persisted_row(WORKER, None, WORKER_AGENT, "exec-other", true)),
+    true,
     ExplicitStartAdmission::CompetingClaim
 )]
 #[case::stop_close_pending(None, true, ExplicitStartAdmission::StopClosePending)]

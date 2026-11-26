@@ -36,7 +36,7 @@ mod start_lock_fault_tests;
 mod stop_close_outcome_tests;
 mod stop_close_tests;
 mod stop_intent_durability_tests;
-pub(super) mod support;
+pub(in crate::subagents::controller_background_ops) mod support;
 
 const TARGET: &str = "background-worker";
 

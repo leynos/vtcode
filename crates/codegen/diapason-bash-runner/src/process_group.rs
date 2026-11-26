@@ -261,7 +261,21 @@ fn process_is_running(pid: u32) -> bool {
         // caller must treat the kill as failed rather than assume success.
         return true;
     };
-    output.status.success() && String::from_utf8_lossy(&output.stdout).contains(&pid.to_string())
+    tasklist_reports_running(output.status.success(), &output.stdout, pid)
+}
+
+/// Interprets one `tasklist` query for `pid`.
+///
+/// Only a successful query that omits the PID confirms absence. A failed query
+/// says nothing about the process, so it must read as running: `kill_process`
+/// treats a confirmed absence as a completed kill, and an unreadable state that
+/// reported absence there would claim a termination that never happened.
+#[cfg(any(windows, test))]
+fn tasklist_reports_running(query_succeeded: bool, listing: &[u8], pid: u32) -> bool {
+    if !query_succeeded {
+        return true;
+    }
+    String::from_utf8_lossy(listing).contains(&pid.to_string())
 }
 
 /// Kill a process by PID on Windows.
@@ -583,5 +597,20 @@ mod tests {
     fn test_is_process_running_nonexistent() {
         // A very high PID should not be running
         assert!(!is_process_running(2_000_000_000));
+    }
+
+    /// An unreadable `tasklist` query must never be read as "process gone".
+    ///
+    /// `kill_process` reports a kill as successful once the process is
+    /// confirmed absent, so a failed query that read as absence would let it
+    /// claim a termination it never observed.
+    #[test]
+    fn test_unsuccessful_tasklist_query_reads_as_running() {
+        assert!(tasklist_reports_running(false, b"", 4242), "a query that failed says nothing about the process");
+        assert!(
+            !tasklist_reports_running(true, b"INFO: No tasks are running which match the specified criteria.", 4242),
+            "only a successful query that omits the pid confirms absence"
+        );
+        assert!(tasklist_reports_running(true, b"demo.exe 4242 Console 1 4,096 K", 4242), "a listed pid is running");
     }
 }

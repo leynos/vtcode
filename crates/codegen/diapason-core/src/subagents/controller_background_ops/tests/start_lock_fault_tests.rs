@@ -70,6 +70,49 @@ async fn an_explicit_start_whose_ledger_cannot_be_locked_is_refused() {
     controller.signal_shutdown().await;
 }
 
+/// The reservation itself refuses a claim whose ledger cannot be read.
+///
+/// The public entrypoint above reports the same fault, but its pre-check takes
+/// the same lock first, so that case can pass without the reservation ever
+/// running. This one drives the reservation directly: the claim and the read it
+/// acts on are one durable transition, so a ledger that cannot be locked must
+/// leave both memory and the ledger untouched.
+#[tokio::test]
+async fn a_reservation_whose_ledger_cannot_be_locked_writes_nothing() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+
+    let lock_path = crate::subagents::background::background_state_path_for_tests(temp.path())
+        .with_file_name("background_subagents.lock");
+    std::fs::create_dir_all(&lock_path).expect("the lock path blocks acquisition");
+
+    let error = controller
+        .reserve_background_run(&plan(worker_spec(), "exec-direct", None))
+        .await
+        .expect_err("a reservation that cannot read the ledger must not claim the record");
+    assert!(
+        format!("{error:#}").contains("background_subagents.lock"),
+        "the refusal names the ledger lock it could not take: {error:#}"
+    );
+    let state = controller.state.read().await;
+    assert!(
+        !state.background_children.contains_key(WORKER),
+        "a reservation that never read the ledger must not claim the record"
+    );
+    drop(state);
+    assert!(
+        load_background_state(temp.path())
+            .await
+            .expect("read the ledger")
+            .records
+            .is_empty(),
+        "the refused reservation must not write a claim"
+    );
+
+    std::fs::remove_dir(&lock_path).expect("the lock path is usable again");
+    controller.signal_shutdown().await;
+}
+
 /// After the contention clears, a retry inspects the winning claim.
 ///
 /// This is the half of the rule the refusal must preserve: propagating the

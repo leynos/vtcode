@@ -1,5 +1,5 @@
 //! Queue-accounting invariants for lifecycle notification publication.
-use super::projection_tests::{background_event, subagent_event};
+use super::projection_tests::{background_event, live, subagent_event};
 use super::queue_accounting::LifecycleQueueDropKind;
 use super::*;
 use diapason_core::metrics::TaskLifecycleNotificationQueueDrop;
@@ -44,11 +44,11 @@ async fn initial_snapshot_enqueue_shares_accounting_with_live_updates() {
     let (sender, mut receiver) = mpsc::channel(4);
 
     queue
-        .send(&sender, subagent_event("running"))
+        .send(&sender, live(subagent_event("running")))
         .await
         .expect("an awaited initial snapshot must enqueue");
     queue
-        .try_send(&sender, background_event("running"))
+        .try_send(&sender, live(background_event("running")))
         .expect("a live update must enqueue");
     assert_eq!(queue.depth(), 2, "both enqueue paths must count against one depth");
     assert_eq!(metrics.enqueued.load(Ordering::SeqCst), 2);
@@ -64,7 +64,7 @@ async fn initial_snapshot_enqueue_shares_accounting_with_live_updates() {
 
     // Closing drains what is still pending and rejects both paths afterwards.
     queue
-        .try_send(&sender, subagent_event("completed"))
+        .try_send(&sender, live(subagent_event("completed")))
         .expect("queued before close");
     assert_eq!(queue.depth(), 1);
     queue.close_and_drain();
@@ -72,13 +72,13 @@ async fn initial_snapshot_enqueue_shares_accounting_with_live_updates() {
     assert_eq!(queue.depth(), 0);
     assert_eq!(
         queue
-            .try_send(&sender, subagent_event("completed"))
+            .try_send(&sender, live(subagent_event("completed")))
             .expect_err("closed try_send"),
         LifecycleQueueDropKind::Closed
     );
     assert_eq!(
         queue
-            .send(&sender, subagent_event("completed"))
+            .send(&sender, live(subagent_event("completed")))
             .await
             .expect_err("closed awaited send"),
         LifecycleQueueDropKind::Closed
@@ -94,18 +94,67 @@ async fn initial_snapshot_enqueue_shares_accounting_with_live_updates() {
     let full_queue = LifecycleQueueTracker::new(full_observer);
     let (full_sender, full_receiver) = mpsc::channel(1);
     full_queue
-        .send(&full_sender, subagent_event("running"))
+        .send(&full_sender, live(subagent_event("running")))
         .await
         .expect("fills the only slot");
     assert_eq!(
         full_queue
-            .try_send(&full_sender, subagent_event("completed"))
+            .try_send(&full_sender, live(subagent_event("completed")))
             .expect_err("full channel"),
         LifecycleQueueDropKind::Full
     );
     assert_eq!(full_queue.depth(), 1);
     assert_eq!(full_metrics.enqueued.load(Ordering::SeqCst), 1);
     drop(full_receiver);
+}
+
+/// A live update the full queue refuses is recovered, not lost.
+///
+/// The attach-time snapshot pass can hold every slot while a task completes.
+/// The refusal must not leave the client showing that task as active: the
+/// tracker keeps the newest refused update, and the forwarder's next read
+/// hands it out once the queued snapshots have drained.
+#[tokio::test]
+async fn a_refused_update_is_held_until_the_forwarder_drains_the_channel() {
+    let metrics = Arc::new(RecordingQueueMetrics::default());
+    let observer = metrics.clone() as Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>;
+    let queue = LifecycleQueueTracker::new(observer);
+    // One slot, so the snapshot still queued when the live update arrives is
+    // what makes the refusal reproducible.
+    let (sender, mut receiver) = mpsc::channel(1);
+    let snapshot = live(subagent_event("running"));
+    let snapshot_revision = snapshot.revision;
+    queue
+        .send(&sender, snapshot)
+        .await
+        .expect("the initial snapshot fills the only slot");
+
+    let terminal = live(subagent_event("completed"));
+    let terminal_revision = terminal.revision;
+    assert_eq!(
+        queue
+            .try_send(&sender, terminal)
+            .expect_err("the full queue refuses the live terminal update"),
+        LifecycleQueueDropKind::Full
+    );
+    assert_eq!(queue.depth(), 1, "a parked update was never queued, so it is not counted");
+
+    let mut ordering = LifecycleOrdering::default();
+    let recovered = queue
+        .next_update(&mut receiver)
+        .await
+        .expect("the refused terminal update must still be deliverable");
+    assert_eq!(
+        recovered.revision, terminal_revision,
+        "the forwarder must take the parked terminal update rather than wait again on the channel"
+    );
+    assert!(ordering.admit(&recovered), "the terminal state is the newest revision, so it is forwarded");
+    assert_eq!(queue.depth(), 1, "taking a parked update must not dequeue a channel item");
+
+    let older = queue.next_update(&mut receiver).await.expect("the queued initial snapshot");
+    assert_eq!(older.revision, snapshot_revision);
+    assert!(!ordering.admit(&older), "the active snapshot the terminal state superseded must not overwrite it");
+    assert_eq!(queue.depth(), 0);
 }
 
 /// The forwarder decrements depth the moment it receives an item, so the count
@@ -140,7 +189,8 @@ async fn the_forwarder_never_observes_an_unaccounted_item() {
     });
 
     for round in 0..ROUNDS {
-        queue.send(&sender, subagent_event("running")).await.expect("awaited enqueue");
+        let running = live(subagent_event("running"));
+        queue.send(&sender, running).await.expect("awaited enqueue");
         let observed = observed_rx.recv().await.expect("the receiver observed the item");
         assert_eq!(observed, 1, "round {round}: an item must be counted before it is observable");
         release_tx.send(()).expect("release the receiver");

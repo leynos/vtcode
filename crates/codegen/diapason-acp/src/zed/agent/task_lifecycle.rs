@@ -307,7 +307,9 @@ impl AcpTaskLifecycleObserver {
     /// The revision is carried, never allocated here: a capture taken before a
     /// later state change must keep the lower revision even when it reaches
     /// the queue second, or the delayed stale entry would overwrite the newer
-    /// state.
+    /// state. A full queue refuses the transition and parks the newest refusal
+    /// on the tracker, so a terminal state refused here is delivered once the
+    /// forwarder drains a slot rather than being lost.
     fn try_send(&self, update: LifecycleUpdate, revision: u64) {
         let queued = QueuedLifecycleUpdate { update, revision };
         if let Err(kind) = self.queue.try_send(&self.sender, queued) {
@@ -344,8 +346,7 @@ fn spawn_task_lifecycle_forwarder(
             let mut forwarder_span = TaskLifecycleForwarderSpan::new(Span::current());
             let mut emitted_task_ids = HashSet::new();
             let mut ordering = LifecycleOrdering::default();
-            while let Some(queued) = receiver.recv().await {
-                queue.dequeued();
+            while let Some(queued) = queue.next_update(&mut receiver).await {
                 if queued.update.parent_session_id() != session_id.0.as_ref() {
                     continue;
                 }

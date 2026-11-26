@@ -149,14 +149,19 @@ impl SubagentController {
         // The fallback observer key is resolved before the attachment guard,
         // because it may await the parent controller's session lock. The guard
         // must not be held across that wait: another attachment in the tree
-        // could depend on this controller making progress. The key that is
-        // actually adopted is resolved again from the route this tree publishes
-        // through under the guard, because an attachment that grafted this
-        // controller in the meantime moved both its registry and its key.
+        // could depend on this controller making progress.
         let fallback_observer_scope = self.observer_scope_for(&owning_session_id).await;
         // Everything from the cycle check to the published link is one critical
         // section, so no opposing attachment can pass the check in between.
         let _attachment_guard = self.lock_scope().attachment().lock().await;
+        // Read the route this tree publishes through once, under the guard. A
+        // graft that could move this tree's route holds the same attachment
+        // guard, so the conflict check below, its message and the adoption all
+        // describe one observation. The route's own key wins; the fallback
+        // resolved above applies only when the route has no key, exactly as
+        // `adopt_progress_route` applies it.
+        let parent_route = self.progress_route_snapshot();
+        let adopted_observer_scope = parent_route.scope.clone().unwrap_or(fallback_observer_scope);
         // The record is re-checked under the guard: it may have been attached
         // between the fast rejection above and this point. An idempotent
         // re-attachment skips the cycle check for the same reason it does
@@ -216,7 +221,7 @@ impl SubagentController {
         let incoming_observer_conflict = {
             let inherited = controller.inherited_observer_key();
             let holds_records = !controller.state.read().await.children.is_empty();
-            inherited.filter(|key| holds_records && key.as_str() != fallback_observer_scope.as_str())
+            inherited.filter(|key| holds_records && key.as_str() != adopted_observer_scope.as_str())
         };
         // The record is re-checked once more and the incoming allocator adopted
         // while the state write lock is held. The adoption takes only the
@@ -248,7 +253,7 @@ impl SubagentController {
         if let Some(inherited) = incoming_observer_conflict.as_deref() {
             bail!(
                 "Subagent {child_id} cannot be attached: its records publish under the {inherited} observer key, \
-                 not this tree's {fallback_observer_scope}"
+                 not this tree's {adopted_observer_scope}"
             );
         }
         if let Err(rejection) = controller.child_id_slot().adopt_into(&self.child_id_slot()) {
@@ -256,13 +261,12 @@ impl SubagentController {
         }
         // The joining subtree must publish through this tree's registry: an
         // independently constructed controller otherwise keeps its own, and
-        // observers registered here would never see its later transitions. One
-        // snapshot of this tree's route serves the whole subtree, so every
+        // observers registered here would never see its later transitions. The
+        // one snapshot taken under the guard serves the whole subtree, so every
         // controller in it publishes through the same registry, clock and key.
-        let parent_route = self.progress_route_snapshot();
-        controller.adopt_progress_route(&parent_route, fallback_observer_scope.as_str());
+        controller.adopt_progress_route(&parent_route, adopted_observer_scope.as_str());
         for descendant in joining_subtree {
-            descendant.adopt_progress_route(&parent_route, fallback_observer_scope.as_str());
+            descendant.adopt_progress_route(&parent_route, adopted_observer_scope.as_str());
         }
         // A test parks the attachment here, with the state lock held and every
         // await behind it, to prove the guard is still held at the point the

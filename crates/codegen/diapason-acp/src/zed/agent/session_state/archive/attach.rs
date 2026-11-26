@@ -226,6 +226,15 @@ impl ZedAgent {
                 let retention_dropped = error
                     .downcast_ref::<RequiredCheckpointError>()
                     .is_some_and(|required| required.failure() == CheckpointFailure::RetentionDropped);
+                // A failed attach releases its lease, but not the blocker it
+                // recorded when it deferred the shared restore. Once ownership
+                // is reconciled nothing is left to protect, so the runtime must
+                // not stay blocked for every other session that acquires it.
+                // A row that is still ownerless keeps the blocker, and a later
+                // resume of this session reconciles it.
+                if !owner_migration_unresolved && workspace_ownership_reconciled {
+                    workspace_runtime.release_background_restore(session_id.0.as_ref());
+                }
                 return Err(if retention_dropped {
                     error.context(bounded)
                 } else {

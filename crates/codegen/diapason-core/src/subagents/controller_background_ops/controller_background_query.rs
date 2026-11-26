@@ -624,43 +624,14 @@ mod foreign_liveness_tests {
     //! Pins that a record this controller does not drive is never projected as
     //! an exit it cannot have observed.
 
-    use std::path::PathBuf;
-
     use tempfile::TempDir;
 
-    use crate::config::DiapasonConfig;
-    use crate::config::types::ReasoningEffortLevel;
-    use crate::tools::exec_session::ExecSessionManager;
-    use crate::tools::registry::PtySessionManager;
-
+    use super::super::tests::support::test_controller_config;
     use super::*;
 
     const WORKER: &str = "background-worker";
     const WORKER_AGENT: &str = "worker";
     const FOREIGN_EXEC: &str = "exec-foreign";
-
-    fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
-        let vt_cfg = DiapasonConfig::default();
-        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
-        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
-        SubagentControllerConfig {
-            workspace_root,
-            parent_session_id: "parent-session".to_string(),
-            parent_model: "gpt-5.6-sol".to_string(),
-            parent_provider: "openai".to_string(),
-            parent_reasoning_effort: ReasoningEffortLevel::Medium,
-            api_key: "test-key".to_string(),
-            vt_cfg,
-            openai_chatgpt_auth: None,
-            depth: 0,
-            workspace_gated: false,
-            exec_sessions,
-            output_reader: None,
-            pty_manager: pty_sessions.manager().clone(),
-            managed_background_runtime: false,
-            lock_scope: None,
-        }
-    }
 
     /// A running record owned by another session.
     fn foreign_record() -> BackgroundRecord {
@@ -705,7 +676,7 @@ mod foreign_liveness_tests {
     #[tokio::test]
     async fn a_foreign_record_is_unobserved_rather_than_exited() {
         let temp = TempDir::new().expect("tempdir");
-        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+        let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf()))
             .await
             .expect("controller");
         {

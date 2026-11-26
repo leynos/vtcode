@@ -62,11 +62,11 @@ async fn a_close_fault_keeps_the_stop_owed_until_a_retry_succeeds() {
     let entry = outcome.into_entry();
 
     assert!(!entry.desired_enabled, "the stop is still intended");
-    assert_ne!(
-        entry.status,
-        BackgroundSubprocessStatus::Stopped,
-        "a stop must not be reported complete while its session is unclosed"
-    );
+    // The stop is owed, so the record must stay active until its close
+    // succeeds. Accepting any non-`Stopped` status would also accept a
+    // premature terminal `Error` while the marker still says the stop can be
+    // retried.
+    assert!(entry.status.is_active(), "a stop whose close is still owed stays active: {:?}", entry.status);
     assert!(
         entry
             .error
@@ -166,10 +166,10 @@ async fn an_aborted_reconcile_keeps_the_stop_close_obligation() {
         .background_status_for("background-worker")
         .await
         .expect("the record survives the aborted reconcile");
-    assert_ne!(
-        entry.status,
-        BackgroundSubprocessStatus::Stopped,
-        "the aborted close must not leave the stop reported complete"
+    assert!(
+        entry.status.is_active(),
+        "the aborted close leaves the running task active rather than terminal: {:?}",
+        entry.status
     );
 
     // A later reconcile runs the real close, which reports the session gone.
@@ -231,10 +231,10 @@ async fn an_interrupted_first_close_is_still_owed() {
         .background_status_for("background-worker")
         .await
         .expect("the record survives the interruption");
-    assert_ne!(
-        entry.status,
-        BackgroundSubprocessStatus::Stopped,
-        "an interrupted close must not leave the stop reported complete"
+    assert!(
+        entry.status.is_active(),
+        "the running task stays active until its close succeeds: {:?}",
+        entry.status
     );
     assert!(
         !session_is_gone(&controller, exec_session_id).await,

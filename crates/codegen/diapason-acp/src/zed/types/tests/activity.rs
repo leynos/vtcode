@@ -2,7 +2,6 @@
 use super::super::{SessionActivity, SessionPromptGuard};
 use super::{poll_once, poll_with_waker, recording_waker};
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 
 /// Reference model for [`SessionActivity`] and [`SessionPromptGuard`].
 ///
@@ -69,12 +68,6 @@ proptest::proptest! {
             0..16,
         ),
     ) {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_time()
-            .build()
-            .expect("current-thread runtime");
-        let _guard = runtime.enter();
-
         let activity = SessionActivity::default();
         let mut model = ActivityModel::default();
         let mut guards: Vec<SessionPromptGuard> = Vec::new();
@@ -117,12 +110,13 @@ proptest::proptest! {
                     model.begin_close();
                 }
                 ActivityOp::WaitForPrompts => {
-                    let idle = runtime.block_on(tokio::time::timeout(
-                        Duration::from_millis(50),
-                        activity.wait_for_prompts(),
-                    ));
+                    // Poll readiness directly. A prompt in flight holds its
+                    // guard throughout this sequential sequence, so nothing
+                    // could release a waiter and a timed wait would only sleep
+                    // out its whole deadline.
+                    let mut waiter = std::pin::pin!(activity.wait_for_prompts());
                     proptest::prop_assert_eq!(
-                        idle.is_ok(),
+                        poll_once(waiter.as_mut()).is_ready(),
                         model.in_flight == 0,
                         "waiting for prompts must complete exactly when none are in flight"
                     );

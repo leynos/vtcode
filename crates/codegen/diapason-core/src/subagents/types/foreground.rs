@@ -110,6 +110,14 @@ impl StatusEntryBuilder for ChildRecord {
     type Entry = SubagentStatusEntry;
 
     fn build_status_entry(&self) -> SubagentStatusEntry {
+        // An active record is often between runs: `apply_result` stores one
+        // prompt's outcome and then marks the child `Queued` for the next, so
+        // the summary and error describe the run that already finished. A
+        // transport shows those fields as the live task card's text, and an
+        // active projection would report the previous prompt's failure while
+        // the next one is still running. They are kept on the record and
+        // reported by the terminal projection, where they are the outcome.
+        let terminal = self.status.is_terminal();
         SubagentStatusEntry {
             id: self.id.clone(),
             session_id: self.session_id.clone(),
@@ -125,8 +133,8 @@ impl StatusEntryBuilder for ChildRecord {
             created_at: self.created_at,
             updated_at: self.updated_at,
             completed_at: self.completed_at,
-            summary: self.summary.clone(),
-            error: self.error.clone(),
+            summary: if terminal { self.summary.clone() } else { None },
+            error: if terminal { self.error.clone() } else { None },
             transcript_path: self.transcript_path.clone(),
             nickname: self.spec.nickname_candidates.first().cloned(),
         }

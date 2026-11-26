@@ -16,24 +16,22 @@ use self::eligibility::{
     ambiguous_empty_launch_ids, canonical_copies, has_ambiguous_launch_identity, launch_is_eligible, owned_launch_keys,
 };
 
-/// Names the exec sessions this snapshot started rather than merely refreshed.
+/// Names the launches this snapshot started rather than merely refreshed.
 ///
 /// A launch mints a new exec session and records when it began, while a refresh
 /// keeps the session and only advances `updated_at`. A snapshot copy therefore
 /// supersedes the persisted launch under its canonical id only when it names a
-/// different session that began no earlier than the persisted one; a refreshed
-/// copy of an earlier launch is left to yield to the persisted replacement.
+/// different launch that began no earlier than the persisted one; a refreshed
+/// copy of an earlier launch yields to the persisted replacement.
 ///
 /// A copy that carries no `started_at` proves no launch of its own, so its
-/// `updated_at` alone must not displace a persisted row naming a different exec
-/// session. The one exception is a copy that is still wanted and reports an
+/// `updated_at` alone must not displace a persisted row naming a different
+/// launch. The one exception is a copy that is still wanted and reports an
 /// active status: that is a claim this snapshot has not finished launching, and
 /// the reservation confirms the claim reached the ledger before it spawns, so
 /// the ordinary moment comparison decides it. A settled copy without a start
-/// instant is an abandoned or failed claim whose settlement describes a launch
-/// that never ran; letting a later `updated_at` carry it over another
-/// controller's replacement would erase a live launch from the ledger under the
-/// name of one that was never started.
+/// instant describes a launch that never ran; letting a later `updated_at`
+/// carry it over another controller's replacement would erase a live launch.
 fn launched_by_snapshot(
     persisted: &[PersistedBackgroundRecord],
     snapshot: &[PersistedBackgroundRecord],
@@ -45,21 +43,24 @@ fn launched_by_snapshot(
     let mut launched = Vec::new();
     for mut record in snapshot.iter().cloned() {
         record.canonicalize_id();
-        if record.exec_session_id.is_empty() {
+        // A row that names no launch identity cannot be shown to be a launch
+        // of its own. A legacy row that names only its child session can: the
+        // child session is the identity left when the exec session is absent.
+        let Some(identity) = launch_identity(&record) else {
             continue;
-        }
+        };
         let supersedes = match current.get(&record.id) {
             // A launch the ledger has never held is this snapshot's own.
             None => true,
             Some(persisted) => {
-                record.exec_session_id != persisted.exec_session_id
+                !record.shares_launch_identity_with(persisted)
                     && names_a_launch_of_its_own(&record)
                     && record.launch_moment() >= persisted.launch_moment()
                     && start_evidence_outranks_persisted(&record, persisted)
             }
         };
         if supersedes {
-            launched.push((record.id, record.exec_session_id));
+            launched.push((record.id, identity));
         }
     }
     launched
@@ -128,9 +129,9 @@ struct LaunchCandidate {
 /// Two different facts decide a snapshot copy's precedence. `expected_stops`
 /// names the launches the snapshot is stopping, so a stop only governs the
 /// launch it names. `launched` names the launches this snapshot itself started,
-/// so only those may outrank a persisted row that names a different exec
-/// session: a refresh of an earlier launch is not evidence that the persisted
-/// replacement has been superseded.
+/// keyed by canonical id and launch identity, so only those may outrank a
+/// persisted row that names a different launch: a refresh of an earlier launch
+/// is not evidence that the persisted replacement has been superseded.
 struct MergeEvidence<'a> {
     expected_stops: &'a BTreeMap<String, String>,
     launched: &'a [(String, String)],
@@ -139,29 +140,32 @@ struct MergeEvidence<'a> {
 impl MergeEvidence<'_> {
     /// Whether `candidate` is a launch this snapshot itself started.
     ///
-    /// Only a snapshot copy qualifies. A persisted row naming a differing exec
-    /// session is a replacement another controller wrote, and re-writing it from
+    /// Only a snapshot copy qualifies. A persisted row naming a differing
+    /// launch is a replacement another controller wrote, and re-writing it from
     /// a copy this controller never launched would erase a live process.
     fn launched_by_snapshot(&self, candidate: &LaunchCandidate) -> bool {
         candidate.from_snapshot
-            && self.launched.iter().any(|(id, exec_session_id)| {
-                id == &candidate.record.id && exec_session_id == &candidate.record.exec_session_id
+            && launch_identity(&candidate.record).is_some_and(|identity| {
+                self.launched
+                    .iter()
+                    .any(|(id, launched)| id == &candidate.record.id && launched == &identity)
             })
     }
 
     /// Whether `stop` is a stop of `other`'s launch that names its own session.
     ///
-    /// `expected_stops` names the launches this save is stopping and the exec
-    /// session each stop applies to. When `other` is a persisted copy of a
-    /// different exec session under the same canonical id, it is a replacement
-    /// launch rather than a stale copy of the stopped one, so the stop yields
-    /// to it.
+    /// `expected_stops` names the exec session each stop applies to; a legacy
+    /// stop names none, so its child session is the identity left. `other` is a
+    /// replacement launch when it records a different launch, so the stop yields.
     fn stop_does_not_name_other_launch(&self, id: &str, stop: &LaunchCandidate, other: &LaunchCandidate) -> bool {
-        self.expected_stops
-            .get(id)
-            .is_some_and(|exec_session_id| exec_session_id == &stop.record.exec_session_id)
-            && !other.from_snapshot
-            && stop.record.exec_session_id != other.record.exec_session_id
+        let names_expected = self.expected_stops.get(id).is_some_and(|expected| {
+            if stop.record.exec_session_id.is_empty() {
+                expected.is_empty()
+            } else {
+                expected == &stop.record.exec_session_id
+            }
+        });
+        names_expected && !other.from_snapshot && !stop.record.shares_launch_identity_with(&other.record)
     }
 
     /// Whether `candidate` replaces `chosen` as `id`'s survivor.
@@ -177,16 +181,15 @@ impl MergeEvidence<'_> {
         if self.stop_does_not_name_other_launch(id, candidate, chosen) {
             return false;
         }
-        // When the two sides name different exec sessions, the persisted copy is
-        // a replacement launch and outranks the snapshot copy unless the
-        // snapshot copy is a launch this save started. A refreshed copy of an
-        // earlier launch keeps its exec session and only advances `updated_at`,
-        // so it is not evidence that the replacement was superseded; letting
-        // `updated_at` decide would erase a live process from the ledger. The
-        // answer is computed from the two sides' provenance, not from which one
-        // the reduction compared first.
+        // When the two sides name different launches, the persisted copy is a
+        // replacement launch and outranks the snapshot copy unless the snapshot
+        // copy is a launch this save started. A refreshed copy of an earlier
+        // launch keeps its identity and only advances `updated_at`, so it is not
+        // evidence that the replacement was superseded; letting `updated_at`
+        // decide would erase a live process. The answer comes from the two
+        // sides' provenance, not from which one the reduction compared first.
         if chosen.from_snapshot != candidate.from_snapshot
-            && chosen.record.exec_session_id != candidate.record.exec_session_id
+            && !chosen.record.shares_launch_identity_with(&candidate.record)
         {
             let snapshot = if candidate.from_snapshot { candidate } else { chosen };
             if !self.launched_by_snapshot(snapshot) {
@@ -204,7 +207,7 @@ impl MergeEvidence<'_> {
 /// Joins copies of each canonical record by launch, then by ownership and
 /// freshness.
 ///
-/// Copies are grouped first by canonical id and `exec_session_id`. Within one
+/// Copies are grouped first by canonical id and launch identity. Within one
 /// launch a cancellation outranks an active copy in either direction, so a
 /// refresh that only advanced `updated_at` cannot resurrect a stopped task.
 /// Only the surviving copy of each launch is then compared by `updated_at`,
@@ -219,14 +222,14 @@ impl MergeEvidence<'_> {
 /// That reduction can also discard the ledger's stopped copy of a launch the
 /// snapshot is refreshing: the snapshot's copy then competes only with the
 /// different launch the reduction kept, and a later `updated_at` would let it
-/// resurrect the stopped session. The persisted stopped copy of any session the
+/// resurrect the stopped session. The persisted stopped copy of any launch the
 /// snapshot names is therefore retained, so the within-launch cancellation rule
 /// decides between them. A stop then applies only to the launch it names: it
-/// never replaces a persisted row of a different exec session, because that row
+/// never replaces a persisted row of a different launch, because that row
 /// is a replacement another controller wrote. A refreshed copy of an earlier
 /// launch is equally not evidence of supersession, so only a launch this
-/// snapshot started may displace a persisted row naming a different session. A
-/// restart writes a new exec session, so it matches no stopped copy and still
+/// snapshot started may displace a persisted row naming a different launch. A
+/// restart mints a new identity, so it matches no stopped copy and still
 /// supersedes the launch it replaced.
 ///
 /// A copy that records an owner outranks an ownerless copy of the same
@@ -280,12 +283,10 @@ pub(super) fn join_by_canonical_id(
 ) -> BTreeMap<String, PersistedBackgroundRecord> {
     let persisted = canonical_copies(persisted);
     let snapshot = canonical_copies(snapshot);
-    // An empty exec session cannot identify a launch, so two persisted copies
-    // that share a canonical id and both carry one might be different launches.
-    // Those rows are dropped before any launch is selected: keeping either would
-    // let a stopped row outrank a desired one with no launch identity to decide
-    // it. Only those rows go, not the id: a copy that names its own exec session
-    // is an identified launch and keeps competing.
+    // A row with no launch identity cannot be told apart from another such row,
+    // so the unattributed rows of a shared canonical id are dropped before any
+    // launch is selected. Rows that name an exec session or a child session are
+    // identified launches and keep competing, and the id itself is kept.
     let ambiguous = ambiguous_empty_launch_ids(&persisted);
     // Every launch an input copy attributes to an owner, read from all rows
     // before any copy is excluded: a superseded owned launch has no owned
@@ -328,19 +329,17 @@ pub(super) fn join_by_canonical_id(
     // then compete only with the different launch the reduction kept and could
     // resurrect the stopped session on `updated_at` alone.
     let reduced = reduce_persisted_launches(persisted.iter().cloned());
-    let refreshed_sessions = snapshot
+    let refreshed_launches = snapshot
         .iter()
-        .filter(|record| !record.exec_session_id.is_empty())
-        .map(|record| (record.id.clone(), record.exec_session_id.clone()))
+        .filter_map(|record| launch_identity(record).map(|identity| (record.id.clone(), identity)))
         .collect::<BTreeSet<_>>();
     let retained_stops = persisted
         .iter()
         .filter(|record| {
             !record.desired_enabled
-                && refreshed_sessions.contains(&(record.id.clone(), record.exec_session_id.clone()))
-                && !reduced
-                    .iter()
-                    .any(|kept| kept.id == record.id && kept.exec_session_id == record.exec_session_id)
+                && launch_identity(record)
+                    .is_some_and(|identity| refreshed_launches.contains(&(record.id.clone(), identity)))
+                && !reduced.iter().any(|kept| kept.shares_launch_identity_with(record))
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -404,22 +403,25 @@ fn reduce_persisted_launches(
         .collect()
 }
 
-/// The key one copy is reduced under within its canonical id.
+/// The launch identity one copy is reduced and compared under.
 ///
 /// A named exec session is the launch. A legacy row names none, so the child
-/// session it carries is the identity left: grouping two legacy copies together
-/// on a shared blank value would let a stop of one launch govern a refresh of
+/// session it carries is the identity left: grouping two legacy copies on a
+/// shared blank value would let a stop of one launch govern a refresh of
 /// another, and a restart of a legacy record mints a fresh child session. The
-/// prefixes keep the two namespaces apart. A row that names neither falls into
-/// the shared unidentified slot; the ambiguity rule has already excluded the
-/// persisted duplicates that could reach here.
-fn launch_group_key(record: &PersistedBackgroundRecord) -> String {
+/// prefixes keep the two namespaces apart. `None` means the row names no
+/// launch; the ambiguity rule has excluded the persisted duplicates that could
+/// reach the reduction, so it falls into one shared slot. The same rule drives
+/// the cross-launch checks through
+/// [`PersistedBackgroundRecord::shares_launch_identity_with`], so grouping and
+/// precedence cannot disagree about whether two copies are one launch.
+fn launch_identity(record: &PersistedBackgroundRecord) -> Option<String> {
     if !record.exec_session_id.is_empty() {
-        format!("exec:{}", record.exec_session_id)
+        Some(format!("exec:{}", record.exec_session_id))
     } else if !record.session_id.is_empty() {
-        format!("session:{}", record.session_id)
+        Some(format!("session:{}", record.session_id))
     } else {
-        String::new()
+        None
     }
 }
 
@@ -448,7 +450,7 @@ fn reduce_launch_copies(
     let mut launches: BTreeMap<String, BTreeMap<String, LaunchCandidate>> = BTreeMap::new();
     for candidate in candidates {
         let id = candidate.record.id.clone();
-        let launch_key = launch_group_key(&candidate.record);
+        let launch_key = launch_identity(&candidate.record).unwrap_or_default();
         let sessions = launches.entry(id).or_default();
         match sessions.entry(launch_key) {
             std::collections::btree_map::Entry::Occupied(mut entry) => {

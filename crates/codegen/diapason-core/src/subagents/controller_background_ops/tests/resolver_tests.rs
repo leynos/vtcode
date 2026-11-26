@@ -11,7 +11,7 @@ use super::support::{background_test_controller, test_controller_config, write_l
 /// Builds a controller scoped to the session that owns the fixture record.
 async fn scoped_controller(temp: &TempDir) -> SubagentController {
     SubagentController::new_with_background_owner(
-        test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()),
+        test_controller_config(temp.path().to_path_buf()),
         Some("session-viewer"),
     )
     .await

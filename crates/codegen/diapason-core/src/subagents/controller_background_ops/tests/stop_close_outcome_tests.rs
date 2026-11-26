@@ -335,8 +335,18 @@ async fn a_declined_launch_close_is_retried_until_it_succeeds() {
     };
 
     release.notify_one();
-    let entry = launch.await.expect("the declined launch reports the record it left");
-    assert_eq!(entry.exec_session_id, "exec-successor", "the record keeps the launch that replaced it");
+    let error = launch
+        .await
+        .expect_err("a superseded launch is rejected instead of answering for its replacement");
+    assert!(
+        format!("{error:#}").contains("was stopped or replaced before its launch could be recorded"),
+        "the caller is told its launch never reached a record: {error:#}"
+    );
+    {
+        let state = controller.state.read().await;
+        let record = state.background_children.get("background-worker").expect("record");
+        assert_eq!(record.exec_session_id, "exec-successor", "the record keeps the launch that replaced it");
+    }
     assert!(
         !session_is_gone(&controller, &declined_exec_session_id).await,
         "the scripted fault leaves the declined launch's session live"

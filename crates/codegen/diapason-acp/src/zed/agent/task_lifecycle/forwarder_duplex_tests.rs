@@ -1,5 +1,6 @@
 //! Duplex transport regressions for the lifecycle forwarder.
 use super::projection_tests::{live, subagent_event, subagent_event_for, with_task_id, with_updated_at};
+use super::queue_accounting::LifecycleQueueDropKind;
 use super::*;
 use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnectionTo, on_receive_notification};
 use std::time::Duration;
@@ -21,8 +22,23 @@ impl ForwarderDuplex {
         agent_name: &'static str,
         publish: impl FnOnce(mpsc::Sender<QueuedLifecycleUpdate>, Arc<LifecycleQueueTracker>) + Send + 'static,
     ) -> Self {
-        let (agent_channel, client_channel) = agent_client_protocol::Channel::duplex();
         let (progress_tx, progress_rx) = mpsc::channel(8);
+        let metrics = Arc::new(diapason_core::metrics::MetricsCollector::new());
+        let queue = Arc::new(LifecycleQueueTracker::new(metrics));
+        publish(progress_tx, Arc::clone(&queue));
+        Self::with_queue(agent_name, progress_rx, queue)
+    }
+
+    /// Starts a forwarder over a queue and channel the caller already prepared.
+    ///
+    /// The caller keeps ownership so it can fill the bounded channel and record
+    /// a refusal against the tracker before the forwarder starts draining.
+    fn with_queue(
+        agent_name: &'static str,
+        progress_rx: mpsc::Receiver<QueuedLifecycleUpdate>,
+        queue: Arc<LifecycleQueueTracker>,
+    ) -> Self {
+        let (agent_channel, client_channel) = agent_client_protocol::Channel::duplex();
         let (received_tx, received) = mpsc::unbounded_channel();
 
         let agent_connection =
@@ -31,15 +47,12 @@ impl ForwarderDuplex {
                 .name(agent_name)
                 .connect_with(agent_channel, move |cx: ConnectionTo<Client>| async move {
                     let client = ConnectionHandle::new(cx);
-                    let metrics = Arc::new(diapason_core::metrics::MetricsCollector::new());
-                    let queue = Arc::new(LifecycleQueueTracker::new(metrics));
                     let forwarder = spawn_task_lifecycle_forwarder(
                         progress_rx,
                         acp::SessionId::new(Arc::from("parent-session")),
                         client,
-                        Arc::clone(&queue),
+                        queue,
                     );
-                    publish(progress_tx, queue);
                     forwarder.await.expect("lifecycle forwarder");
                     Ok(())
                 });
@@ -182,6 +195,52 @@ async fn forwards_lifecycle_events_through_the_official_acp_duplex() {
     assert_eq!(update.tool_call_id.0.as_ref(), "task:child-1");
     assert_eq!(update.meta.expect("progress task metadata")["lody"]["task"]["status"], "completed");
     assert!(duplex.received.try_recv().is_err(), "foreign-session events must remain filtered");
+
+    duplex.finish().await;
+}
+
+/// A live terminal update the full queue refused still reaches the client.
+///
+/// The attach-time snapshot pass can fill the bounded channel before the
+/// forwarder drains it. A task that completes in that window is refused by the
+/// full queue, and the client must still be told the task finished rather than
+/// being left with the active snapshot this pass queued.
+#[tokio::test]
+async fn a_terminal_update_refused_by_a_full_queue_reaches_the_client() {
+    let metrics = Arc::new(diapason_core::metrics::MetricsCollector::new());
+    let queue = Arc::new(LifecycleQueueTracker::new(metrics));
+    // One slot, so the snapshot the pass queued is what makes the refusal
+    // reproducible before the forwarder has started draining.
+    let (progress_tx, progress_rx) = mpsc::channel(1);
+    let snapshot = live(subagent_event("running"));
+    let terminal = live(with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z"));
+    assert!(queue.send(&progress_tx, snapshot).await.is_ok(), "the initial snapshot fills the only slot");
+    assert_eq!(
+        queue
+            .try_send(&progress_tx, terminal)
+            .expect_err("the full queue refuses the terminal update"),
+        LifecycleQueueDropKind::Full
+    );
+    drop(progress_tx);
+
+    let mut duplex = ForwarderDuplex::with_queue("diapason-task-refused-update-test", progress_rx, queue);
+    let delivered = duplex.next(Duration::from_secs(2)).await.expect("recovered terminal update");
+    let acp::AgentNotification::SessionNotification(delivered) = delivered else {
+        panic!("task lifecycle must use standard session notifications");
+    };
+    let acp::SessionUpdate::ToolCall(call) = delivered.update else {
+        panic!("the task's first delivered snapshot must create a tool call");
+    };
+    assert_eq!(call.tool_call_id.0.as_ref(), "task:child-1");
+    assert_eq!(
+        call.meta.expect("terminal task metadata")["lody"]["task"]["status"],
+        "completed",
+        "the refused update must be recovered so the client sees the terminal state"
+    );
+    assert!(
+        duplex.next(Duration::from_millis(100)).await.is_none(),
+        "the active snapshot the terminal state superseded must not follow it"
+    );
 
     duplex.finish().await;
 }

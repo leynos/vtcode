@@ -22,7 +22,7 @@ pub use self::controller_background_cancel::BackgroundStopOutcome;
 pub(crate) use self::controller_background_cancel::error_without_close_fault;
 pub(in crate::subagents) use self::controller_background_cancel::rekey_pending_background_stop_close;
 use self::controller_background_cancel::{background_record_close_is_unconfirmed, background_stop_close_is_pending};
-use self::controller_background_lifecycle::mark_background_launch_owed;
+use self::controller_background_lifecycle::{clear_background_launch_owed, mark_background_launch_owed};
 use self::controller_background_liveness::exec_session_is_missing;
 use self::controller_background_query::{read_output_tail, read_preview};
 use self::controller_background_settlement::{
@@ -376,29 +376,41 @@ impl SubagentController {
         // process cannot read the previous row and reserve its own replacement
         // in the window between this decision and its write. The ordinary save
         // would re-lock the ledger, so the row is written directly here.
+        //
+        // The transition displaces the launch the locked decision examined: a
+        // bound plan replaces the launch it observed, and an explicit start
+        // replaces whatever row it was admitted over. Without that, a
+        // predecessor which recorded its start would outrank the claim in the
+        // merge, and the readback below would fail a restart that never tried
+        // to spawn.
+        let replaced_exec_session_id = plan
+            .expected_exec_session_id
+            .clone()
+            .or_else(|| persisted.as_ref().map(|row| row.exec_session_id.clone()));
         let claim_write_error = if claim_is_durable {
             match self
-                .persist_reserved_background_claim(&plan.record_id, &plan.exec_session_id)
+                .persist_reserved_background_claim(
+                    &plan.record_id,
+                    &plan.exec_session_id,
+                    replaced_exec_session_id.as_deref(),
+                )
                 .await
             {
-                // A bound replacement reports `Reserved` only once the ledger
-                // holds the claim. The save merges rather than replaces, and a
-                // claim can lose that merge - a persisted launch that recorded
-                // its start outranks a claim that has not begun - leaving
-                // `Ok(())` for a write that kept another row. Anyone reading the
-                // ledger would then see a launch this controller is about to
-                // start beside.
-                Ok(()) if plan.expected_exec_session_id.is_some() => {
-                    match self.persisted_claim_names(&plan.exec_session_id).await {
-                        Ok(true) => None,
-                        Ok(false) => Some(anyhow!(
-                            "The background ledger did not keep the claim for '{}'; another launch is persisted under it",
-                            plan.spec.name
-                        )),
-                        Err(error) => Some(error),
-                    }
-                }
-                Ok(()) => None,
+                // `Reserved` is reported only once the ledger holds the claim,
+                // for both the bound and the unbound paths. A claim can lose a
+                // write that kept another row - a persisted launch that
+                // recorded its start outranks a claim that has not begun - and
+                // `Ok(())` alone cannot tell that from a claim that landed.
+                // Anyone reading the ledger would then see a launch this
+                // controller is about to start beside.
+                Ok(()) => match self.persisted_claim_names(&plan.exec_session_id).await {
+                    Ok(true) => None,
+                    Ok(false) => Some(anyhow!(
+                        "The background ledger did not keep the claim for '{}'; another launch is persisted under it",
+                        plan.spec.name
+                    )),
+                    Err(error) => Some(error),
+                },
                 Err(error) => Some(error),
             }
         } else {
@@ -441,9 +453,54 @@ impl SubagentController {
             // it as much as a fresh claim.
             self.publish_background_status(&plan.record_id).await;
         }
+        // A stop can land while the claim's write or its publication is in
+        // flight: both awaits run without the state lock, and
+        // `begin_background_cancellation` clears `desired_enabled` under it
+        // while the claim still reports an active status. Answering `Reserved`
+        // then lets the caller spawn the very process the stop exists to
+        // prevent, so the intent is read again before the claim is handed over.
+        // The claim guard is still armed here, so a caller dropped in this
+        // window leaves a claim whose obligation is already discharged.
+        let reservation = if matches!(reservation, BackgroundRunReservation::Reserved)
+            && self.background_claim_stop_was_requested(plan).await
+        {
+            self.settle_stopped_background_claim(plan).await;
+            BackgroundRunReservation::Declined
+        } else {
+            reservation
+        };
         // The reservation has answered. From here the claim belongs to the
         // caller's launch, which arms its own guard with no await in between.
         claim_guard_disarm(claim_guard);
         Ok(reservation)
+    }
+
+    /// Reports whether the claim this reservation wrote was stopped since.
+    ///
+    /// The read takes the state lock, which is the lock the cancellation takes
+    /// to clear the intent, so the answer is the intent as of one instant
+    /// rather than a sample of two fields that can change independently.
+    async fn background_claim_stop_was_requested(&self, plan: &BackgroundRunPlan) -> bool {
+        let state = self.state.read().await;
+        state
+            .background_children
+            .get(&plan.record_id)
+            .is_some_and(|record| record.exec_session_id == plan.exec_session_id && !record.desired_enabled)
+    }
+
+    /// Settles a claim whose stop landed before its launch could spawn.
+    ///
+    /// The claim's exec session was never registered, so the stop has no
+    /// process to close: settling the record `Stopped` here finishes the stop.
+    /// A record the stop already settled keeps the outcome it reached, and the
+    /// launch obligation is cleared so no refresh treats the claim as still
+    /// coming.
+    async fn settle_stopped_background_claim(&self, plan: &BackgroundRunPlan) {
+        clear_background_launch_owed(&self.state, &plan.record_id, &plan.exec_session_id);
+        self.settle_background_stop_closed(&plan.record_id, &plan.exec_session_id, None)
+            .await;
+        // The claim was already published as `Starting`, so the outcome that
+        // replaced it must reach the same observers.
+        self.publish_background_status(&plan.record_id).await;
     }
 }

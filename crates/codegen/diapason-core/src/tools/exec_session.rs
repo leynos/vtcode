@@ -459,14 +459,23 @@ impl PipeSessionManager {
     /// Signals a session a cancelled create spawned but never dispatched.
     ///
     /// Runs from a drop handler, so it never awaits. The child is signalled
-    /// first, which is what must not outlive the create. The backend record is
-    /// then withdrawn when its map lock is immediately available, so a later
-    /// create under the same id does not collide with a dead record. If the
-    /// lock is contended the record survives, and a later create under the id
-    /// is refused as an existing session rather than signalling a process it
-    /// does not own; the signalled child is already gone either way.
+    /// first, which is what must not outlive the create. A child the backend
+    /// could not terminate may still be running, so its record is kept: the map
+    /// still names it and `close_session` can retry the kill. Withdrawing the
+    /// record would leave the only remaining attempt to the single, unchecked
+    /// kill in the process handle's drop, so a persistent failure would leave
+    /// an untracked live child.
+    ///
+    /// A terminated child's backend record is withdrawn when its map lock is
+    /// immediately available, so a later create under the same id does not
+    /// collide with a dead record. If the lock is contended the record
+    /// survives, and a later create under the id is refused as an existing
+    /// session rather than signalling a process it does not own; the signalled
+    /// child is already gone either way.
     fn discard_undispatched_session(&self, session_id: &str, record: &Arc<PipeSessionRecord>) {
-        let _ = self.terminate_record(session_id, record);
+        if self.terminate_record(session_id, record).is_err() {
+            return;
+        }
         if let Ok(mut sessions) = self.sessions.try_write() {
             if sessions.get(session_id).is_some_and(|current| Arc::ptr_eq(current, record)) {
                 sessions.remove(session_id);

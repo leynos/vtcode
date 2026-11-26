@@ -808,13 +808,10 @@ mod cancellation_reconcile_tests {
 
     use tempfile::TempDir;
 
-    use crate::config::DiapasonConfig;
-    use crate::config::types::ReasoningEffortLevel;
     use crate::subagents::background::{background_state_path_for_tests, persist_background_state};
-    use crate::tools::exec_session::ExecSessionManager;
-    use crate::tools::registry::PtySessionManager;
 
     use super::super::controller_background_cancel::{background_stop_close_is_pending, gate_next_background_close};
+    use super::super::tests::support::test_controller_config;
     use super::*;
 
     /// The first adopted record the reconcile closes, in map-key order.
@@ -825,29 +822,6 @@ mod cancellation_reconcile_tests {
     const WORKER: &str = "background-worker";
     const WORKER_AGENT: &str = "worker";
     const WORKER_EXEC: &str = "exec-worker";
-
-    fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
-        let vt_cfg = DiapasonConfig::default();
-        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
-        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
-        SubagentControllerConfig {
-            workspace_root,
-            parent_session_id: "parent-session".to_string(),
-            parent_model: "gpt-5.6-sol".to_string(),
-            parent_provider: "openai".to_string(),
-            parent_reasoning_effort: ReasoningEffortLevel::Medium,
-            api_key: "test-key".to_string(),
-            vt_cfg,
-            openai_chatgpt_auth: None,
-            depth: 0,
-            workspace_gated: false,
-            exec_sessions,
-            output_reader: None,
-            pty_manager: pty_sessions.manager().clone(),
-            managed_background_runtime: false,
-            lock_scope: None,
-        }
-    }
 
     fn background_record(
         id: &str,
@@ -888,7 +862,7 @@ mod cancellation_reconcile_tests {
 
     /// The same controller configuration with automatic restore enabled.
     fn restarting_config(workspace_root: PathBuf) -> SubagentControllerConfig {
-        let mut config = test_config(workspace_root);
+        let mut config = test_controller_config(workspace_root);
         config.vt_cfg.subagents.background.auto_restore = true;
         config
     }
@@ -935,7 +909,7 @@ mod cancellation_reconcile_tests {
     #[tokio::test]
     async fn an_aborted_reconcile_still_owes_every_adopted_close() {
         let temp = TempDir::new().expect("tempdir");
-        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+        let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf()))
             .await
             .expect("controller");
         let records = [
@@ -1011,7 +985,7 @@ mod cancellation_reconcile_tests {
     #[tokio::test]
     async fn a_restart_whose_ledger_pre_check_fails_settles_error() {
         let temp = TempDir::new().expect("tempdir");
-        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+        let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf()))
             .await
             .expect("controller");
         let record = background_record(WORKER, WORKER_AGENT, WORKER_EXEC, BackgroundSubprocessStatus::Starting, true);

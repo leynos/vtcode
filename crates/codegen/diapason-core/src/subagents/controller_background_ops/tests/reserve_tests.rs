@@ -9,7 +9,8 @@ use crate::subagents::background_ledger::{MigratedBackgroundLaunch, persist_back
 
 use super::super::BackgroundRunReservation;
 use super::reserve_support::{
-    OBSERVED_EXEC, WORKER, WORKER_AGENT, insert_observed_record, owned_row_id, persisted_row, plan, worker_spec,
+    OBSERVED_EXEC, PERSISTED_STOPPED_STATUS, WORKER, WORKER_AGENT, insert_observed_record, owned_row_id, persisted_row,
+    persisted_row_with_status, plan, worker_spec,
 };
 use super::support::background_test_controller;
 
@@ -50,6 +51,55 @@ async fn a_migrated_launch_is_declined_under_the_ownerless_id() {
     assert!(
         ledger.records.iter().all(|record| record.exec_session_id != "exec-replacement"),
         "a declined reservation must not write a replacement claim"
+    );
+    let owner_row = ledger
+        .records
+        .iter()
+        .find(|record| record.id == owned_row_id("session-a"))
+        .expect("the owner's row survives the declined reservation");
+    assert_eq!(
+        owner_row.exec_session_id, OBSERVED_EXEC,
+        "a declined migration leaves the owner's launch exactly as it was"
+    );
+
+    controller.signal_shutdown().await;
+}
+
+/// An explicit start displaces the stopped row it was admitted over.
+///
+/// The save merge keeps a persisted row that recorded its start over a claim
+/// that has not begun. An explicit start over a stopped launch is admitted over
+/// exactly that row, so the claim must replace it; otherwise the readback finds
+/// the old launch and refuses a start that never spawned a process.
+#[tokio::test]
+async fn an_explicit_start_displaces_the_stopped_row_it_replaces() {
+    let temp = TempDir::new().expect("tempdir");
+    let mut stopped =
+        persisted_row_with_status(WORKER, None, WORKER_AGENT, OBSERVED_EXEC, false, PERSISTED_STOPPED_STATUS);
+    stopped.started_at = Some("2026-08-28T00:00:05Z".parse().expect("started_at"));
+    persist_background_state(temp.path(), vec![stopped])
+        .await
+        .expect("seed the stopped launch that recorded its start");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+
+    let reservation = controller
+        .reserve_background_run(&plan(worker_spec(), "exec-replacement", None))
+        .await
+        .expect("an explicit start over a stopped row reaches the ledger");
+
+    assert!(
+        matches!(reservation, BackgroundRunReservation::Reserved),
+        "the explicit start may spawn once the ledger holds its claim: {reservation:?}"
+    );
+    let ledger = load_background_state(temp.path()).await.expect("read the ledger");
+    assert_eq!(
+        ledger
+            .records
+            .iter()
+            .map(|record| record.exec_session_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["exec-replacement"],
+        "the claim replaces the stopped row under the same canonical id"
     );
 
     controller.signal_shutdown().await;
@@ -178,6 +228,25 @@ async fn a_restart_of_a_superseded_migration_is_declined() {
     assert!(
         persisted.records.iter().all(|record| record.exec_session_id != "exec-restart"),
         "a declined reservation must not write a replacement claim"
+    );
+    let ledger = crate::subagents::background_ledger::load_background_ledger(temp.path())
+        .await
+        .expect("read the ledger with its migration evidence");
+    let owner_row = ledger
+        .records
+        .iter()
+        .find(|record| record.id == owned_row_id("session-a"))
+        .expect("the owner's row survives the declined restart");
+    assert_eq!(
+        owner_row.exec_session_id, "exec-owner-replacement",
+        "a declined restart leaves the owner's replacement in place"
+    );
+    assert!(
+        ledger
+            .migrated_launches
+            .iter()
+            .any(|launch| launch.exec_session_id == OBSERVED_EXEC),
+        "a later restart reads the migration evidence, so it must survive the decline"
     );
 
     controller.signal_shutdown().await;

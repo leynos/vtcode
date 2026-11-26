@@ -4,6 +4,7 @@
 //! count under the same lock that makes the item observable so the reported
 //! depth never drifts from the channel's contents.
 
+use super::QueuedLifecycleUpdate;
 use diapason_core::metrics::{TaskLifecycleNotificationQueueDrop, TaskLifecycleNotificationQueueMetricsObserver};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -24,17 +25,30 @@ impl LifecycleQueueDropKind {
     }
 }
 
-pub(super) fn lifecycle_queue_drop_kind<T>(error: TrySendError<T>) -> LifecycleQueueDropKind {
-    match error {
-        TrySendError::Full(_) => LifecycleQueueDropKind::Full,
-        TrySendError::Closed(_) => LifecycleQueueDropKind::Closed,
-    }
-}
-
 #[derive(Default)]
 pub(super) struct LifecycleQueueState {
     depth: usize,
     closed: bool,
+    /// The newest update a full queue refused, kept for later delivery.
+    parked: Option<QueuedLifecycleUpdate>,
+}
+
+impl LifecycleQueueState {
+    /// Keeps the newest refused update so the forwarder can deliver it later.
+    ///
+    /// One slot bounds what a stream of refusals can retain. Revisions are
+    /// strictly increasing, so the newest is the one worth keeping: an older
+    /// refused update is superseded by whatever replaced it, and the revision
+    /// ordering would drop it on delivery anyway.
+    fn park(&mut self, update: QueuedLifecycleUpdate) {
+        let supersedes = match &self.parked {
+            None => true,
+            Some(parked) => update.revision >= parked.revision,
+        };
+        if supersedes {
+            self.parked = Some(update);
+        }
+    }
 }
 
 pub(super) struct LifecycleQueueTracker {
@@ -62,7 +76,17 @@ impl LifecycleQueueTracker {
         self.metrics.queue_item_enqueued();
     }
 
-    pub(super) fn try_send<T>(&self, sender: &mpsc::Sender<T>, update: T) -> Result<(), LifecycleQueueDropKind> {
+    /// Enqueues without waiting, parking the update when the queue is full.
+    ///
+    /// A full queue refuses the live update, but the refusal must not lose a
+    /// task's terminal state: the newest refused update is kept on the tracker
+    /// and [`Self::next_update`] delivers it once the forwarder has drained a
+    /// slot. The refusal is still counted, because the queue did refuse it.
+    pub(super) fn try_send(
+        &self,
+        sender: &mpsc::Sender<QueuedLifecycleUpdate>,
+        update: QueuedLifecycleUpdate,
+    ) -> Result<(), LifecycleQueueDropKind> {
         let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if state.closed {
             return Err(LifecycleQueueDropKind::Closed);
@@ -72,7 +96,11 @@ impl LifecycleQueueTracker {
                 self.record_enqueued_locked(&mut state);
                 Ok(())
             }
-            Err(error) => Err(lifecycle_queue_drop_kind(error)),
+            Err(TrySendError::Full(update)) => {
+                state.park(update);
+                Err(LifecycleQueueDropKind::Full)
+            }
+            Err(TrySendError::Closed(_)) => Err(LifecycleQueueDropKind::Closed),
         }
     }
 
@@ -85,7 +113,11 @@ impl LifecycleQueueTracker {
     /// the publication through the permit then share one critical section,
     /// matching [`Self::try_send`] and keeping dequeues balanced whichever
     /// path produced the item.
-    pub(super) async fn send<T>(&self, sender: &mpsc::Sender<T>, update: T) -> Result<(), LifecycleQueueDropKind> {
+    pub(super) async fn send(
+        &self,
+        sender: &mpsc::Sender<QueuedLifecycleUpdate>,
+        update: QueuedLifecycleUpdate,
+    ) -> Result<(), LifecycleQueueDropKind> {
         let permit = match sender.reserve().await {
             Ok(permit) => permit,
             Err(_) => return Err(LifecycleQueueDropKind::Closed),
@@ -97,6 +129,30 @@ impl LifecycleQueueTracker {
         self.record_enqueued_locked(&mut state);
         permit.send(update);
         Ok(())
+    }
+
+    /// Returns the next update to forward, preferring one the queue refused.
+    ///
+    /// A parked update was never in the channel, so only a channel item
+    /// decrements the depth. A refusal can only happen while the channel is
+    /// full, which leaves a later receive pending: the forwarder therefore
+    /// always visits this method again and cannot strand what it parked.
+    pub(super) async fn next_update(
+        &self,
+        receiver: &mut mpsc::Receiver<QueuedLifecycleUpdate>,
+    ) -> Option<QueuedLifecycleUpdate> {
+        if let Some(parked) = self.take_parked() {
+            return Some(parked);
+        }
+        let queued = receiver.recv().await?;
+        self.dequeued();
+        Some(queued)
+    }
+
+    /// Takes the newest update a full queue refused, if one is waiting.
+    fn take_parked(&self) -> Option<QueuedLifecycleUpdate> {
+        let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.parked.take()
     }
 
     #[cfg(test)]
@@ -124,6 +180,9 @@ impl LifecycleQueueTracker {
     pub(super) fn close_and_drain(&self) {
         let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         state.closed = true;
+        // The forwarder has stopped, so a parked update has no reader left;
+        // dropping it keeps a closed tracker from retaining task state.
+        state.parked = None;
         let remaining = std::mem::take(&mut state.depth);
         if remaining > 0 {
             self.metrics.queue_items_drained(remaining);

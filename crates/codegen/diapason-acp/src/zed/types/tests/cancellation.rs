@@ -1,19 +1,36 @@
 //! Cancellation-flag bookkeeping for ACP prompts.
 use super::super::SessionCancellation;
+use super::{poll_with_waker, recording_waker};
 use std::time::Duration;
 
+/// A pending waiter must be woken by `cancel`, not merely find the flag set.
+///
+/// A spawned waiter that has not been polled yet would observe the sticky
+/// cancellation bit on its first poll after `cancel`, so the test could pass
+/// even if `cancel` never woke anyone. Polling a pinned future here proves the
+/// waiter was registered and pending before the signal, and the recording
+/// waker proves the signal reached it.
 #[tokio::test]
 async fn cancellation_wakes_a_pending_operation() {
     let cancellation = SessionCancellation::default();
-    let waiter = cancellation.clone();
-    let task = tokio::spawn(async move { waiter.cancelled().await });
+    let (waker, recorder) = recording_waker();
+    let mut waiter = std::pin::pin!(cancellation.cancelled());
+    assert!(
+        poll_with_waker(waiter.as_mut(), &waker).is_pending(),
+        "an uncancelled signal must keep the registered waiter pending"
+    );
+    assert_eq!(recorder.count(), 0, "registering the waiter must not wake it");
 
-    tokio::task::yield_now().await;
     cancellation.cancel();
-    tokio::time::timeout(Duration::from_secs(1), task)
-        .await
-        .expect("cancellation waiter should wake")
-        .expect("waiter task should finish");
+    assert_eq!(
+        recorder.count(),
+        1,
+        "cancelling must wake the waiter that was already pending, not leave it to its next poll"
+    );
+    assert!(
+        poll_with_waker(waiter.as_mut(), &waker).is_ready(),
+        "the woken waiter must observe the cancellation"
+    );
 }
 
 #[tokio::test]

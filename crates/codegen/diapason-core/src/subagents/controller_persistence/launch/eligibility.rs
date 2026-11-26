@@ -26,21 +26,26 @@ pub(super) fn canonical_copies(
         .collect()
 }
 
-/// Returns the canonical ids whose persisted copies carry more than one empty
-/// launch id.
+/// Returns the canonical ids that hold more than one unattributable row.
 ///
-/// A canonical id identifies one record, so two persisted rows without a launch
-/// identity cannot be told apart; those rows are dropped rather than one of them
-/// being picked. Only the empty rows go: a row that names its own exec session
-/// identifies a launch, so it is kept even under an ambiguous id, and dropping
-/// the whole id would lose a live task. A snapshot copy that names its own exec
-/// session is not removed with them either.
+/// A canonical id identifies one record. A row that names neither an exec
+/// session nor a child session cannot be told apart from another such row, so
+/// those rows are dropped rather than one of them being picked. A row that
+/// names a child session is attributable even when its exec session is empty:
+/// two rows naming the same child session are copies of one launch and are
+/// reduced by the ordinary launch rule, while two naming different sessions
+/// are different launches. A single unattributed row is still the record it
+/// says it is, and identified rows are never dropped, so a live task under the
+/// id keeps competing.
 pub(super) fn ambiguous_empty_launch_ids(records: &[PersistedBackgroundRecord]) -> BTreeSet<String> {
-    let mut empty_launches = BTreeMap::<&str, usize>::new();
-    for record in records.iter().filter(|record| record.exec_session_id.is_empty()) {
-        *empty_launches.entry(record.id.as_str()).or_default() += 1;
+    let mut unidentified = BTreeMap::<&str, usize>::new();
+    for record in records
+        .iter()
+        .filter(|record| record.exec_session_id.is_empty() && record.session_id.is_empty())
+    {
+        *unidentified.entry(record.id.as_str()).or_default() += 1;
     }
-    empty_launches
+    unidentified
         .into_iter()
         .filter(|(_, count)| *count > 1)
         .map(|(id, _)| id.to_string())
@@ -49,10 +54,11 @@ pub(super) fn ambiguous_empty_launch_ids(records: &[PersistedBackgroundRecord]) 
 
 /// Reports whether `record` is one of the rows an ambiguous id cannot tell apart.
 ///
-/// The ambiguity is about rows without a launch identity. A copy that names its
-/// own exec session is identified, so it keeps competing for the id.
+/// The ambiguity is about rows with no launch identity at all. A copy that
+/// names its own exec session or its own child session is identified, so it
+/// keeps competing for the id.
 pub(super) fn has_ambiguous_launch_identity(record: &PersistedBackgroundRecord, ambiguous: &BTreeSet<String>) -> bool {
-    record.exec_session_id.is_empty() && ambiguous.contains(&record.id)
+    record.exec_session_id.is_empty() && record.session_id.is_empty() && ambiguous.contains(&record.id)
 }
 
 /// Names the launch a record is a copy of, ignoring its owner.

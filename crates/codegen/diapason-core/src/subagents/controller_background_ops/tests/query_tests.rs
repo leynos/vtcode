@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use tempfile::TempDir;
 
-use crate::config::DiapasonConfig;
 use crate::subagents::{BackgroundSubprocessStatus, SubagentController, TaskOwner};
 
 use super::support::{background_record, test_controller_config, write_ledger};
@@ -24,7 +23,7 @@ async fn a_snapshot_read_fault_leaves_the_record_and_ledger_unchanged() {
     let ledger = write_ledger(temp.path(), "background-worker", None, "worker", "exec-launch", true, "running");
     let persisted_before = std::fs::read(&ledger).expect("ledger is readable");
 
-    let mut config = test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default());
+    let mut config = test_controller_config(temp.path().to_path_buf());
     config.output_reader = Some(Arc::new(FakeOutputReader::for_task(
         "background-worker",
         FakeOutput::ArchiveFailure("the session archive is unreadable"),
@@ -74,6 +73,51 @@ async fn a_snapshot_read_fault_leaves_the_record_and_ledger_unchanged() {
     controller.signal_shutdown().await;
 }
 
+/// A read-only snapshot never reaches the ledger writer.
+///
+/// The byte comparison above passes if the query rewrites the ledger with the
+/// same bytes after its archive read fails, so it cannot prove the read has no
+/// side effects. The writer's own test seam parks a save: the query is raced
+/// against it, and a query that saved loses the race instead of completing.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_snapshot_read_fault_never_reaches_the_ledger_writer() {
+    use crate::subagents::controller_persistence::ledger_write_checkpoints;
+
+    let temp = TempDir::new().expect("tempdir");
+    write_ledger(temp.path(), "background-worker", None, "worker", "exec-launch", true, "running");
+    let mut config = test_controller_config(temp.path().to_path_buf());
+    config.output_reader = Some(Arc::new(FakeOutputReader::for_task(
+        "background-worker",
+        FakeOutput::ArchiveFailure("the session archive is unreadable"),
+    )));
+    let controller = SubagentController::new(config).await.expect("background controller");
+    let record = background_record(
+        "background-worker",
+        None,
+        "worker",
+        "exec-launch",
+        BackgroundSubprocessStatus::Running,
+        true,
+    );
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(record.id.clone(), record);
+    }
+
+    let (write_entered, _write_release) = ledger_write_checkpoints::arm(temp.path());
+    let snapshot = controller.background_snapshot(TaskOwner::Workspace, "background-worker");
+    tokio::pin!(snapshot);
+    tokio::select! {
+        result = &mut snapshot => {
+            result.expect_err("a preview storage fault still reaches the caller");
+        }
+        () = write_entered.notified() => panic!("a read-only snapshot must not reach the ledger writer"),
+    }
+
+    controller.signal_shutdown().await;
+}
+
 /// A restored terminal record still reports an end instant.
 ///
 /// The ACP contract allows a null end only while a task is active, but a
@@ -94,10 +138,9 @@ async fn a_cached_terminal_record_reports_an_end_instant() {
     );
     record.ended_at = None;
     let last_observed = record.updated_at;
-    let controller =
-        SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
-            .await
-            .expect("background controller");
+    let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf()))
+        .await
+        .expect("background controller");
     {
         let mut state = controller.state.write().await;
         state.background_children.insert(record.id.clone(), record);

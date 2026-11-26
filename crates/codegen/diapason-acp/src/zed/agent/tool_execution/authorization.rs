@@ -16,7 +16,7 @@ use crate::reports::ToolExecutionReport;
 use crate::tooling::{AcpToolRegistry, ToolDescriptor};
 use crate::zed::agent::log_suppressed_error;
 use crate::zed::constants::SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE;
-use crate::zed::types::ToolCallResult;
+use crate::zed::types::{SessionHandle, ToolCallResult};
 use diapason_core::hooks::PreToolHookDecision;
 use diapason_core::llm::provider::ToolCall as ProviderToolCall;
 use serde_json::Value;
@@ -41,16 +41,10 @@ impl ZedAgent {
         let local_tool_registry = workspace_runtime
             .as_ref()
             .map_or(&self.local_tool_registry, |runtime| &runtime.local_tool_registry);
-        // Subagent work runs through the session's controller, never the
-        // workspace's ownerless one; without one, core rejects the call.
-        let session_controller = if workspace_runtime.is_some() {
-            self.session_subagent_controller(invocation.session).map_err(|error| {
-                log_suppressed_error(&error, "session_subagent_controller_read", "session_lock_unavailable");
-                SdkError::internal_error()
-            })?
-        } else {
-            None
-        };
+        // Subagent work runs through the controller the advertised tool set is
+        // gated on — the launch scope for a session without a workspace
+        // runtime — never the workspace's ownerless one.
+        let session_controller = self.execution_subagent_controller(invocation.session)?;
         let scoped_registry = local_tool_registry.with_subagent_controller(session_controller.clone());
         let Some(func_ref) = invocation.call.function.as_ref() else {
             return Ok(Self::tool_call_result_from_report(
@@ -110,6 +104,18 @@ impl ZedAgent {
             .await?;
         let execution = Box::pin(self.execute_authorized_tool(&context, &resolved, authorization)).await?;
         self.finish_tool_call(&context, &resolved, execution).await
+    }
+
+    /// Resolves the controller a tool call executes against. It is the same
+    /// resolution the advertised subagent tool set is gated on.
+    pub(in crate::zed::agent) fn execution_subagent_controller(
+        &self,
+        session: &SessionHandle,
+    ) -> Result<Option<Arc<diapason_core::subagents::SubagentController>>, SdkError> {
+        self.session_subagent_controller(session).map_err(|error| {
+            log_suppressed_error(&error, "session_subagent_controller_read", "session_lock_unavailable");
+            SdkError::internal_error()
+        })
     }
 
     fn resolve_tool_call<'a>(
