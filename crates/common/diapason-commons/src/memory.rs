@@ -6,6 +6,7 @@
 //! fallback on macOS), this returns a real value on every supported platform.
 use std::time::Duration;
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use num_traits::ToPrimitive;
 
 /// Returns the current process Resident Set Size in **megabytes**, or `None` if
