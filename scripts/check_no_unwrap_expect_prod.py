@@ -21,11 +21,13 @@ TEST_SOURCE_SUFFIXES = ("_test.rs", "_tests.rs")
 
 @dataclass
 class AllowRule:
+    """One allowlist entry, optionally pinned to a single line number."""
     pattern: str
     line: int | None = None
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the unwrap/expect check."""
     parser = argparse.ArgumentParser(
         description="Validate production Rust code does not use unwrap()/expect().",
     )
@@ -51,6 +53,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def list_tracked_rust_files() -> list[Path]:
+    """List git-tracked Rust files under the repository root."""
     proc = subprocess.run(
         ["git", "ls-files", "-z", "*.rs"],
         cwd=REPO_ROOT,
@@ -62,6 +65,7 @@ def list_tracked_rust_files() -> list[Path]:
 
 
 def is_test_path(path: Path) -> bool:
+    """Return True when a path is a test file or lives in a test tree."""
     rel = path.relative_to(REPO_ROOT).as_posix()
     path_parts = rel.split("/")
     return (
@@ -72,6 +76,7 @@ def is_test_path(path: Path) -> bool:
 
 
 def _is_test_tree_path(path_parts: list[str]) -> bool:
+    """Return True when path parts sit under a test directory."""
     has_workspace_test_root = (
         len(path_parts) > 1 and path_parts[0] in TEST_ROOT_DIRECTORIES
     )
@@ -82,14 +87,17 @@ def _is_test_tree_path(path_parts: list[str]) -> bool:
 
 
 def _is_test_module_path(path_parts: list[str]) -> bool:
+    """Return True when a parent directory name ends with _tests."""
     return any(part.endswith("_tests") for part in path_parts[:-1])
 
 
 def _is_test_source_path(filename: str) -> bool:
+    """Return True when a filename is a dedicated test source file."""
     return filename == "tests.rs" or filename.endswith(TEST_SOURCE_SUFFIXES)
 
 
 def parse_allow_rules(path: Path) -> list[AllowRule]:
+    """Read allowlist rules from a file; a missing file yields no rules."""
     if not path.is_absolute():
         path = REPO_ROOT / path
     if not path.exists():
@@ -117,6 +125,7 @@ def parse_allow_rules(path: Path) -> list[AllowRule]:
 
 
 def is_allowlisted(rel_path: str, line_no: int, rules: list[AllowRule]) -> bool:
+    """Return True when a finding matches any allowlist rule."""
     # The allowlist was authored against the pre-restructure short form
     # (e.g. "diapason-core/src/..."); match both it and the current
     # "crates/codegen|common/..." form so entries do not go stale when the
@@ -136,6 +145,7 @@ def is_allowlisted(rel_path: str, line_no: int, rules: list[AllowRule]) -> bool:
 
 
 def scan_file(path: Path, rules: list[AllowRule]) -> list[tuple[str, int, str]]:
+    """Return unwrap/expect findings in a file, skipping test code."""
     rel_path = path.relative_to(REPO_ROOT).as_posix()
     findings: list[tuple[str, int, str]] = []
 
@@ -197,6 +207,7 @@ def scan_file(path: Path, rules: list[AllowRule]) -> list[tuple[str, int, str]]:
 
 
 def main() -> int:
+    """Run the unwrap/expect scan and return the process exit code."""
     args = parse_args()
     allow_rules = parse_allow_rules(args.allowlist)
 

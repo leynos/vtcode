@@ -120,6 +120,7 @@ def get_categories(skills):
 
 
 def main():
+    """Parse arguments and list skills from the curated catalogue."""
     parser = argparse.ArgumentParser(
         description="List available skills from curated repositories.",
     )

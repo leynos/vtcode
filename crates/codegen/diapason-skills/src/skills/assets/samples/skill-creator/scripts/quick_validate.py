@@ -194,6 +194,7 @@ def print_results(skill_path, is_valid, errors, warnings, verbose=True):
 
 
 def main():
+    """Validate a SKILL.md file from the command line and exit accordingly."""
     parser = argparse.ArgumentParser(
         description="Quick validation of SKILL.md files.",
     )

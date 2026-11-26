@@ -15,6 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the Rust file length check."""
     parser = argparse.ArgumentParser(
         description="Validate Rust source file length budgets.",
     )
@@ -46,6 +47,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def list_tracked_rust_files() -> list[Path]:
+    """List git-tracked Rust files under the repository root."""
     proc = subprocess.run(
         ["git", "ls-files", "-z", "*.rs"],
         cwd=REPO_ROOT,
@@ -58,11 +60,13 @@ def list_tracked_rust_files() -> list[Path]:
 
 
 def count_lines(path: Path) -> int:
+    """Return the number of lines in a file, decoding errors ignored."""
     with path.open("r", encoding="utf-8", errors="ignore") as handle:
         return sum(1 for _ in handle)
 
 
 def emit_report(summary: dict[str, Any], top_items: list[dict[str, Any]], top_count: int) -> None:
+    """Print the length summary and a table of the longest files."""
     print(
         "Rust file length summary: "
         f"total={summary['total_files']}, "
@@ -81,6 +85,7 @@ def emit_report(summary: dict[str, Any], top_items: list[dict[str, Any]], top_co
 
 
 def main() -> int:
+    """Measure tracked Rust files against length budgets; return exit code."""
     args = parse_args()
     files = list_tracked_rust_files()
 

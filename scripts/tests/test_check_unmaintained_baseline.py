@@ -22,6 +22,7 @@ def finding(
     repo_status: object = "Unassociated",
     outdated_deps: list[dict[str, str]] | None = None,
 ) -> dict[str, object]:
+    """Build a scanner finding record with overridable fields."""
     return {
         "name": name,
         "version": version,
@@ -35,6 +36,7 @@ def baseline_entry(
     classification: str = "repository-layout",
     rationale: str = "The scanner reports this package because its repository layout is not recognized.",
 ) -> dict[str, object]:
+    """Build a baseline entry for a scanner finding."""
     return {
         **package,
         "classification": classification,
@@ -49,6 +51,7 @@ class CheckerHarness:
     def __init__(
         self, scanner_output: str, scanner_status: int, baseline: object
     ) -> None:
+        """Write the scanner output and baseline into a temporary repository."""
         self.scanner_output = scanner_output
         self.scanner_status = scanner_status
         self.baseline = baseline
@@ -67,6 +70,7 @@ class CheckerHarness:
             baseline_path.write_text(json.dumps(baseline), encoding="utf-8")
 
     def scanner(self, name: str = "fake-scanner") -> Path:
+        """Write an executable fake scanner that emits the configured output."""
         scanner = self.root / name
         payload = repr(self.scanner_output)
         script = (
@@ -82,6 +86,7 @@ class CheckerHarness:
     def run(
         self, scanner_name: str = "fake-scanner"
     ) -> subprocess.CompletedProcess[str]:
+        """Run the checker against a fake scanner and return the result."""
         scanner = self.scanner(scanner_name)
         return subprocess.run(
             [sys.executable, str(self.checker), "--scanner", str(scanner)],
@@ -92,22 +97,27 @@ class CheckerHarness:
         )
 
     def close(self) -> None:
+        """Remove the temporary repository."""
         self.directory.cleanup()
 
     def __enter__(self) -> "CheckerHarness":
+        """Return the harness for use as a context manager."""
         return self
 
     def __exit__(self, *_args: object) -> None:
+        """Remove the temporary repository on exit."""
         self.close()
 
 
 class CheckUnmaintainedBaselineTests(unittest.TestCase):
+    """Exercise the cargo-unmaintained baseline ratchet end to end."""
     def run_checker(
         self,
         scanner_output: object,
         scanner_status: int,
         baseline_entries: list[dict[str, object]] | None = None,
     ) -> subprocess.CompletedProcess[str]:
+        """Run the checker with the given scanner output and baseline entries."""
         output = (
             scanner_output
             if isinstance(scanner_output, str)
@@ -124,6 +134,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
     def test_known_finding_is_accepted_and_printed_with_issue_and_classification(
         self,
     ) -> None:
+        """Check that a known finding passes and prints its issue and class."""
         package = finding(
             repo_status={"Age": 999},
             outdated_deps=[
@@ -144,6 +155,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
         self.assertIn("classification: repository-layout", result.stdout)
 
     def test_age_value_is_not_part_of_finding_identity(self) -> None:
+        """Check that a changed age value does not change finding identity."""
         scanner_package = finding(repo_status={"Age": 4})
         baseline_package = finding(repo_status={"Age": 4_000_000})
         result = self.run_checker(
@@ -153,6 +165,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
 
     def test_new_or_changed_finding_fails_the_ratchet(self) -> None:
+        """Check that new or changed findings fail the ratchet with status 1."""
         known = finding()
         cases = {
             "new package": finding(name="new-package"),
@@ -176,6 +189,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
                 self.assertIn("unreviewed or changed finding", result.stderr)
 
     def test_missing_current_finding_reports_manual_removal_and_passes(self) -> None:
+        """Check that a vanished baseline finding passes and is flagged for removal."""
         result = self.run_checker([], 0, [baseline_entry(finding())])
 
         self.assertEqual(result.returncode, 0)
@@ -183,18 +197,21 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
         self.assertIn("known-package@1.2.3", result.stdout)
 
     def test_clean_scan_passes(self) -> None:
+        """Check that a clean scan with no findings passes silently."""
         result = self.run_checker([], 0)
 
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "")
 
     def test_malformed_scanner_json_fails_closed(self) -> None:
+        """Check that invalid scanner JSON makes the checker fail closed."""
         result = self.run_checker("{", 0)
 
         self.assertEqual(result.returncode, 2)
         self.assertIn("invalid JSON", result.stderr)
 
     def test_scanner_schema_is_exact_and_status_age_is_bounded(self) -> None:
+        """Check that scanner output must match the exact schema and age bounds."""
         known = finding()
         malformed = [
             {"name": "wrong-top-level"},
@@ -209,6 +226,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 2)
 
     def test_duplicate_scanner_identity_fails_even_when_age_differs(self) -> None:
+        """Check that duplicate scanner identities fail even with differing ages."""
         payload = [finding(repo_status={"Age": 1}), finding(repo_status={"Age": 2})]
         result = self.run_checker(payload, 1, [baseline_entry(finding())])
 
@@ -216,6 +234,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
         self.assertIn("duplicate scanner finding identity", result.stderr)
 
     def test_malformed_or_duplicate_baseline_fails_closed(self) -> None:
+        """Check that malformed or duplicate baseline documents fail closed."""
         known = finding()
         baselines = [
             {
@@ -245,6 +264,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
     def test_non_integer_control_fields_fail_closed_with_field_diagnostics(
         self,
     ) -> None:
+        """Check that non-integer control fields fail with a field diagnostic."""
         known = finding()
         valid_baseline = {
             "schema_version": 1,
@@ -304,6 +324,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
                 self.assertIn(diagnostic, result.stderr)
 
     def test_scanner_operational_failure_fails_even_with_plausible_json(self) -> None:
+        """Check that failing scanner statuses fail even with plausible JSON."""
         for scanner_status in (2, 7):
             with self.subTest(scanner_status=scanner_status):
                 result = self.run_checker(
@@ -314,6 +335,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
                 self.assertIn(f"unexpected status {scanner_status}", result.stderr)
 
     def test_contradictory_scanner_status_and_output_fail_closed(self) -> None:
+        """Check that a scanner status contradicting the finding count fails closed."""
         cases = [(1, []), (0, [finding()])]
         for scanner_status, output in cases:
             with self.subTest(scanner_status=scanner_status, output=output):
@@ -324,6 +346,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
                 self.assertIn("contradicts finding count", result.stderr)
 
     def test_scanner_launch_failure_fails_closed(self) -> None:
+        """Check that a scanner that cannot be launched fails closed."""
         baseline = {
             "schema_version": 1,
             "repository": "leynos/diapason",
@@ -347,6 +370,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
         self.assertIn("could not launch scanner", result.stderr)
 
     def test_literal_scanner_path_and_arguments_are_not_shell_interpreted(self) -> None:
+        """Check that scanner path and arguments are passed literally, not shelled."""
         marker_name = self._marker_path()
         scanner_name = f"scanner; touch {marker_name}"
         package = finding()
@@ -387,6 +411,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
 
     @staticmethod
     def _marker_path() -> str:
+        """Return the file name a shell injection would create."""
         return "created-by-shell-interpretation"
 
 

@@ -156,6 +156,24 @@ under `cfg(test)` or this feature, a production build omits both.
 lets the liveness privacy regression fail an exec-session read. Never enable
 `test-support` for a production build.
 
+#### Git fixture route
+
+Git-dependent tests use the fixture helpers in
+[`git_info_test_support.rs`](../../crates/codegen/diapason-core/src/git_info_test_support.rs).
+`isolated_git_repository` and `isolated_git_repository_with` create a
+temporary repository with a fixed author, commit date, and remote URL.
+`run_in_clean_test_process` re-runs one named test in a child process, and
+Git-dependent tests run only through that child so inherited redirect variables
+cannot point them at the surrounding checkout or its configuration.
+
+The child removes every variable named in `GIT_ENV_OVERRIDES` and then applies
+three isolating replacements: `GIT_CONFIG_NOSYSTEM=1`, a `GIT_CONFIG_GLOBAL`
+path that is never created, and `GIT_CONFIG_COUNT=0`. Removal alone restores
+Git's default lookup, so the replacement values matter as much as the removals.
+The parent accepts the child only when the captured output carries a libtest
+`test result:` summary reporting at least one passed test; success without that
+summary fails the fixture rather than passing silently.
+
 ### ACP provider streaming
 
 ACP streaming changes use complementary layers rather than one oversized

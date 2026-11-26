@@ -4,6 +4,11 @@
 # - Model default: gemini-3-flash-preview
 # - Retries/backoff + sleep; robust code extraction; error surfacing.
 
+"""Run the HumanEval pass@1 and latency benchmark through the diapason CLI.
+
+Settings come from environment variables; a JSON report is written to reports/.
+"""
+
 import os, re, json, time, tempfile, subprocess, sys, random, pathlib
 from datetime import datetime
 
@@ -45,6 +50,7 @@ USAGE_JSON = re.compile(r'"usage"\s*:\s*\{.*?\}', re.S)
 SAFE = lambda s: re.sub(r'[^A-Za-z0-9._-]+', '_', s)
 
 def now_stamp() -> str:
+    """Return the current local time as a YYYYMMDD-HHMMSS string."""
     return datetime.now().strftime("%Y%m%d-%H%M%S")
 
 def extract_code(txt: str) -> str:
@@ -66,12 +72,14 @@ def extract_code(txt: str) -> str:
     return txt.strip()
 
 def run_cmd(args, timeout=None):
+    """Run a command and return its stdout, elapsed seconds, and exit code."""
     t0 = time.time()
     p = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
     # Only return stdout for code generation; stderr may contain debug messages
     return p.stdout or "", time.time() - t0, p.returncode
 
 def vt_ask(prompt: str):
+    """Ask diapason a prompt with retries and return a result dictionary."""
     # Build command with provider and model
     # Note: diapason 'ask' command doesn't support --temperature or --max-output-tokens flags
     # These would need to be configured via config.toml if needed
@@ -118,6 +126,10 @@ def vt_ask(prompt: str):
         }
 
 def run_humaneval_test(code: str, test_src: str, entry_point: str):
+    """Run a candidate solution against a HumanEval test in a temp directory.
+
+    Returns a tuple of (passed, seconds, output tail).
+    """
     with tempfile.TemporaryDirectory() as d:
         sol = pathlib.Path(d, "solution.py"); sol.write_text(code + "\n", encoding="utf-8")
         test = pathlib.Path(d, "test.py")
@@ -136,6 +148,7 @@ def run_humaneval_test(code: str, test_src: str, entry_point: str):
         return ok, dt, out[-1000:]
 
 def sample_tasks(ds, n, ids_override):
+    """Select tasks by explicit ids, or a seeded random sample of n."""
     if ids_override:
         want = set(ids_override)
         return [ex for ex in ds if ex["task_id"] in want]
@@ -145,10 +158,12 @@ def sample_tasks(ds, n, ids_override):
     return [ds[i] for i in idxs]
 
 def summarize(results):
+    """Compute pass rate, latency percentiles, token totals, and cost."""
     n = len(results)
     p = sum(1 for r in results if r["passed"])
     lat_ok = sorted(r["latency_s"] for r in results if not r.get("gen_timeout"))
     def pct(vals, q):
+        """Return the q-th quantile of sorted values, or None when empty."""
         if not vals: return None
         i = max(0, min(len(vals)-1, int(round(q*(len(vals)-1)))))
         return vals[i]

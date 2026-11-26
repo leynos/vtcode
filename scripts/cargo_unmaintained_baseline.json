@@ -48,7 +48,7 @@
       "version": "0.5.1",
       "repo_status": { "Age": 902 },
       "outdated_deps": [
-        { "name": "sha2", "req": "^0.10", "version_used": "0.10.9", "version_latest": "0.11.1" }
+        { "name": "sha2", "req": "^0.10", "version_used": "0.10.9", "version_latest": "0.11.2" }
       ],
       "classification": "transitive-stale-dependency-requirement",
       "rationale": "Transitive dependency with a stale sha2 requirement; tracked for dependency-owner review in #108.",

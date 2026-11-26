@@ -20,6 +20,11 @@ DOCS_TOP_LEVEL_ALLOWLIST = REPO_ROOT / "scripts" / "docs_top_level_allowlist.txt
 
 
 def load_docs_top_level_allowlist() -> set[str]:
+    """Return the allowed docs/*.md paths listed in the allowlist file.
+
+    Blank lines and comments are skipped. Returns an empty set if the file
+    does not exist.
+    """
     if not DOCS_TOP_LEVEL_ALLOWLIST.exists():
         return set()
 
@@ -34,6 +39,11 @@ def load_docs_top_level_allowlist() -> set[str]:
 
 
 def main() -> int:
+    """Check markdown placement and report any violations on stderr.
+
+    Returns 1 for a missing allowlist, misplaced files or stale allowlist
+    entries, and 0 otherwise.
+    """
     root_markdown = sorted(REPO_ROOT.glob("*.md"))
     violations = [path.name for path in root_markdown if path.name not in ALLOWED_ROOT_MARKDOWN]
     allowlisted_docs = load_docs_top_level_allowlist()

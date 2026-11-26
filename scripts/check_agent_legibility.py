@@ -26,6 +26,7 @@ TOP_LEVEL_MOD_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+;")
 
 @dataclass(frozen=True)
 class LegibilityTarget:
+    """One hotspot module checked for agent legibility signals."""
     path: str
     label: str
     delegation_threshold: int = DELEGATION_THRESHOLD
@@ -56,6 +57,7 @@ TARGETS = (
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse the --mode and --report-json command-line options."""
     parser = argparse.ArgumentParser(
         description="Validate agent legibility signals for active hotspot modules.",
     )
@@ -75,20 +77,24 @@ def parse_args() -> argparse.Namespace:
 
 
 def count_lines(path: Path) -> int:
+    """Count the lines in a file, ignoring undecodable bytes."""
     with path.open("r", encoding="utf-8", errors="ignore") as handle:
         return sum(1 for _ in handle)
 
 
 def read_lines(path: Path) -> list[str]:
+    """Read a file as text and return its lines, ignoring undecodable bytes."""
     return path.read_text(encoding="utf-8", errors="ignore").splitlines()
 
 
 def missing_header_fields(lines: list[str]) -> list[str]:
+    """Return the header field markers absent from the scanned header window."""
     header_window = "\n".join(lines[:HEADER_SCAN_LINES])
     return [field for field in HEADER_FIELDS if field not in header_window]
 
 
 def has_delegation_signal(path: Path, lines: list[str]) -> bool:
+    """Report whether a module has companion Rust files or a top-level mod."""
     companion_dir = path.with_suffix("")
     if companion_dir.is_dir() and any(child.suffix == ".rs" for child in companion_dir.rglob("*.rs")):
         return True
@@ -97,6 +103,7 @@ def has_delegation_signal(path: Path, lines: list[str]) -> bool:
 
 
 def evaluate_target(target: LegibilityTarget) -> dict[str, Any]:
+    """Evaluate one hotspot target and return its legibility result."""
     path = REPO_ROOT / target.path
     if not path.exists():
         return {
@@ -135,6 +142,7 @@ def evaluate_target(target: LegibilityTarget) -> dict[str, Any]:
 
 
 def header_status(result: dict[str, Any]) -> str:
+    """Summarize the missing header fields for a report table row."""
     missing = result["missing_header_fields"]
     if not missing:
         return "ok"
@@ -142,6 +150,7 @@ def header_status(result: dict[str, Any]) -> str:
 
 
 def delegation_status(result: dict[str, Any]) -> str:
+    """Summarize the delegation requirement for a report table row."""
     if not result["delegation_required"]:
         return "not-needed"
     if result["has_delegation_signal"]:
@@ -150,6 +159,7 @@ def delegation_status(result: dict[str, Any]) -> str:
 
 
 def emit_report(results: list[dict[str, Any]], mode: str) -> None:
+    """Print the summary line and the Markdown table for the results."""
     missing_headers = sum(1 for result in results if result["missing_header_fields"])
     missing_delegation = sum(
         1
@@ -170,12 +180,17 @@ def emit_report(results: list[dict[str, Any]], mode: str) -> None:
 
 
 def write_report(path: Path, payload: dict[str, Any]) -> None:
+    """Write the JSON payload, resolving relative paths against the repo root."""
     report_path = path if path.is_absolute() else REPO_ROOT / path
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def main() -> int:
+    """Evaluate all targets, print the report and return the exit code.
+
+    Returns 1 only in enforce mode when a target fails, otherwise 0.
+    """
     args = parse_args()
     results = [evaluate_target(target) for target in TARGETS]
     emit_report(results, args.mode)

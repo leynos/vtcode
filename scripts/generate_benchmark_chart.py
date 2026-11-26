@@ -130,6 +130,7 @@ def generate_matplotlib_chart(data, output_path):
     return True
 
 def main():
+    """Print an ASCII chart for a report and optionally save a PNG chart."""
     if len(sys.argv) < 2:
         print("Usage: python generate_benchmark_chart.py <report_path> [--png]")
         sys.exit(1)

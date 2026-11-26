@@ -45,6 +45,7 @@ def compare_reports(reports):
     print()
 
 def main():
+    """Print a comparison table for the given benchmark report files."""
     if len(sys.argv) < 2:
         print("Usage: python compare_benchmarks.py <report1.json> [report2.json] ...")
         print("\nExample:")

@@ -47,6 +47,7 @@ EXTENSIONS = {
 
 
 def should_process(filepath: str) -> bool:
+    """Return True if the file has an extension listed in EXTENSIONS."""
     _, ext = os.path.splitext(filepath)
     return ext in EXTENSIONS
 
@@ -73,6 +74,7 @@ def update_file(filepath: str, dry_run: bool = False) -> int:
 
 
 def main():
+    """Update stale crate paths in all scanned directories and print totals."""
     dry_run = False
     total_files = 0
     total_replacements = 0

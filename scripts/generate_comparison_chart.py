@@ -223,6 +223,7 @@ def generate_matplotlib_comparison(reports, output_path):
     return True
 
 def main():
+    """Print an ASCII comparison of two reports and optionally save a PNG."""
     if len(sys.argv) < 3:
         print("Usage: python generate_comparison_chart.py <report1.json> <report2.json> [--png]")
         print("\nExample:")

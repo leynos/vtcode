@@ -21,6 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the large-file check."""
     parser = argparse.ArgumentParser(
         description="Validate tracked files stay below the configured byte threshold.",
     )
@@ -54,11 +55,13 @@ def parse_args() -> argparse.Namespace:
 
 @dataclass
 class AllowRule:
+    """One allowlist glob, optionally capped at a maximum size in bytes."""
     pattern: str
     max_size: Optional[int] = None
 
 
 def list_tracked_files(repo_root: Path) -> List[Path]:
+    """List git-tracked file paths under the given repository root."""
     proc = subprocess.run(
         ["git", "ls-files", "-z"],
         cwd=repo_root,
@@ -71,6 +74,7 @@ def list_tracked_files(repo_root: Path) -> List[Path]:
 
 
 def normalize_pattern(pattern: str) -> str:
+    """Normalize an allowlist pattern to a repo-relative POSIX glob."""
     normalized = pattern.strip()
     if normalized.startswith("./"):
         normalized = normalized[2:]
@@ -83,6 +87,7 @@ def normalize_pattern(pattern: str) -> str:
 
 
 def parse_allow_rule(entry: str) -> AllowRule:
+    """Parse an allowlist entry of the form pattern or pattern=max_bytes."""
     text = entry.strip()
     if not text:
         raise ValueError("Allowlist entries must contain a pattern")
@@ -110,6 +115,7 @@ def parse_allow_rule(entry: str) -> AllowRule:
 
 
 def is_allowed(path: Path, size: int, allow_rules: List[AllowRule]) -> bool:
+    """Return True when a file matches an allow rule within its size cap."""
     relative_posix = path.relative_to(REPO_ROOT).as_posix()
     absolute_posix = path.as_posix()
 
@@ -125,6 +131,7 @@ def is_allowed(path: Path, size: int, allow_rules: List[AllowRule]) -> bool:
 
 
 def load_allowlist(file_path: Path) -> List[AllowRule]:
+    """Read allow rules from a file; a missing file yields no rules."""
     if not file_path.exists():
         return []
 
@@ -142,6 +149,10 @@ def resolve_allowlist_patterns(
     allow_args: Iterable[str],
     allowlist_file: Path | None,
 ) -> List[AllowRule]:
+    """Combine --allow entries with rules from the allowlist file.
+
+    The default allowlist file is used when no file is given.
+    """
     patterns: List[AllowRule] = []
     for entry in allow_args:
         entry_text = entry.strip()
@@ -161,6 +172,7 @@ def resolve_allowlist_patterns(
 
 
 def main() -> int:
+    """Check tracked files against the size budget and return an exit code."""
     args = parse_args()
     threshold = args.threshold
     try:
