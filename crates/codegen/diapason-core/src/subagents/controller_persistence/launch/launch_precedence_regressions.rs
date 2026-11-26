@@ -45,7 +45,7 @@ fn launch_copy(
         "reasoning_override": null,
         "restart_attempts": 0
     }))
-    .expect("persisted launch copy")
+    .unwrap_or_else(|error| panic!("persisted launch copy: {error}"))
 }
 
 /// A refresh of a stopped launch must not resurrect it.

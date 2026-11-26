@@ -18,8 +18,9 @@ capability is always advertised as
 controller is configured, the handshake also advertises
 `result.agentCapabilities._meta.lody.subagents` version 1 with `lifecycle`,
 `list`, `cancel`, and `output` operations. The
-`result.agentCapabilities._meta.lody.tasks = { "version": 1, "background": true }`
-capability is included only when background subagents are enabled.
+`result.agentCapabilities._meta.lody.tasks` capability, whose value is
+`{ "version": 1, "background": true }`, is included only when background
+subagents are enabled.
 
 Subagent and background-process progress is sent through standard ACP
 `session/update` tool calls and tool-call updates. The standard task fields
