@@ -1,8 +1,8 @@
 //! Lifecycle publication and task-list projection for the Lody management
 //! extensions.
-use super::lody_support::{expected_epoch_seconds, lifecycle_task_meta, lody_list};
+use super::lody_support::{expected_epoch_seconds, lifecycle_announces_task, lifecycle_task_meta, lody_list};
 use super::*;
-use diapason_core::subagents::{BackgroundSubprocessStatus, TaskOwner};
+use diapason_core::subagents::{BackgroundSubprocessStatus, SubagentController, TaskOwner};
 use std::time::Duration;
 
 /// Attaches the lifecycle forwarder after a task is already running.
@@ -21,9 +21,18 @@ pub(super) async fn publish_forwarder_snapshot_on_attach(
     let initial_task = tokio::time::timeout(Duration::from_secs(2), async {
         loop {
             let notification = notifications.recv().await.expect("lifecycle notification stream");
-            if let Some(task) = lifecycle_task_meta(&notification) {
-                break task;
+            let Some(task) = lifecycle_task_meta(&notification) else {
+                continue;
+            };
+            if task["taskId"] != task_id {
+                continue;
             }
+            assert!(
+                lifecycle_announces_task(&notification),
+                "the first snapshot for an attached task must be its initial ToolCall, not an update for a \
+                 call id the client never saw"
+            );
+            break task;
         }
     })
     .await
@@ -40,6 +49,61 @@ pub(super) async fn publish_forwarder_snapshot_on_attach(
     );
 }
 
+/// Asserts the owning session lists exactly its own delegation tree.
+///
+/// The root controller tracks the `default` child; that child's scoped
+/// controller tracks both `explorer` grandchildren. Every listed task must be
+/// one of those three ids, and each projection must agree with the record the
+/// owning controller holds.
+pub(super) async fn assert_owned_tree_is_listed(
+    cx: &ConnectionTo<Agent>,
+    session_id: &acp::SessionId,
+    root: &Arc<SubagentController>,
+    child_controller: &Arc<SubagentController>,
+    child_id: &str,
+    grandchild_ids: [&str; 2],
+) -> Result<(), acp::Error> {
+    let listed = lody_list(cx, session_id, false).await?;
+    let tasks = listed["tasks"].as_array().expect("Lody task list").clone();
+    // Every listed row must carry a string id, so a malformed row cannot be
+    // dropped by the projection below and let the comparison pass anyway.
+    let mut listed_ids = tasks
+        .iter()
+        .map(|task| task["taskId"].as_str().expect("every listed task must carry a string task ID"))
+        .collect::<Vec<_>>();
+    listed_ids.sort_unstable();
+    let mut expected_ids = vec![child_id, grandchild_ids[0], grandchild_ids[1]];
+    expected_ids.sort_unstable();
+    assert_eq!(
+        listed_ids, expected_ids,
+        "the root session must list its child and both grandchildren exactly once: {listed}"
+    );
+    let root_entries = root.status_entries().await;
+    let child_entries = child_controller.status_entries().await;
+    for task in &tasks {
+        let task_id = task["taskId"].as_str().expect("listed task ID");
+        let record = if task_id == child_id {
+            root_entries.iter().find(|entry| entry.id == task_id)
+        } else {
+            child_entries.iter().find(|entry| entry.id == task_id)
+        }
+        .expect("the owning controller must track every listed task");
+        assert_eq!(task["status"], "running", "a live foreground task must be listed as running: {task}");
+        assert_eq!(
+            task["startedAtEpochSeconds"],
+            expected_epoch_seconds(record.created_at),
+            "the listed start must project the owning controller record: {task}"
+        );
+        assert!(
+            task["endedAtEpochSeconds"].is_null(),
+            "an active foreground task must not report an end instant: {task}"
+        );
+    }
+    let active_listed = lody_list(cx, session_id, true).await?;
+    assert_eq!(active_listed, listed, "every spawned task is still running, so activeOnly must change nothing");
+    Ok(())
+}
+
 /// Asserts the list projections of an active background task.
 ///
 /// Waits for the process to record its start, then returns the listed
@@ -47,7 +111,7 @@ pub(super) async fn publish_forwarder_snapshot_on_attach(
 /// start instant did not move.
 pub(super) async fn assert_active_task_projection(
     cx: &ConnectionTo<Agent>,
-    controller: &Arc<diapason_core::subagents::SubagentController>,
+    controller: &Arc<SubagentController>,
     session_id: &acp::SessionId,
     task_id: &str,
 ) -> serde_json::Value {

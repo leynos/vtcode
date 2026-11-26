@@ -6,11 +6,14 @@
 //! `lody_management_assertions`, so this module keeps only the protocol flow
 //! that sequences them.
 
-use super::lody_management_assertions::{assert_management_requests_are_accounted, exercise_detached_session_registry};
+use super::lody_management_assertions::{
+    ManagementRequestTotals, assert_management_requests_are_accounted, cancel_background_task,
+    exercise_detached_session_registry,
+};
 use super::lody_management_projection::{assert_active_task_projection, publish_forwarder_snapshot_on_attach};
 use super::lody_management_reads::{
-    read_exited_output_is_inert, read_live_output_until_recorded, read_stale_record_output_is_inert,
-    spawn_stale_background_record,
+    read_exited_output_without_a_recorded_archive_is_inert, read_live_output_until_recorded,
+    read_stale_record_output_is_inert, spawn_stale_background_record,
 };
 use super::lody_support::{
     LODY_BACKGROUND_SCRIPT, expected_epoch_seconds, lifecycle_task_id, lody_cancel_with_reason, lody_ext, lody_list,
@@ -123,7 +126,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             let active_started_at_epoch_seconds =
                 assert_active_task_projection(&cx, &controller, &session.session_id, &background.id).await;
 
-            let output = read_live_output_until_recorded(
+            let (output, live_output_polls) = read_live_output_until_recorded(
                 &cx,
                 &controller,
                 &session.session_id,
@@ -272,7 +275,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 "activeOnly must exclude a terminal task"
             );
 
-            let _exited_output = read_exited_output_is_inert(
+            let _exited_output = read_exited_output_without_a_recorded_archive_is_inert(
                 &cx,
                 &controller,
                 &session.session_id,
@@ -304,11 +307,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             write_lody_background_script(&workspace_path, LODY_BACKGROUND_SCRIPT);
             // The child is already gone, so cleanup only settles the record and
             // releases its exec session.
-            let settled = controller
-                .force_cancel_background(TaskOwner::Workspace, stale.id())
-                .await
-                .expect("settle the second background task")
-                .into_entry();
+            let settled = cancel_background_task(&controller, TaskOwner::Workspace, stale.id()).await;
             assert!(!settled.status.is_active(), "the second task must be settled during cleanup");
 
             let sibling = exercise_detached_session_registry(
@@ -319,7 +318,17 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             )
             .await;
 
-            assert_management_requests_are_accounted(&inspected_agent);
+            // Nine management requests in this flow succeed before the
+            // live-output poll count is added: the two active-list reads, the
+            // legacy-id output read, the sibling list, the legacy-id cancel, the
+            // two post-cancel lists and the two exited-task output reads. Five
+            // fail: the oversized tail, the sibling cancel and the three
+            // foreign/unknown output reads.
+            let management_requests = ManagementRequestTotals {
+                succeeded: 9_u64.saturating_add(u64::try_from(live_output_polls).unwrap_or(u64::MAX)),
+                failed: 5,
+            };
+            assert_management_requests_are_accounted(&inspected_agent, management_requests);
 
             drop(
                 cx.send_request(CloseSessionRequest::new(session.session_id.clone()))
@@ -341,11 +350,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 first_runtime.lifecycle.lock().expect("workspace runtime lifecycle lock").state,
                 crate::zed::agent::session_workspace::WorkspaceRuntimeLifecycleState::Open
             );
-            let cancelled_sibling = foreign_controller
-                .force_cancel_background(TaskOwner::Workspace, &sibling)
-                .await
-                .expect("cancel the sibling background task")
-                .into_entry();
+            let cancelled_sibling = cancel_background_task(&foreign_controller, TaskOwner::Workspace, &sibling).await;
             assert!(!cancelled_sibling.status.is_active(), "the sibling process must be stopped during test cleanup");
             drop(
                 cx.send_request(CloseSessionRequest::new(foreign_session.session_id.clone()))

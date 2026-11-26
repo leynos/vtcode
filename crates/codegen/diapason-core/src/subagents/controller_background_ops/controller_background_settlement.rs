@@ -203,15 +203,17 @@ impl SubagentController {
             .await;
     }
 
-    /// Settles a record whose scheduled replacement could not be prepared.
+    /// Settles a record whose scheduled replacement could not be prepared or claimed.
     ///
     /// The restart allowance was already spent when refresh scheduled the
-    /// replacement, so a preparation failure cannot be retried. Leaving the
-    /// record `Starting` would report an active launch that nothing will ever
-    /// drive, and refresh exempts a `Starting` record only while it still owes
-    /// a launch, so the failure is settled here and its obligation discharged.
-    /// The observation's exec session still identifies the launch, so only a
-    /// record that still names it is settled.
+    /// replacement, so a preparation failure cannot be retried; the same holds
+    /// for a claim the ledger would not keep, which may not be retried either
+    /// because the process was never started. Leaving the record `Starting`
+    /// would report an active launch that nothing will ever drive, and refresh
+    /// exempts a `Starting` record only while it still owes a launch, so the
+    /// failure is settled here and its obligation discharged. The launch's exec
+    /// session still identifies it, so only a record that still names it is
+    /// settled.
     pub(in crate::subagents) async fn settle_failed_background_restart(
         &self,
         record_id: &str,

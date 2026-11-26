@@ -13,6 +13,7 @@ use super::super::controller_background_cancel::{
 };
 #[cfg(unix)]
 use super::super::controller_background_run::gate_next_background_commit;
+use super::super::controller_background_settlement::pending_background_ledger_write_generation;
 use super::support::{background_record, background_test_controller};
 #[cfg(unix)]
 use super::support::{session_is_gone, write_background_demo_agent, write_sleeping_demo_script};
@@ -137,6 +138,110 @@ async fn a_spent_close_retry_reports_a_pending_stop() {
     assert!(
         !background_stop_close_is_pending(&controller.state, "background-worker", exec_session_id),
         "a spent allowance discharges the obligation"
+    );
+
+    controller.signal_shutdown().await;
+}
+
+/// A spent close retry owes the ledger the fault it records.
+///
+/// Once the allowance is spent the record settles `Error` and its close
+/// obligation is cleared, so no later pass retries it. The terminal fault then
+/// exists only in memory until a save writes it: a caller dropped before that
+/// save would leave the ledger describing a completed stop while the process may
+/// still be live. The settlement must raise the owed write in the same lock that
+/// records the fault.
+#[tokio::test]
+async fn a_spent_close_retry_owes_the_ledger_the_fault_it_records() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+    let exec_session_id = "exec-spent-close";
+    let mut record = background_record(
+        "background-worker",
+        None,
+        "worker",
+        exec_session_id,
+        BackgroundSubprocessStatus::Running,
+        false,
+    );
+    record.restart_attempts = 1;
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(record.id.clone(), record);
+    }
+    assert!(
+        pending_background_ledger_write_generation(&controller.state).is_none(),
+        "the fixture starts with no pending write, so only the settlement can raise one"
+    );
+
+    fail_next_background_close(&controller.state, exec_session_id, "close transport fault");
+    assert!(
+        !controller
+            .attempt_background_stop_close("background-worker", exec_session_id)
+            .await,
+        "the scripted fault leaves the close unconfirmed"
+    );
+
+    {
+        let state = controller.state.read().await;
+        let record = state.background_children.get("background-worker").expect("record");
+        assert_eq!(
+            record.status,
+            BackgroundSubprocessStatus::Error,
+            "a spent allowance settles the fault as a visible failure"
+        );
+        assert!(record.ended_at.is_some(), "a settled failure has ended");
+    }
+    assert!(
+        !background_stop_close_is_pending(&controller.state, "background-worker", exec_session_id),
+        "a spent allowance discharges the close obligation"
+    );
+    assert!(
+        pending_background_ledger_write_generation(&controller.state).is_some(),
+        "the settlement must owe the ledger the fault it recorded"
+    );
+
+    controller.signal_shutdown().await;
+}
+
+/// The default toggle reports a stop whose close it could not confirm.
+///
+/// The graceful stop answers with the record alone, so the toggle used to return
+/// `Ok` while the worker's process could still be live. A user reads the toggle
+/// as "the default worker is stopped", so an unconfirmed close must reach the
+/// caller as a retryable fault instead of a completed stop.
+#[tokio::test]
+async fn the_default_toggle_reports_a_stop_it_could_not_close() {
+    let temp = TempDir::new().expect("tempdir");
+    let mut vt_cfg = DiapasonConfig::default();
+    vt_cfg.subagents.background.enabled = true;
+    vt_cfg.subagents.background.default_agent = Some("worker".to_string());
+    let controller = background_test_controller(temp.path(), vt_cfg).await;
+    let record = background_record(
+        "background-worker",
+        None,
+        "worker",
+        "exec-toggle",
+        BackgroundSubprocessStatus::Running,
+        true,
+    );
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(record.id.clone(), record);
+    }
+    fail_next_background_close(&controller.state, "exec-toggle", "close transport fault");
+
+    let error = controller
+        .toggle_default_background_subagent()
+        .await
+        .expect_err("an unconfirmed close must not be reported as a completed stop");
+    assert!(
+        format!("{error:#}").contains("could not be confirmed"),
+        "the caller is told the close is still owed: {error:#}"
+    );
+    assert!(
+        background_stop_close_is_pending(&controller.state, "background-worker", "exec-toggle"),
+        "the stop keeps its close obligation so a later reconcile retries it"
     );
 
     controller.signal_shutdown().await;

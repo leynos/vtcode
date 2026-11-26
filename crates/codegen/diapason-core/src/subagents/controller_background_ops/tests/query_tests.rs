@@ -73,3 +73,48 @@ async fn a_snapshot_read_fault_leaves_the_record_and_ledger_unchanged() {
 
     controller.signal_shutdown().await;
 }
+
+/// A restored terminal record still reports an end instant.
+///
+/// The ACP contract allows a null end only while a task is active, but a
+/// terminal record can reach this query without one: a row written before the
+/// field existed restores as terminal with no end instant. The projection is
+/// where a management list learns the end, so it must supply the record's own
+/// last observed instant instead of passing null through for a finished task.
+#[tokio::test]
+async fn a_cached_terminal_record_reports_an_end_instant() {
+    let temp = TempDir::new().expect("tempdir");
+    let mut record = background_record(
+        "background-worker",
+        None,
+        "worker",
+        "exec-finished",
+        BackgroundSubprocessStatus::Stopped,
+        false,
+    );
+    record.ended_at = None;
+    let last_observed = record.updated_at;
+    let controller =
+        SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
+            .await
+            .expect("background controller");
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(record.id.clone(), record);
+    }
+
+    let entries = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
+    let entry = entries
+        .iter()
+        .find(|entry| entry.entry.id == "background-worker")
+        .expect("the terminal record is listed");
+
+    assert_eq!(entry.entry.status, BackgroundSubprocessStatus::Stopped);
+    assert_eq!(
+        entry.entry.ended_at,
+        Some(last_observed),
+        "a terminal task must report an end instant even when its row carried none"
+    );
+
+    controller.signal_shutdown().await;
+}

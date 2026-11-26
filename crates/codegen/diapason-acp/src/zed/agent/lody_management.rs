@@ -158,11 +158,19 @@ async fn dispatch_management_request(agent: &ZedAgent, method: &str, params: Val
     }
 }
 
+/// The bounded detail reported for a request that cannot be deserialized.
+///
+/// The deserializer's own diagnostic names the offending field and its position
+/// in client-supplied input, so it stays in the debug-only suppressed detail
+/// and the client receives this fixed category instead.
+const INVALID_PARAMS_DETAIL: &str = "request_parameters_invalid";
+
 fn parse_params<T: for<'de> Deserialize<'de>>(params: Value) -> Result<T, SdkError> {
     serde_json::from_value(params).map_err(|error| {
+        log_suppressed_error(&error, "lody_subagent_management", INVALID_PARAMS_DETAIL);
         SdkError::invalid_params().data(serde_json::json!({
             "reason": "invalid_lody_subagent_params",
-            "detail": error.to_string(),
+            "detail": INVALID_PARAMS_DETAIL,
         }))
     })
 }

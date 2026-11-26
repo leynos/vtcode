@@ -3,6 +3,7 @@
 use super::queue_accounting::{LifecycleQueueDropKind, LifecycleQueueTracker};
 use super::{LifecycleUpdate, QueuedLifecycleUpdate, bounded_session_correlation};
 use crate::acp;
+use diapason_core::metrics::MetricsCollector;
 use diapason_core::subagents::{TaskOwner, owned_child_ids};
 use hashbrown::HashSet;
 use std::sync::Arc;
@@ -22,12 +23,17 @@ use tracing::{Instrument, field, info_span, warn};
 /// This runs unattended in a spawned task, so it owns both its span and its
 /// failure accounting: a queue that is already closed leaves the client with
 /// no record of the task, and that must be visible in the bounded metrics.
+///
+/// Each accepted snapshot is counted at the moment its send succeeds, before
+/// the next await. Teardown can abort this task while it waits on a later
+/// lookup, so counting the whole pass at the end would lose every snapshot it
+/// had already published.
 pub(super) async fn publish_initial_task_snapshots(
     controller: &Arc<diapason_core::subagents::SubagentController>,
     session_id: &acp::SessionId,
     sender: &mpsc::Sender<QueuedLifecycleUpdate>,
     queue: &LifecycleQueueTracker,
-    metrics: &Arc<diapason_core::metrics::MetricsCollector>,
+    metrics: &Arc<MetricsCollector>,
     revision: u64,
 ) {
     let session_correlation = bounded_session_correlation(session_id);
@@ -40,13 +46,13 @@ pub(super) async fn publish_initial_task_snapshots(
         publish_failures = 0_u64
     );
     let started_at = Instant::now();
-    let (published, failure) = queue_initial_task_snapshots(controller, session_id, sender, queue, revision)
-        .instrument(span.clone())
-        .await;
+    let (published, failure) =
+        queue_initial_task_snapshots(controller, session_id, sender, queue, metrics.as_ref(), revision)
+            .instrument(span.clone())
+            .await;
     let elapsed_ms = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
     let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_ms);
     if published > 0 {
-        metrics.record_acp_initial_snapshots_enqueued(published);
         let _published_recorded = span.record("snapshots_published", u64::try_from(published).unwrap_or(u64::MAX));
     }
     match failure {
@@ -92,6 +98,7 @@ async fn queue_initial_task_snapshots(
     session_id: &acp::SessionId,
     sender: &mpsc::Sender<QueuedLifecycleUpdate>,
     queue: &LifecycleQueueTracker,
+    metrics: &MetricsCollector,
     revision: u64,
 ) -> (usize, Option<LifecycleQueueDropKind>) {
     let mut published = 0_usize;
@@ -119,7 +126,7 @@ async fn queue_initial_task_snapshots(
         // terminal update can still be refused while the pass holds a slot; see
         // the function documentation for the residual case.
         match queue.send(sender, queued).await {
-            Ok(()) => {}
+            Ok(()) => metrics.record_acp_initial_snapshots_enqueued(1),
             Err(kind) => return (published, Some(kind)),
         }
         published = published.saturating_add(1);
@@ -140,7 +147,7 @@ async fn queue_initial_task_snapshots(
             };
             let queued = QueuedLifecycleUpdate { update, revision };
             match queue.send(sender, queued).await {
-                Ok(()) => {}
+                Ok(()) => metrics.record_acp_initial_snapshots_enqueued(1),
                 Err(kind) => return (published, Some(kind)),
             }
             published = published.saturating_add(1);

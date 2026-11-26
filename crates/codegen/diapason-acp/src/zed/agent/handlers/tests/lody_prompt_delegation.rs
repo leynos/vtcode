@@ -5,6 +5,7 @@
 //! and fail-closed guarantees across the full prompt boundary.
 
 use super::lody_delegation_fixtures::{DelegationTestGuards, delegation_test_guards};
+use super::lody_management_assertions::cancel_background_task;
 use super::lody_prompt_delegation_support::{
     FAIL_CLOSED_MESSAGE, POLL_INTERVAL, POLL_TIMEOUT, REQUEST_TIMEOUT, assert_call_announced_before_terminal_update,
     assert_tool_reached_the_model, assert_tool_response_contains, delegation_prompt, terminal_tool_update,
@@ -185,11 +186,7 @@ async fn prompt_driven_agent_tool_spawns_an_owned_background_task(
                 Some(serde_json::json!({ "reason": "unknown_task" })),
                 "a sibling cancel must fail closed with the bounded reason"
             );
-            let cancelled = controller
-                .force_cancel_background(TaskOwner::Workspace, &entry.id)
-                .await
-                .expect("cancel the prompt-spawned background task")
-                .into_entry();
+            let cancelled = cancel_background_task(&controller, TaskOwner::Workspace, &entry.id).await;
             assert!(
                 !cancelled.status.is_active(),
                 "the prompt-spawned child process must be stopped during test cleanup"

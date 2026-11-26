@@ -295,6 +295,29 @@ fn acp_extension_metrics_are_exported_without_changing_the_summary_shape() {
         "the typed summary must not carry an acp_extension member: {summary}"
     );
 
+    // A `#[serde(skip)]` field would satisfy both assertions above while still
+    // breaking every downstream exhaustive `MetricsSummary` literal and
+    // pattern. Destructuring without `..` fails to compile if a field is added,
+    // so this is the source-compatibility half of the contract; the JSON
+    // assertion below is the wire half.
+    let MetricsSummary {
+        timestamp: _,
+        session_duration_ms: _,
+        discovery: _,
+        execution: _,
+        sdk: _,
+        filtering: _,
+        patch_safety: _,
+        tool_recovery: _,
+        planning: _,
+        skills: _,
+        security: _,
+        provider_requests: _,
+        mcp_startup: _,
+        task_lifecycle_notification_queue: _,
+        workspace_runtime_cache_entries: _,
+    } = collector.get_summary();
+
     let json = collector.export_json().expect("metrics JSON should serialize");
     assert_eq!(
         json["acp_extension"]["initial_snapshots_rejected"], 1,

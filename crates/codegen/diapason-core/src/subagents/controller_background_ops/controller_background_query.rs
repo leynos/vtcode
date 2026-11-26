@@ -160,7 +160,9 @@ impl SubagentController {
     /// its flags or its restart budget changed, the entry keeps the record's
     /// current projection rather than the captured outcome, which would
     /// otherwise report a task that a cancellation has since settled as a
-    /// failure.
+    /// failure. The launch obligation is read under that same lock, so a commit
+    /// that stores `Running` and clears the obligation cannot be observed as a
+    /// claim with nothing left to drive it.
     ///
     /// `owner` is the authority the caller presents: only the records it may
     /// address are projected, under the same rule as
@@ -187,6 +189,13 @@ impl SubagentController {
 
         for capture in &mut captures {
             if !capture.active {
+                // A terminal task carries an end instant on the wire: the ACP
+                // contract allows null only while a task is active, and a
+                // terminal record restored without one would otherwise send
+                // null. The fallback is the record's own last observed instant,
+                // which is what the active paths below already use, so repeated
+                // polls of one unchanged record agree. Active records keep null.
+                capture.entry.ended_at.get_or_insert(capture.entry.updated_at);
                 continue;
             }
             // Another session's launch runs in that session's process. Its exec
@@ -228,23 +237,42 @@ impl SubagentController {
             // flags or its restart budget changed: projecting the captured
             // flags would report a cancellation that already settled `Stopped`
             // as a failure, or settle a launch another caller has replaced.
+            let record_id = capture.entry.id.clone();
+            let exec_session_id = capture.exec_session_id.clone();
+            // The obligation is read under the same read lock that revalidates
+            // the record. A commit stores `Running` and clears the launch
+            // obligation under this lock's write side, so reading the two apart
+            // could combine the earlier `Starting` status with a cleared
+            // obligation and list a launch that just started as failed. This is
+            // also the settlement path's lock order: the state, then the
+            // pending-launch registry.
             let current = {
                 let state = self.state.read().await;
-                state.background_children.get(&capture.entry.id).map(|record| {
+                state.background_children.get(&record_id).map(|record| {
                     (
                         record.build_status_entry(),
                         liveness_observation_is_current(
                             record,
-                            capture.exec_session_id.as_str(),
+                            &exec_session_id,
                             capture.observed_status,
                             capture.desired_enabled,
                             capture.restart_attempts,
                         ),
+                        background_launch_is_owed(&self.state, &record_id, &exec_session_id),
                     )
                 })
             };
-            match current {
-                Some((mut current_entry, false)) => {
+            // A cached `Starting` status is only meaningful while a launch is
+            // still owed for it. A record whose claim was abandoned before its
+            // process started keeps `Starting` with nothing left to drive it:
+            // its driver dropped the obligation, so refresh will settle it on
+            // the next pass. Reporting that claim as an active task here would
+            // list a launch that is not running and never will, which is the
+            // opposite of what a liveness projection is for. Such a record is
+            // left to the refresh path, and this read-only query projects the
+            // failure the settlement will write.
+            let launch_owed = match current {
+                Some((mut current_entry, false, _)) => {
                     // The record's own outcome is authoritative, including the
                     // wire contract's terminal instant.
                     if !current_entry.status.is_active() {
@@ -256,19 +284,8 @@ impl SubagentController {
                 // The record no longer exists, so there is no current outcome to
                 // project. Keeping the captured entry invents nothing.
                 None => continue,
-                Some((_, true)) => {}
-            }
-            // A cached `Starting` status is only meaningful while a launch is
-            // still owed for it. A record whose claim was abandoned before its
-            // process started keeps `Starting` with nothing left to drive it:
-            // its driver dropped the obligation, so refresh will settle it on
-            // the next pass. Reporting that claim as an active task here would
-            // list a launch that is not running and never will, which is the
-            // opposite of what a liveness projection is for. Such a record is
-            // left to the refresh path, and this read-only query projects the
-            // failure the settlement will write.
-            let launch_owed =
-                background_launch_is_owed(&self.state, capture.entry.id.as_str(), capture.exec_session_id.as_str());
+                Some((_, true, launch_owed)) => launch_owed,
+            };
             // An orphaned `Starting` claim is handled apart from a missing
             // `Running` record. A claim nothing owes a launch for has no driver:
             // its reservation was abandoned, and only a later refresh can

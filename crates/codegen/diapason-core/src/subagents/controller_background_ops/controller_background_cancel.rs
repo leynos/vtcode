@@ -628,15 +628,32 @@ impl SubagentController {
     ///
     /// `owner` is the authority the caller presents; a session may stop only a
     /// record it owns, while the workspace operator may stop any record.
+    ///
+    /// The entry alone cannot say whether the process is confirmed gone, so a
+    /// caller that must not announce a completed stop uses
+    /// [`Self::graceful_stop_background_outcome`]. The close is retried by the
+    /// next refresh or reconcile either way.
     pub async fn graceful_stop_background(
         &self,
         owner: TaskOwner<'_>,
         target: &str,
     ) -> Result<BackgroundSubprocessEntry> {
-        Ok(self
-            .cancel_background(owner, target, BackgroundCancellationMode::Graceful)
-            .await?
-            .into_entry())
+        Ok(self.graceful_stop_background_outcome(owner, target).await?.into_entry())
+    }
+
+    /// Gracefully stops a background subprocess and reports whether its close is confirmed.
+    ///
+    /// An unconfirmed close leaves the process possibly live, so a caller that
+    /// reports success to its client must inspect
+    /// [`BackgroundStopOutcome::is_close_pending`]. The record's `error` names
+    /// the fault, and the next refresh or reconcile retries the close.
+    pub(super) async fn graceful_stop_background_outcome(
+        &self,
+        owner: TaskOwner<'_>,
+        target: &str,
+    ) -> Result<BackgroundStopOutcome> {
+        self.cancel_background(owner, target, BackgroundCancellationMode::Graceful)
+            .await
     }
 
     /// Force-cancels a background subprocess, closing its exec session immediately.
@@ -964,6 +981,14 @@ impl SubagentController {
                 } else {
                     record.status = BackgroundSubprocessStatus::Error;
                     record.ended_at.get_or_insert_with(Utc::now);
+                    // The stop's terminal fault exists only in memory from
+                    // here, and clearing the close obligation removes the one
+                    // marker a later pass would retry it from. Raising the
+                    // owed write in this same lock is what keeps the fault
+                    // persistable: without it a caller dropped before its save
+                    // leaves the ledger describing a completed stop while the
+                    // process remains live.
+                    mark_background_ledger_write_pending(&self.state);
                     clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
                 }
                 false

@@ -6,6 +6,7 @@
 //! must reach execution.
 
 use super::lody_delegation_fixtures::{DelegationTestGuards, delegation_test_guards};
+use super::lody_management_assertions::cancel_background_task;
 use super::lody_prompt_delegation_support::{
     REQUEST_TIMEOUT, assert_call_announced_before_terminal_update, assert_tool_reached_the_model,
     assert_tool_response_contains, delegation_prompt, install_agent_tool_provider_with_arguments, terminal_update_in,
@@ -235,6 +236,11 @@ async fn prompt_driven_agent_tool_admits_a_raw_unowned_target_rewritten_to_an_ow
             let notifications = tool_notifications_through_terminal(&mut updates_rx).await;
             assert_call_announced_before_terminal_update(&notifications, "call-tool");
             let update = terminal_update_in(&notifications);
+            assert_eq!(
+                update.fields.status,
+                Some(acp::ToolCallStatus::Failed),
+                "an executor rejection must settle the call as failed"
+            );
             let text = tool_update_text(&update);
             assert!(
                 text.contains(&executor_target),
@@ -244,13 +250,8 @@ async fn prompt_driven_agent_tool_admits_a_raw_unowned_target_rewritten_to_an_ow
                 !text.contains("not owned by this session"),
                 "an approved rewrite to an owned target must not be rejected for ownership: {text}"
             );
-            drop(
-                controller
-                    .force_cancel_background(TaskOwner::Workspace, &owned.id)
-                    .await
-                    .expect("cancel the owned background task during cleanup")
-                    .into_entry(),
-            );
+            let cancelled = cancel_background_task(&controller, TaskOwner::Workspace, &owned.id).await;
+            assert!(!cancelled.status.is_active(), "the owned background task must be stopped during test cleanup");
             close_session(&cx, session.session_id).await?;
             Ok(())
         });

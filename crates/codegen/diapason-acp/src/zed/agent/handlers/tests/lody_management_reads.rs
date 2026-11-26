@@ -5,8 +5,8 @@
 //! immediately before and after the request. The probe itself never mutates, so
 //! a difference between the samples can only come from the request under test.
 use super::lody_support::{
-    LODY_EXITING_BACKGROUND_SCRIPT, RecordingBackgroundObserver, drain_notifications, lody_output_tail,
-    observable_background_snapshot, write_lody_background_script,
+    LODY_EXITING_BACKGROUND_MARKER, LODY_EXITING_BACKGROUND_SCRIPT, RecordingBackgroundObserver, drain_notifications,
+    lody_output_tail, observable_background_snapshot, write_lody_background_script,
 };
 use super::*;
 use diapason_core::subagents::{BackgroundSubprocessEntry, SpawnBackgroundSubprocessRequest, TaskOwner};
@@ -49,7 +49,9 @@ pub(super) async fn settle_lifecycle_notifications(
 ///
 /// The wait is bounded by a deadline that fails with a clear message. Every
 /// iteration also proves the read neither changed the controller's observable
-/// state nor published a status update.
+/// state nor published a status update. The returned count is the number of
+/// management requests the poll issued, so the caller can assert the adapter
+/// accounted for each one exactly.
 pub(super) async fn read_live_output_until_recorded(
     cx: &ConnectionTo<Agent>,
     controller: &Arc<diapason_core::subagents::SubagentController>,
@@ -57,7 +59,7 @@ pub(super) async fn read_live_output_until_recorded(
     task_id: &str,
     workspace_path: &Path,
     notifications: &mut mpsc::UnboundedReceiver<acp::AgentNotification>,
-) -> Result<serde_json::Value, acp::Error> {
+) -> Result<(serde_json::Value, usize), acp::Error> {
     // The spawn publishes its run-started transition asynchronously. Settle
     // that traffic before the probe window so the comparison below attributes
     // every difference to the read under test.
@@ -73,6 +75,7 @@ pub(super) async fn read_live_output_until_recorded(
         Arc::clone(&observer) as Arc<dyn diapason_core::subagents::SubagentProgressObserver>,
     );
     tokio::time::timeout(Duration::from_secs(10), async {
+        let mut requests = 0_usize;
         loop {
             let _ = observer.take();
             let before = observable_background_snapshot(
@@ -83,6 +86,7 @@ pub(super) async fn read_live_output_until_recorded(
             )
             .await;
             let output = lody_output_tail(cx, session_id, task_id, 1).await?;
+            requests = requests.saturating_add(1);
             let published = observer.take();
             let after = observable_background_snapshot(
                 controller,
@@ -97,7 +101,7 @@ pub(super) async fn read_live_output_until_recorded(
             );
             assert!(published.is_empty(), "an output read must not publish a background status update: {published:?}");
             if output["output"] == "lody-output-two" {
-                break Ok::<serde_json::Value, acp::Error>(output);
+                break Ok::<(serde_json::Value, usize), acp::Error>((output, requests));
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
@@ -106,12 +110,17 @@ pub(super) async fn read_live_output_until_recorded(
     .expect("the live background task must record its final output before the deadline")
 }
 
-/// Reads an exited task's output, proving the archive fallback is inert.
+/// Reads an exited task's output, proving the read boundary is inert.
 ///
-/// A read of a task whose process has already exited must be as inert as a live
-/// read: the exec session is gone, so the reader falls back to the archive; the
-/// request must not settle, respawn, persist, or publish anything.
-pub(super) async fn read_exited_output_is_inert(
+/// The demo launcher's exec session is gone and the fixture records no archive
+/// for the task, so this probe does not show that ACP serves archived output;
+/// that fallback is covered by the reader's own
+/// `missing_exec_session_falls_back_to_the_archive` and
+/// `not_ready_live_output_falls_back_to_the_archive` cases. What it proves is
+/// the contract the management surface owns: the request must not settle,
+/// respawn, persist or publish anything, and it answers with the bounded
+/// `output` envelope instead of an error.
+pub(super) async fn read_exited_output_without_a_recorded_archive_is_inert(
     cx: &ConnectionTo<Agent>,
     controller: &Arc<diapason_core::subagents::SubagentController>,
     session_id: &acp::SessionId,
@@ -144,8 +153,14 @@ pub(super) async fn read_exited_output_is_inert(
         "an output read of an exited task must not publish a background status update: {published:?}"
     );
     assert!(
+        exited_output
+            .as_object()
+            .is_some_and(|envelope| envelope.len() == 1 && envelope.contains_key("output")),
+        "an exited task must still answer with the bounded output envelope: {exited_output}"
+    );
+    assert!(
         exited_output["output"].as_str().is_some(),
-        "an exited task must still answer with a bounded output string: {exited_output}"
+        "the output envelope must carry a bounded string: {exited_output}"
     );
     Ok(exited_output)
 }
@@ -176,14 +191,14 @@ pub(super) async fn spawn_stale_background_record(
                 .background_output_tail(TaskOwner::Workspace, &stale.id, 20)
                 .await
                 .expect("read the second task's live output");
-            if output.contains("lody-output-two") {
+            if output.contains(LODY_EXITING_BACKGROUND_MARKER) {
                 break output;
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
     })
     .await
-    .expect("the second background task must record its output");
+    .expect("the second background task must record its distinct replacement output");
     // The liveness projection reports the ended exec session without mutating
     // the cached record, so it is the observable that proves the process is
     // gone while the record is still active.
@@ -261,6 +276,15 @@ pub(super) async fn read_stale_record_output_is_inert(
         stale_output["output"], stale.recorded_output,
         "an exited task must still serve the output it recorded: {stale_output}"
     );
+    // The replacement launch wrote its own marker, so this literal proves the
+    // read served this launch rather than the previous launch's output for the
+    // same record id.
+    assert!(
+        stale_output["output"]
+            .as_str()
+            .is_some_and(|output| output.ends_with(LODY_EXITING_BACKGROUND_MARKER)),
+        "the read must serve the replacement launch's distinct output: {stale_output}"
+    );
     match stale.entry.transcript_path.as_ref().or(stale.entry.archive_path.as_ref()) {
         Some(path) => {
             let archived = std::fs::read_to_string(path).expect("read the recorded transcript");
@@ -272,7 +296,7 @@ pub(super) async fn read_stale_record_output_is_inert(
         None => assert!(
             stale_output["output"]
                 .as_str()
-                .is_some_and(|output| output.contains("lody-output-two")),
+                .is_some_and(|output| output.contains(LODY_EXITING_BACKGROUND_MARKER)),
             "a task with no recorded transcript must serve its live buffer: {stale_output}"
         ),
     }

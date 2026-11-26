@@ -103,14 +103,12 @@ pub(super) fn mark_background_launch_owed(
     });
 }
 
-/// Makes an already-recorded launch claim drivable by the next refresh.
+/// Clears the launch obligation for one record's exec session.
 ///
-/// A fresh claim is recorded as not retryable because the call that reserved it
-/// is about to spawn the process itself. If that call is dropped before it
-/// spawns — its tool invocation is cancelled, or its claim could not be written
-/// — nothing remains to drive the record, and it would report an active launch
-/// forever. Promoting the claim in place hands it to refresh, which runs the
-/// same restart path a scheduled replacement uses. A claim that was already/// Clears the launch obligation for one record's exec session.
+/// The obligation is what tells a refresh that a launch is still coming, so
+/// it is cleared exactly when the launch commits, fails or is abandoned.
+/// Clearing one exec session leaves an obligation for a replacement launch
+/// under the same record intact.
 pub(super) fn clear_background_launch_owed(
     state: &Arc<RwLock<ControllerState>>,
     record_id: &str,
@@ -242,7 +240,18 @@ impl SubagentController {
         };
 
         if should_stop {
-            self.graceful_stop_background(TaskOwner::Workspace, &target_id).await
+            // The toggle is what a user reads as "the default worker is
+            // stopped". A close that could not be confirmed leaves the process
+            // possibly live, so the toggle reports a retryable fault instead of
+            // a completed stop; the next reconcile retries the close.
+            let outcome = self.graceful_stop_background_outcome(TaskOwner::Workspace, &target_id).await?;
+            if outcome.is_close_pending() {
+                bail!(
+                    "Background subagent '{}' stopped accepting work, but its process close could not be confirmed; retry once it settles",
+                    agent_name
+                );
+            }
+            Ok(outcome.into_entry())
         } else {
             self.ensure_background_record_running(BackgroundRunRequest {
                 agent_name,

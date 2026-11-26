@@ -335,7 +335,7 @@ async fn workspace_lease_accounting_matches_the_reference_model() {
     // distinct from the agent manufacturing a replacement runtime for the same
     // workspace.
     let lease = agent
-        .workspace_runtime_for(&approved_workspace, false)
+        .workspace_runtime_for(&approved_workspace, None)
         .await
         .expect("the agent must create a workspace runtime");
     let runtime = Arc::clone(lease.runtime());
@@ -358,7 +358,7 @@ async fn workspace_lease_accounting_matches_the_reference_model() {
     );
 
     let replacement = agent
-        .workspace_runtime_for(&approved_workspace, false)
+        .workspace_runtime_for(&approved_workspace, None)
         .await
         .expect("the agent must replace a terminal runtime");
     assert!(
@@ -624,7 +624,7 @@ async fn workspace_runtime_reservation_survives_close_before_session_registratio
     let first_session = agent.session_handle(&first.session_id).unwrap().unwrap();
     let runtime = first_session.workspace_runtime().unwrap().unwrap();
     let selected_workspace = AcpSessionWorkspace::from_client_cwd(session_workspace.path()).await.unwrap();
-    let reservation = agent.workspace_runtime_for(&selected_workspace, false).await.unwrap();
+    let reservation = agent.workspace_runtime_for(&selected_workspace, None).await.unwrap();
     assert!(Arc::ptr_eq(&runtime, reservation.runtime()));
 
     let _close_response = agent.close_session(&first.session_id).await.unwrap();

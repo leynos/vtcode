@@ -13,6 +13,7 @@ fn acp_extension_prometheus_series_is_stable() {
     collector.begin_acp_management().finish(true);
     collector.begin_acp_management().finish(false);
     collector.record_acp_usage_notification(true);
+    collector.record_acp_usage_notification(true);
     collector.record_acp_usage_notification(false);
     collector.record_acp_initial_snapshots_enqueued(2);
     collector.record_acp_initial_snapshot_rejected();
@@ -47,7 +48,7 @@ fn acp_extension_prometheus_series_is_stable() {
     # TYPE diapason_acp_management_duration_ms_total counter
     # HELP diapason_acp_usage_notifications_enqueued_total Lody ACP usage notifications enqueued for delivery
     # TYPE diapason_acp_usage_notifications_enqueued_total counter
-    diapason_acp_usage_notifications_enqueued_total 1
+    diapason_acp_usage_notifications_enqueued_total 2
     # HELP diapason_acp_usage_notifications_failed_total Lody ACP usage notification publication failures, including serialization before enqueue
     # TYPE diapason_acp_usage_notifications_failed_total counter
     diapason_acp_usage_notifications_failed_total 1

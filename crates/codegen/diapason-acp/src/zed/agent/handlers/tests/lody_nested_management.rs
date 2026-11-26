@@ -1,7 +1,12 @@
 //! Nested delegation ownership regressions for the Lody management extensions.
+use super::lody_management_assertions::{
+    assert_closing_child_closes_its_subtree, assert_owned_grandchild_cancel_settles_only_it,
+    assert_sibling_cannot_reach_the_tree,
+};
+use super::lody_management_projection::assert_owned_tree_is_listed;
 use super::lody_support::{
     GlobalProviderRegistration, NESTED_CHILD_TASK, NESTED_GRANDCHILD_TASK, NESTED_MODEL, NESTED_PROVIDER,
-    ParkedProvider, expected_epoch_seconds, lody_cancel, lody_list, lody_output,
+    ParkedProvider,
 };
 use super::*;
 use agent_client_protocol::schema::v1::{CloseSessionRequest, InitializeRequest, NewSessionRequest};
@@ -142,222 +147,52 @@ async fn nested_subagent_management_is_owned_by_the_root_session() {
             assert_eq!(second_grandchild.depth, 2);
 
             // The owning session sees the whole tree.
-            let listed = lody_list(&cx, &session.session_id, false).await?;
-            let tasks = listed["tasks"].as_array().expect("Lody task list").clone();
-            let mut listed_ids = tasks.iter().filter_map(|task| task["taskId"].as_str()).collect::<Vec<_>>();
-            listed_ids.sort_unstable();
-            let mut expected_ids = vec![child.id.as_str(), grandchild.id.as_str(), second_grandchild.id.as_str()];
-            expected_ids.sort_unstable();
-            assert_eq!(
-                listed_ids, expected_ids,
-                "the root session must list its child and both grandchildren exactly once: {listed}"
-            );
-            // The root controller tracks the child; the child-scoped controller
-            // tracks both grandchildren.
-            let root_entries = root.status_entries().await;
-            let child_entries = child_controller.status_entries().await;
-            for task in &tasks {
-                let task_id = task["taskId"].as_str().expect("listed task ID");
-                let record = if task_id == child.id.as_str() {
-                    root_entries.iter().find(|entry| entry.id == task_id)
-                } else {
-                    child_entries.iter().find(|entry| entry.id == task_id)
-                }
-                .expect("the owning controller must track every listed task");
-                assert_eq!(task["status"], "running", "a live foreground task must be listed as running: {task}");
-                assert_eq!(
-                    task["startedAtEpochSeconds"],
-                    expected_epoch_seconds(record.created_at),
-                    "the listed start must project the owning controller record: {task}"
-                );
-                assert!(
-                    task["endedAtEpochSeconds"].is_null(),
-                    "an active foreground task must not report an end instant: {task}"
-                );
-            }
-            let active_listed = lody_list(&cx, &session.session_id, true).await?;
-            assert_eq!(active_listed, listed, "every spawned task is still running, so activeOnly must change nothing");
+            assert_owned_tree_is_listed(
+                &cx,
+                &session.session_id,
+                &root,
+                &child_controller,
+                &child.id,
+                [&grandchild.id, &second_grandchild.id],
+            )
+            .await?;
 
             // A sibling session shares the workspace runtime but owns nothing.
             let foreign_session = cx
                 .send_request(NewSessionRequest::new(session_workspace_path.clone()))
                 .block_task()
                 .await?;
-            let foreign_list = lody_list(&cx, &foreign_session.session_id, false).await?;
-            assert_eq!(foreign_list, serde_json::json!({ "tasks": [] }));
+            assert_sibling_cannot_reach_the_tree(
+                &cx,
+                &session.session_id,
+                &foreign_session.session_id,
+                &grandchild.id,
+                &child_controller,
+            )
+            .await?;
 
-            // A foreign task must be indistinguishable from an unknown one on
-            // both management methods, so ownership is not an oracle.
-            let foreign_output = lody_output(&cx, &foreign_session.session_id, &grandchild.id)
-                .await
-                .expect_err("a sibling must not read a grandchild's output");
-            let unknown_output = lody_output(&cx, &session.session_id, "task-that-does-not-exist")
-                .await
-                .expect_err("an unknown task ID must not resolve");
-            assert_eq!(
-                foreign_output, unknown_output,
-                "a foreign output request must return the same error value as an unknown one"
-            );
-            assert_eq!(foreign_output.data, Some(serde_json::json!({ "reason": "unknown_task" })));
-
-            let foreign_cancel = lody_cancel(&cx, &foreign_session.session_id, &grandchild.id)
-                .await
-                .expect_err("a sibling must not cancel a grandchild");
-            let unknown_cancel = lody_cancel(&cx, &session.session_id, "task-that-does-not-exist")
-                .await
-                .expect_err("cancelling an unknown task must fail");
-            assert_eq!(
-                foreign_cancel, unknown_cancel,
-                "a foreign cancel must return the same error value as an unknown one"
-            );
-            assert_eq!(foreign_cancel.data, Some(serde_json::json!({ "reason": "unknown_task" })));
-            assert!(
-                !child_controller
-                    .status_entries()
-                    .await
-                    .into_iter()
-                    .find(|entry| entry.id == grandchild.id)
-                    .expect("grandchild record")
-                    .status
-                    .is_terminal(),
-                "a rejected sibling cancel must not stop the grandchild"
-            );
-
-            // The owner can read the grandchild through the child's scoped
-            // controller. The runtime snapshot materializes once the child run
-            // has recorded its configuration, so poll briefly.
-            let owned_output = tokio::time::timeout(Duration::from_secs(15), async {
-                loop {
-                    if let Ok(output) = lody_output(&cx, &session.session_id, &grandchild.id).await {
-                        break output;
-                    }
-                    tokio::time::sleep(Duration::from_millis(25)).await;
-                }
-            })
-            .await
-            .expect("the owning session must read the grandchild's output");
-            assert!(
-                owned_output.get("output").is_some(),
-                "grandchild output must use the managed output envelope: {owned_output}"
-            );
-
-            // The owner cancels one grandchild directly: management must route
-            // through the child-scoped controller that owns it, not merely
-            // through the root the task was listed from.
-            let cancelled_grandchild = lody_cancel(&cx, &session.session_id, &grandchild.id)
-                .await
-                .expect("the owning session must cancel an owned grandchild");
-            assert_eq!(cancelled_grandchild, serde_json::json!({}));
-            tokio::time::timeout(Duration::from_secs(10), async {
-                loop {
-                    let terminal = child_controller
-                        .status_entries()
-                        .await
-                        .into_iter()
-                        .find(|entry| entry.id == grandchild.id)
-                        .is_some_and(|entry| entry.status.is_terminal());
-                    if terminal {
-                        break;
-                    }
-                    tokio::time::sleep(Duration::from_millis(20)).await;
-                }
-            })
-            .await
-            .expect("cancelling an owned grandchild must settle it directly");
-
-            let unfiltered_after_cancel = lody_list(&cx, &session.session_id, false).await?;
-            assert_eq!(
-                unfiltered_after_cancel["tasks"].as_array().map(Vec::len),
-                Some(3),
-                "the unfiltered list must keep a terminal task: {unfiltered_after_cancel}"
-            );
-            let cancelled_record = child_controller
-                .status_entries()
-                .await
-                .into_iter()
-                .find(|entry| entry.id == grandchild.id)
-                .expect("the cancelled grandchild record");
-            let cancelled_listed = unfiltered_after_cancel["tasks"]
-                .as_array()
-                .expect("Lody task list")
-                .iter()
-                .find(|task| task["taskId"].as_str() == Some(grandchild.id.as_str()))
-                .expect("the cancelled grandchild must remain listed");
-            assert_eq!(
-                cancelled_listed["status"], "killed",
-                "a cancelled foreground task is reported as killed: {cancelled_listed}"
-            );
-            assert_eq!(
-                cancelled_listed["endedAtEpochSeconds"],
-                expected_epoch_seconds(cancelled_record.completed_at.expect("a cancelled task records its completion")),
-                "the listed end must project the owning controller record: {cancelled_listed}"
-            );
-            let active_after_cancel = lody_list(&cx, &session.session_id, true).await?;
-            let mut active_after_cancel_ids = active_after_cancel["tasks"]
-                .as_array()
-                .expect("Lody task list")
-                .iter()
-                .filter_map(|task| task["taskId"].as_str())
-                .collect::<Vec<_>>();
-            active_after_cancel_ids.sort_unstable();
-            let mut expected_active_ids = vec![child.id.as_str(), second_grandchild.id.as_str()];
-            expected_active_ids.sort_unstable();
-            assert_eq!(
-                active_after_cancel_ids, expected_active_ids,
-                "activeOnly must exclude the cancelled grandchild but keep its running siblings: \
-                 {active_after_cancel}"
-            );
-
-            let sibling_still_running = child_controller
-                .status_entries()
-                .await
-                .into_iter()
-                .find(|entry| entry.id == second_grandchild.id)
-                .is_some_and(|entry| !entry.status.is_terminal());
-            assert!(sibling_still_running, "cancelling one grandchild must not cancel its sibling");
-            let child_still_running = root
-                .status_entries()
-                .await
-                .into_iter()
-                .find(|entry| entry.id == child.id)
-                .is_some_and(|entry| !entry.status.is_terminal());
-            assert!(child_still_running, "cancelling a grandchild must not cancel its parent");
+            // The owner cancels one grandchild directly, which must settle that
+            // record alone.
+            assert_owned_grandchild_cancel_settles_only_it(
+                &cx,
+                &session.session_id,
+                &root,
+                &child_controller,
+                &child.id,
+                &grandchild.id,
+                &second_grandchild.id,
+            )
+            .await?;
 
             // Cancelling the child closes the rest of its subtree.
-            let cancelled = lody_cancel(&cx, &session.session_id, &child.id)
-                .await
-                .expect("the owning session must cancel its child");
-            assert_eq!(cancelled, serde_json::json!({}));
-            tokio::time::timeout(Duration::from_secs(10), async {
-                loop {
-                    let terminal = child_controller
-                        .status_entries()
-                        .await
-                        .into_iter()
-                        .find(|entry| entry.id == second_grandchild.id)
-                        .is_some_and(|entry| entry.status.is_terminal());
-                    if terminal {
-                        break;
-                    }
-                    tokio::time::sleep(Duration::from_millis(20)).await;
-                }
-            })
-            .await
-            .expect("closing the child must close its remaining grandchild subtree");
-
-            let unfiltered_after_close = lody_list(&cx, &session.session_id, false).await?;
-            assert_eq!(
-                unfiltered_after_close["tasks"].as_array().map(Vec::len),
-                Some(3),
-                "closing the subtree must not remove its tasks from the unfiltered list: \
-                 {unfiltered_after_close}"
-            );
-            let active_after_close = lody_list(&cx, &session.session_id, true).await?;
-            assert_eq!(
-                active_after_close,
-                serde_json::json!({ "tasks": [] }),
-                "activeOnly must exclude every terminal task"
-            );
+            assert_closing_child_closes_its_subtree(
+                &cx,
+                &session.session_id,
+                &child_controller,
+                &child.id,
+                &second_grandchild.id,
+            )
+            .await?;
 
             drop(
                 cx.send_request(CloseSessionRequest::new(session.session_id.clone()))

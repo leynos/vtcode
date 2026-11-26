@@ -122,7 +122,7 @@ impl ZedAgent {
         // ownership is reconciled. The session controller's own restore is
         // deferred separately for the same reason.
         let workspace_lease = self
-            .workspace_runtime_for(workspace, true)
+            .workspace_runtime_for(workspace, Some(session_id))
             .await
             .context("Failed to initialize archived ACP session workspace")?;
         // Reconcile the workspace controller before the session controller
@@ -131,7 +131,7 @@ impl ZedAgent {
         // observing a ledger the workspace controller still holds an ownerless
         // copy of, and that copy may be what a launch or refresh of this
         // attach's scope then acts on.
-        let workspace_ownership_reconciled = self
+        let mut workspace_ownership_reconciled = self
             .adopt_workspace_background_owner(workspace_lease.runtime(), session_id)
             .await;
         // The resume-site migration above already wrote every ownerless row
@@ -146,6 +146,17 @@ impl ZedAgent {
                 background_owner_migration_failed,
             )
             .await;
+        // The controller construction above retries a failed resume-site
+        // migration, and that retry can write owners after the workspace
+        // controller loaded its copy. Adopt again so the workspace controller
+        // drops the ownerless copies of every row the retry now owns; a release
+        // computed from the first adoption would let the workspace restore
+        // relaunch them beside the session's own restore.
+        if background_owner_migration_failed {
+            workspace_ownership_reconciled = self
+                .adopt_workspace_background_owner(workspace_lease.runtime(), session_id)
+                .await;
+        }
         // Kept past the lease's move into the handle: the deferred workspace
         // restore is released and claimed on the runtime below, after the
         // required checkpoint. Holding the runtime rather than the lease is
@@ -235,14 +246,20 @@ impl ZedAgent {
         // first run failed. A deferred workspace restore is payable only when
         // both the migration and that adoption resolved; while any row this
         // session launched is still ownerless, or the workspace controller
-        // still holds an ownerless copy of one, the debt stays blocked and the
-        // runtime passes it to whichever later attach can reconcile it.
+        // still holds an ownerless copy of one, the debt stays blocked by this
+        // session and the runtime passes it to a later attach of this session —
+        // the only caller that can show these rows now carry their owner.
         // Releasing the debt is all that happens here — the restore itself runs
         // below, after the required checkpoint, so a deferred restore and a
         // session-owned one share the same deadline and neither can start a
         // child an attach that later fails would leave running.
-        if !owner_migration_unresolved && workspace_ownership_reconciled {
-            workspace_runtime.release_background_restore();
+        if owner_migration_unresolved || !workspace_ownership_reconciled {
+            // Record this session as an unresolved owner. Another session's
+            // success must not make the shared restore payable while rows this
+            // session launched are still ownerless.
+            workspace_runtime.block_background_restore(session_id.0.as_ref());
+        } else {
+            workspace_runtime.release_background_restore(session_id.0.as_ref());
         }
         // Restoring background sub-agents must stay after the required
         // checkpoint above and before registration. A restored child can
@@ -260,12 +277,15 @@ impl ZedAgent {
         // pass keeps it owed for a later attempt.
         self.run_owed_workspace_background_restore(&workspace_runtime).await;
         if let Some(controller) = subagent_controller.as_deref() {
-            let outcome = crate::zed::agent::optional_setup::restore_acp_session_background_subagents(
+            // The restore future carries the whole restore pass, which is large
+            // enough to trip `clippy::large_futures` in the attach future that
+            // holds it; boxing it here keeps the enclosing state machine small.
+            let restore = crate::zed::agent::optional_setup::restore_acp_session_background_subagents(
                 controller,
                 self.vt_config.as_deref(),
                 workspace.path(),
-            )
-            .await;
+            );
+            let outcome = Box::pin(restore).await;
             crate::zed::agent::optional_setup::report_optional_setup_outcome("background subagent restore", &outcome);
         }
         if let Some(existing) = self.register_resumed_session(session_id, &handle).await? {

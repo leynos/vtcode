@@ -161,9 +161,10 @@ impl SubagentController {
         // request resolved, so the rule compares that resolved parent as well
         // as the ambient invocation context: a caller outside a tool invocation
         // has no context to compare, and must not reuse a foreign launch either.
+        // A parentless record has no owner to conflict with, so the ambient
+        // comparison exempts it and the rebind below takes it onto the caller.
         if reuse_is_for_another_parent(&record.parent_session_id, &launch.parent_session_id)
-            || current_subagent_invocation_context()
-                .is_some_and(|context| context.parent_session_id != record.parent_session_id)
+            || reuse_is_refused_by_the_invocation_context(&record.parent_session_id)
         {
             bail!("A background subprocess with this agent name is already active");
         }

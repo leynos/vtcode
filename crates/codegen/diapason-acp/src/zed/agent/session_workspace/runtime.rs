@@ -4,6 +4,7 @@ use diapason_core::metrics::RuntimeCacheKind;
 use diapason_core::tools::file_ops::FileOpsTool;
 use diapason_core::tools::registry::ToolRegistry as CoreToolRegistry;
 use hashbrown::HashMap;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
 use tokio::sync::{Notify, OnceCell};
@@ -40,45 +41,90 @@ pub(in crate::zed) struct SessionWorkspaceRuntime {
 /// establishes reconciliation may release it. The debt is discharged only by a
 /// restore that ran, so a failed pass is retried by a later acquisition instead
 /// of being lost.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// Ownership is reconciled per session. A resumed attach records itself as a
+/// blocker until it can show the rows it launched carry their owner, and a
+/// release clears only that session's blocker. One session's success therefore
+/// cannot make the shared restore payable while another session's rows are
+/// still ownerless, which would let the workspace scope relaunch them.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::zed::agent) enum PendingWorkspaceRestore {
     /// Nothing is owed: the build either restored at once or never deferred.
     NotOwed,
-    /// Owed, but not yet payable: the resumed attach that deferred it has not
-    /// both passed its required checkpoint and established that the rows it
+    /// Owed, but not yet payable: the named resumed attaches have not both
+    /// passed their required checkpoint and established that the rows they
     /// launched carry their owner, so a restore could relaunch work a session
     /// may still adopt.
-    BlockedByOwnerMigration,
-    /// Owed and safe to run: a resumed attach reconciled ownership after its
-    /// required checkpoint.
+    BlockedByOwnerMigration(BTreeSet<String>),
+    /// Owed and safe to run: every resumed attach that deferred it reconciled
+    /// ownership after its required checkpoint.
     Ready,
 }
 
 impl PendingWorkspaceRestore {
     /// Whether this runtime is holding back an owed restore.
-    pub(in crate::zed::agent) fn is_blocked(self) -> bool {
-        matches!(self, Self::BlockedByOwnerMigration)
+    pub(in crate::zed::agent) fn is_blocked(&self) -> bool {
+        matches!(self, Self::BlockedByOwnerMigration(_))
     }
 
-    /// The state after a caller establishes that ownership is reconciled.
+    /// The state a deferred build starts in, blocked by `session_id`.
+    pub(super) fn deferred_for(session_id: &str) -> Self {
+        Self::blocked_by(&[session_id])
+    }
+
+    /// A blocked state whose restore is held by `sessions`.
+    fn blocked_by(sessions: &[&str]) -> Self {
+        Self::BlockedByOwnerMigration(sessions.iter().map(|session| (*session).to_owned()).collect())
+    }
+
+    /// Records that `session_id` still has unresolved ownership.
     ///
-    /// Only a blocked restore changes: a runtime that never deferred has
-    /// nothing to run, and one already payable is not re-armed, so the restore
-    /// still runs at most once at a time.
-    fn released(self) -> Self {
-        if self.is_blocked() { Self::Ready } else { self }
+    /// A runtime that never deferred owes nothing, so a later resume cannot arm
+    /// a restore the build already ran. A payable debt becomes blocked again
+    /// until this session reconciles too, because the release that made it
+    /// payable says nothing about this session's rows.
+    fn block(&mut self, session_id: &str) {
+        let state = std::mem::replace(self, Self::NotOwed);
+        *self = match state {
+            Self::NotOwed => Self::NotOwed,
+            Self::BlockedByOwnerMigration(mut unresolved) => {
+                let _inserted = unresolved.insert(session_id.to_owned());
+                Self::BlockedByOwnerMigration(unresolved)
+            }
+            Self::Ready => Self::deferred_for(session_id),
+        };
     }
 
-    /// The state after a caller claims the owed restore, and whether it runs.
+    /// The state after `session_id` establishes that ownership is reconciled.
+    ///
+    /// Only the caller's own blocker is cleared: a restore still owed for
+    /// another session's ownerless rows stays blocked, and a runtime that never
+    /// deferred is not re-armed.
+    fn release(&mut self, session_id: &str) {
+        let mut unresolved = match self {
+            Self::BlockedByOwnerMigration(unresolved) => unresolved.clone(),
+            Self::NotOwed | Self::Ready => return,
+        };
+        let _removed = unresolved.remove(session_id);
+        *self = if unresolved.is_empty() {
+            Self::Ready
+        } else {
+            Self::BlockedByOwnerMigration(unresolved)
+        };
+    }
+
+    /// Claims the owed restore, reporting whether it runs.
     ///
     /// A claim clears the debt in the same step that reports it, so a runtime
     /// hands its restore to exactly one caller however many sessions acquire it
     /// afterwards. The caller reports the outcome through
     /// [`SessionWorkspaceRuntime::complete_background_restore`].
-    fn claimed(self) -> (Self, bool) {
-        match self {
-            Self::Ready => (Self::NotOwed, true),
-            Self::NotOwed | Self::BlockedByOwnerMigration => (self, false),
+    fn claim(&mut self) -> bool {
+        if matches!(self, Self::Ready) {
+            *self = Self::NotOwed;
+            true
+        } else {
+            false
         }
     }
 
@@ -86,11 +132,11 @@ impl PendingWorkspaceRestore {
     ///
     /// A failure discharges nothing: the ownerless rows the pass would have
     /// restored are still unrestored, so the debt becomes payable again and a
-    /// later acquisition retries it.
-    fn reinstated(self) -> Self {
-        match self {
-            Self::NotOwed => Self::Ready,
-            Self::BlockedByOwnerMigration | Self::Ready => self,
+    /// later acquisition retries it. Every blocker had cleared for the claim to
+    /// be made, so no session needs recording again.
+    fn reinstate(&mut self) {
+        if matches!(self, Self::NotOwed) {
+            *self = Self::Ready;
         }
     }
 }
@@ -123,10 +169,21 @@ impl Drop for OwedBackgroundRestore<'_> {
 }
 
 impl SessionWorkspaceRuntime {
-    /// Records that ownership is reconciled and a blocked restore may run.
-    pub(in crate::zed::agent) fn release_background_restore(&self) {
+    /// Records that `session_id` has not reconciled the ownership of the rows
+    /// it launched, so the workspace restore must stay blocked for it.
+    pub(in crate::zed::agent) fn block_background_restore(&self, session_id: &str) {
         let mut pending = self.pending_restore_guard();
-        *pending = pending.released();
+        pending.block(session_id);
+    }
+
+    /// Records that `session_id` reconciled ownership, clearing its blocker.
+    ///
+    /// The restore becomes payable only once every deferring session has
+    /// released: a session that reconciles its own rows cannot show that
+    /// another session's rows carry their owner.
+    pub(in crate::zed::agent) fn release_background_restore(&self, session_id: &str) {
+        let mut pending = self.pending_restore_guard();
+        pending.release(session_id);
     }
 
     /// Claims the owed restore, leaving nothing owed until its result is known.
@@ -143,9 +200,7 @@ impl SessionWorkspaceRuntime {
         // after the guard is gone.
         let claimed = {
             let mut pending = self.pending_restore_guard();
-            let (state, claimed) = pending.claimed();
-            *pending = state;
-            claimed
+            pending.claim()
         };
         if claimed {
             Some(OwedBackgroundRestore { runtime: self, confirmed: false })
@@ -161,11 +216,11 @@ impl SessionWorkspaceRuntime {
     /// never ran as done.
     pub(in crate::zed::agent) fn complete_background_restore(&self, restored: bool) {
         let mut pending = self.pending_restore_guard();
-        *pending = if restored {
-            PendingWorkspaceRestore::NotOwed
+        if restored {
+            *pending = PendingWorkspaceRestore::NotOwed;
         } else {
-            pending.reinstated()
-        };
+            pending.reinstate();
+        }
     }
 
     /// Whether a deferred restore is still owed and held back.
@@ -180,7 +235,7 @@ impl SessionWorkspaceRuntime {
     /// Whether a released restore is owed and waiting for a caller.
     #[cfg(test)]
     pub(in crate::zed::agent) fn pending_background_restore_is_payable(&self) -> bool {
-        *self.pending_restore_guard() == PendingWorkspaceRestore::Ready
+        matches!(*self.pending_restore_guard(), PendingWorkspaceRestore::Ready)
     }
 
     /// Locks the pending-restore state.
@@ -517,46 +572,32 @@ mod pending_restore_tests {
     /// duplicate launch the deferral exists to prevent.
     #[test]
     fn a_deferred_restore_is_released_once_and_claimed_once() {
-        let blocked = PendingWorkspaceRestore::BlockedByOwnerMigration;
-        assert!(blocked.is_blocked(), "a deferred build holds the restore back");
-        assert_eq!(blocked.claimed(), (blocked, false), "a blocked restore is not payable yet");
+        let mut state = PendingWorkspaceRestore::deferred_for("session-a");
+        assert!(state.is_blocked(), "a deferred build holds the restore back");
+        assert!(!state.claim(), "a blocked restore is not payable yet");
 
-        let ready = blocked.released();
-        assert_eq!(ready, PendingWorkspaceRestore::Ready, "releasing makes the debt payable");
-        assert_eq!(
-            ready.claimed(),
-            (PendingWorkspaceRestore::NotOwed, true),
-            "the first claim runs the restore and clears the debt"
-        );
-        assert_eq!(
-            PendingWorkspaceRestore::NotOwed.claimed(),
-            (PendingWorkspaceRestore::NotOwed, false),
-            "a claimed debt must not run a second time"
-        );
-        assert_eq!(
-            PendingWorkspaceRestore::NotOwed.released(),
-            PendingWorkspaceRestore::NotOwed,
-            "releasing a claimed debt must not re-arm it"
-        );
+        state.release("session-a");
+        assert_eq!(state, PendingWorkspaceRestore::Ready, "releasing makes the debt payable");
+        assert!(state.claim(), "the first claim runs the restore and clears the debt");
+        assert_eq!(state, PendingWorkspaceRestore::NotOwed, "a claim clears the debt");
+        assert!(!state.claim(), "a claimed debt must not run a second time");
+        state.release("session-a");
+        assert_eq!(state, PendingWorkspaceRestore::NotOwed, "releasing a claimed debt must not re-arm it");
     }
 
     /// A runtime that restored at build time owes nothing, forever.
     ///
-    /// Only a deferred build creates the debt. Releasing a runtime that never
-    /// deferred must not arm one, or ordinary `session/new` traffic would run a
-    /// legacy restore it never deferred.
+    /// Only a deferred build creates the debt. Releasing, or blocking for a
+    /// later resume, must not arm one: ordinary `session/new` traffic would
+    /// otherwise run a legacy restore the runtime never deferred.
     #[test]
     fn a_runtime_that_never_deferred_never_owes_a_restore() {
-        assert_eq!(
-            PendingWorkspaceRestore::NotOwed.released(),
-            PendingWorkspaceRestore::NotOwed,
-            "there is nothing to release"
-        );
-        assert_eq!(
-            PendingWorkspaceRestore::NotOwed.claimed(),
-            (PendingWorkspaceRestore::NotOwed, false),
-            "there is nothing to claim"
-        );
+        let mut state = PendingWorkspaceRestore::NotOwed;
+        state.release("session-a");
+        assert_eq!(state, PendingWorkspaceRestore::NotOwed, "there is nothing to release");
+        state.block("session-a");
+        assert_eq!(state, PendingWorkspaceRestore::NotOwed, "a resume must not arm a restore the build already ran");
+        assert!(!state.claim(), "there is nothing to claim");
     }
 
     /// Releasing an already-payable restore leaves it single-claim.
@@ -566,19 +607,14 @@ mod pending_restore_tests {
     /// the restore payable twice.
     #[test]
     fn a_second_release_does_not_make_the_restore_payable_twice() {
-        let ready = PendingWorkspaceRestore::BlockedByOwnerMigration.released().released();
-        assert_eq!(ready, PendingWorkspaceRestore::Ready, "two releases leave one payable debt");
+        let mut state = PendingWorkspaceRestore::deferred_for("session-a");
+        state.release("session-a");
+        state.release("session-a");
+        assert_eq!(state, PendingWorkspaceRestore::Ready, "two releases leave one payable debt");
 
-        // `claimed` is a pure transition and `claim_owed_background_restore`
-        // stores the state it returns, so a second claim must be taken against
-        // the state the first one left behind.
-        let (paid, ran) = ready.claimed();
-        assert_eq!((paid, ran), (PendingWorkspaceRestore::NotOwed, true), "one claim pays the released debt");
-        assert_eq!(
-            paid.claimed(),
-            (PendingWorkspaceRestore::NotOwed, false),
-            "the second release must not create a second debt"
-        );
+        assert!(state.claim(), "one claim pays the released debt");
+        assert_eq!(state, PendingWorkspaceRestore::NotOwed);
+        assert!(!state.claim(), "the second release must not create a second debt");
     }
 
     /// A restore that did not run leaves the debt payable for a later attempt.
@@ -589,19 +625,54 @@ mod pending_restore_tests {
     /// the unrestored rows as done.
     #[test]
     fn a_failed_restore_is_payable_again() {
-        let (claimed, ran) = PendingWorkspaceRestore::Ready.claimed();
-        assert_eq!((claimed, ran), (PendingWorkspaceRestore::NotOwed, true), "the released debt is claimed once");
-        let owed_again = claimed.reinstated();
-        assert_eq!(owed_again, PendingWorkspaceRestore::Ready, "a failed pass must leave the restore payable again");
+        let mut state = PendingWorkspaceRestore::deferred_for("session-a");
+        state.release("session-a");
+        assert!(state.claim(), "the released debt is claimed once");
+        assert_eq!(state, PendingWorkspaceRestore::NotOwed);
+        state.reinstate();
+        assert_eq!(state, PendingWorkspaceRestore::Ready, "a failed pass must leave the restore payable again");
+        assert!(state.claim(), "the retry claims the reinstated debt exactly as the first attempt did");
+
+        let mut still_blocked = PendingWorkspaceRestore::deferred_for("session-a");
+        still_blocked.reinstate();
+        assert!(still_blocked.is_blocked(), "reinstating must not release a debt ownership still blocks");
+    }
+
+    /// One session's release cannot clear another session's blocker.
+    ///
+    /// A resume whose migration and retry leave rows ownerless records itself
+    /// as a blocker. A later session that reconciles its own rows must not make
+    /// the shared restore payable: its success says nothing about the first
+    /// session's rows, which the workspace scope would relaunch as its own.
+    #[test]
+    fn a_restore_stays_blocked_until_every_deferring_session_reconciles() {
+        let mut state = PendingWorkspaceRestore::deferred_for("session-a");
+        state.block("session-b");
+        state.release("session-b");
         assert_eq!(
-            owed_again.claimed(),
-            (PendingWorkspaceRestore::NotOwed, true),
-            "the retry claims the reinstated debt exactly as the first attempt did"
+            state,
+            PendingWorkspaceRestore::blocked_by(&["session-a"]),
+            "a reconciled session clears only its own blocker"
         );
+        assert!(!state.claim(), "the debt stays unpayable while another session is unresolved");
+
+        state.release("session-a");
+        assert_eq!(state, PendingWorkspaceRestore::Ready, "the last reconciliation makes the debt payable");
+        assert!(state.claim(), "the restore is claimable once every blocker clears");
+    }
+
+    /// A later deferred session re-blocks an already payable debt.
+    #[test]
+    fn a_new_blocker_holds_back_a_payable_restore() {
+        let mut state = PendingWorkspaceRestore::deferred_for("session-a");
+        state.release("session-a");
+        assert_eq!(state, PendingWorkspaceRestore::Ready);
+        state.block("session-b");
         assert_eq!(
-            PendingWorkspaceRestore::BlockedByOwnerMigration.reinstated(),
-            PendingWorkspaceRestore::BlockedByOwnerMigration,
-            "reinstating must not release a debt ownership still blocks"
+            state,
+            PendingWorkspaceRestore::blocked_by(&["session-b"]),
+            "a resume that has not reconciled must hold the restore back again"
         );
+        assert!(!state.claim(), "a re-blocked debt is not payable");
     }
 }

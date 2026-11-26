@@ -378,6 +378,23 @@ impl SessionHandle {
     }
 }
 
+/// Awaits one aborted lifecycle task, discarding its cancellation.
+///
+/// Cancellation is the expected outcome: the caller aborted the handle before
+/// this await. Every other join failure is returned with task-specific context
+/// so the caller can keep awaiting the other task before reporting it.
+async fn join_aborted_lifecycle_task(
+    task: Option<tokio::task::JoinHandle<()>>,
+    context: &'static str,
+) -> Option<anyhow::Error> {
+    let task = task?;
+    match task.await {
+        Ok(()) => None,
+        Err(error) if error.is_cancelled() => None,
+        Err(error) => Some(anyhow::Error::new(error).context(context)),
+    }
+}
+
 /// Stops the lifecycle forwarder and its initial-snapshot publisher.
 ///
 /// Aborting the publisher first keeps it from enqueueing while the receiver is
@@ -396,24 +413,11 @@ async fn stop_task_lifecycle_tasks(
     if let Some(forwarder) = &forwarder {
         forwarder.abort();
     }
-    let publisher_error = match snapshot_publisher {
-        Some(snapshot_publisher) => match snapshot_publisher.await {
-            Ok(()) => None,
-            Err(error) if error.is_cancelled() => None,
-            Err(error) => {
-                Some(anyhow::Error::new(error).context("waiting for ACP task lifecycle snapshot publisher to stop"))
-            }
-        },
-        None => None,
-    };
-    let forwarder_error = match forwarder {
-        Some(forwarder) => match forwarder.await {
-            Ok(()) => None,
-            Err(error) if error.is_cancelled() => None,
-            Err(error) => Some(anyhow::Error::new(error).context("waiting for ACP task lifecycle forwarder to stop")),
-        },
-        None => None,
-    };
+    let publisher_error =
+        join_aborted_lifecycle_task(snapshot_publisher, "waiting for ACP task lifecycle snapshot publisher to stop")
+            .await;
+    let forwarder_error =
+        join_aborted_lifecycle_task(forwarder, "waiting for ACP task lifecycle forwarder to stop").await;
     if let Some(error) = publisher_error {
         return Err(error);
     }

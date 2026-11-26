@@ -17,10 +17,15 @@
 //!   retries it instead of leaving the ownerless rows unrestored.
 use super::archive::archived_listing;
 use super::*;
+use crate::zed::agent::optional_setup::OptionalSetupOutcome;
+use crate::zed::agent::session_workspace::WorkspaceFileOpsToolConstruction;
 use crate::zed::session::AcpSessionWorkspace;
 use assert_fs::TempDir;
+use diapason_core::config::AgentClientProtocolZedConfig;
 use diapason_core::llm::provider::ToolCall;
 use diapason_core::subagents::TaskOwner;
+use diapason_core::tools::file_ops::FileOpsTool;
+use diapason_core::tools::grep_file::GrepSearchManager;
 
 /// A failed attach must not restore the background sub-agents it will own.
 ///
@@ -227,6 +232,22 @@ async fn failed_background_owner_migration_defers_workspace_restore() {
             .clone()
             .expect("attach must retain its workspace runtime")
     };
+    // A build-time restore attempt would have failed on the obstructed ledger
+    // lock and degraded the recorded outcome, so `Attached` is an invocation
+    // observable that does not depend on the launch path the lock masks.
+    assert_eq!(
+        workspace_runtime.optional_setup_outcomes.subagent_controller,
+        OptionalSetupOutcome::Attached,
+        "the workspace controller must not attempt a restore this attach deferred"
+    );
+    assert!(
+        workspace_runtime.pending_background_restore_is_blocked(),
+        "the deferred restore must stay owed and blocked"
+    );
+    assert!(
+        !workspace_runtime.pending_background_restore_is_payable(),
+        "a deferred restore must not become payable before ownership is reconciled"
+    );
     let controller = workspace_runtime
         .local_tool_registry
         .subagent_controller()
@@ -317,7 +338,7 @@ async fn a_session_new_acquisition_does_not_release_a_restore_an_unresolved_migr
         .await
         .expect("build the reusing ACP session workspace");
     let reuse = agent
-        .workspace_runtime_for(&workspace, false)
+        .workspace_runtime_for(&workspace, None)
         .await
         .expect("a later acquisition must reuse the cached runtime");
     assert!(
@@ -483,7 +504,7 @@ async fn a_failed_workspace_restore_stays_owed_and_a_later_attempt_restores() {
     // reconciled: the ledger is writable again, but the restore's own lock
     // attempt still fails, because the sidecar path is occupied.
     fs::remove_dir(&lock_path).expect("clear the ledger lock obstruction");
-    workspace_runtime.release_background_restore();
+    workspace_runtime.release_background_restore(session_id.0.as_ref());
     assert!(
         workspace_runtime.pending_background_restore_is_payable(),
         "a reconciled release makes the owed restore payable"
@@ -509,7 +530,7 @@ async fn a_failed_workspace_restore_stays_owed_and_a_later_attempt_restores() {
         .await
         .expect("build the retrying ACP session workspace");
     let retry = agent
-        .workspace_runtime_for(&workspace, false)
+        .workspace_runtime_for(&workspace, None)
         .await
         .expect("a later acquisition must reuse the cached runtime");
     assert!(
@@ -642,4 +663,94 @@ Run the managed background fixture.
         permissions.set_mode(0o755);
         fs::set_permissions(&script, permissions).expect("make background fixture script executable");
     }
+}
+
+/// Clears a ledger-lock obstruction while the workspace runtime is prepared.
+///
+/// The resume-site owner migration runs before the workspace runtime is built,
+/// so a lock obstructed at that point fails that migration. Clearing the
+/// obstruction here lets the workspace controller load the still-ownerless
+/// ledger and lets the session controller's retry migrate the row, which is the
+/// ordering the resumed attach has to reconcile.
+pub(super) struct ClearLedgerLockOnBuild {
+    pub(super) lock_path: std::path::PathBuf,
+}
+
+impl WorkspaceFileOpsToolConstruction for ClearLedgerLockOnBuild {
+    fn construct(
+        &self,
+        workspace_root: &Path,
+        zed_config: &AgentClientProtocolZedConfig,
+    ) -> anyhow::Result<Option<FileOpsTool>> {
+        if self.lock_path.exists() {
+            fs::remove_dir(&self.lock_path).expect("clear the ledger lock obstruction");
+        }
+        Ok(zed_config.tools.list_files.then(|| {
+            FileOpsTool::new(
+                workspace_root.to_path_buf(),
+                Arc::new(GrepSearchManager::new(workspace_root.to_path_buf())),
+            )
+        }))
+    }
+}
+
+/// Seeds one ownerless row this session launched with a launch this process
+/// does not know, so a restore observes it as exited.
+pub(super) fn seed_launched_background_ledger(state_dir: &Path, parent_session_id: &str) -> std::path::PathBuf {
+    let ledger_path = state_dir.join("background_subagents.json");
+    let seeded_ledger = serde_json::json!({
+        "records": [{
+            "id": "background-background-demo",
+            "agent_name": "background-demo",
+            "display_label": "background-demo",
+            "description": "background demo",
+            "source": "builtin",
+            "color": null,
+            "parent_session_id": parent_session_id,
+            "session_id": "session-background-demo-restored",
+            "exec_session_id": "exec-missing",
+            "desired_enabled": true,
+            "status": "stopped",
+            "created_at": "2026-08-28T00:00:00Z",
+            "updated_at": "2026-08-28T00:00:00Z",
+            "started_at": null,
+            "ended_at": "2026-08-28T00:00:00Z",
+            "pid": null,
+            "prompt": "restore me",
+            "summary": null,
+            "error": null,
+            "archive_path": null,
+            "transcript_path": null,
+            "max_turns": null,
+            "model_override": null,
+            "reasoning_override": null,
+            "restart_attempts": 0
+        }]
+    });
+    fs::write(&ledger_path, serde_json::to_vec(&seeded_ledger).expect("serialize the seeded background ledger"))
+        .expect("seed the background ledger");
+    ledger_path
+}
+
+/// Writes the demo fixture with a script that records one line per launch.
+pub(super) fn write_launch_counting_fixture(workspace: &Path, launches: &Path) {
+    write_background_restore_fixture_with_marker(workspace, None);
+    let script = workspace.join("scripts/demo-background-subagent.sh");
+    let body =
+        format!("#!/bin/sh\nprintf 'background-restored\\n'\nprintf 'launch\\n' >> \"{}\"\n", launches.display());
+    fs::write(&script, body).expect("write the launch-counting fixture script");
+}
+
+/// The number of launches the fixture script has recorded.
+pub(super) fn launch_count(launches: &Path) -> usize {
+    fs::read_to_string(launches).map_or(0, |recorded| recorded.lines().count())
+}
+
+/// Builds the settings a resumed-background test needs.
+pub(super) fn restored_background_config() -> diapason_core::config::DiapasonConfig {
+    let mut vt_config = diapason_core::config::DiapasonConfig::default();
+    vt_config.subagents.enabled = true;
+    vt_config.subagents.background.enabled = true;
+    vt_config.subagents.background.auto_restore = true;
+    vt_config
 }

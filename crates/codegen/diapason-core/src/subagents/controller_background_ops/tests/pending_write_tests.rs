@@ -13,6 +13,10 @@ use crate::subagents::controller_persistence::ledger_write_checkpoints;
 use crate::subagents::{BackgroundSubprocessStatus, SpawnBackgroundSubprocessRequest};
 
 #[cfg(unix)]
+use super::super::BackgroundRunRequest;
+#[cfg(unix)]
+use super::super::controller_background_run::gate_next_background_commit;
+#[cfg(unix)]
 use super::super::controller_background_settlement::{
     mark_background_ledger_write_pending, pending_background_ledger_write_generation,
 };
@@ -230,5 +234,86 @@ async fn a_reuse_in_the_save_window_waits_for_the_owed_write() {
         .exec_sessions
         .close_session(&reuse_entry.exec_session_id)
         .await;
+    controller.signal_shutdown().await;
+}
+
+/// A launch answers for the process it started, not the record's current launch.
+///
+/// The save that follows a commit awaits without the state lock, so another
+/// caller can stop this launch and reserve a replacement under the same record
+/// id while the write is pending. Re-reading the record afterwards reported that
+/// replacement's entry as the result of this call, attaching settings and a
+/// parent the caller never used to a process it did not launch. The launch must
+/// answer for the session it minted, and report a record taken over rather than
+/// answer with another launch.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_launch_answers_for_the_process_it_committed() {
+    let temp = TempDir::new().expect("tempdir");
+    write_background_demo_agent(temp.path());
+    write_sleeping_demo_script(temp.path());
+    let mut vt_cfg = DiapasonConfig::default();
+    vt_cfg.subagents.background.enabled = true;
+    let controller = background_test_controller(temp.path(), vt_cfg).await;
+
+    let (commit_entered, commit_release) = gate_next_background_commit(&controller.state);
+    let launching = controller.clone();
+    let mut launch = tokio::spawn(async move {
+        launching
+            .ensure_background_record_running(BackgroundRunRequest {
+                agent_name: "background-demo".to_string(),
+                stable_id: Some("background-worker".to_string()),
+                restart_attempts: 0,
+                overrides: None,
+                expected_exec_session_id: None,
+            })
+            .await
+    });
+    tokio::select! {
+        result = &mut launch => panic!("the launch settled before its commit was parked: {result:?}"),
+        () = commit_entered.notified() => {}
+    }
+    // The claim is written and the process is spawned, and the commit is parked.
+    // The next ledger write this launch performs is therefore the save that
+    // follows its commit.
+    let (write_entered, write_release) = ledger_write_checkpoints::arm(temp.path());
+    let spawned_exec_session_id = {
+        let state = controller.state.read().await;
+        state
+            .background_children
+            .get("background-worker")
+            .expect("the claim is written before the commit")
+            .exec_session_id
+            .clone()
+    };
+    commit_release.notify_one();
+    tokio::select! {
+        result = &mut launch => panic!("the launch answered before its save was parked: {result:?}"),
+        () = write_entered.notified() => {}
+    }
+    {
+        // A stop and a fresh reservation under the same id, landed while the
+        // launch's own write is in flight.
+        let mut state = controller.state.write().await;
+        let record = state
+            .background_children
+            .get_mut("background-worker")
+            .expect("the committed launch");
+        record.exec_session_id = "exec-successor".to_string();
+        record.status = BackgroundSubprocessStatus::Running;
+        record.desired_enabled = true;
+    }
+    write_release.notify_one();
+
+    let error = launch
+        .await
+        .expect("the launch task joins")
+        .expect_err("a record taken over by another launch must not answer as this one");
+    assert!(
+        format!("{error:#}").contains("took its record"),
+        "the caller is told its launch lost the record: {error:#}"
+    );
+
+    let _ = controller.config.exec_sessions.close_session(&spawned_exec_session_id).await;
     controller.signal_shutdown().await;
 }

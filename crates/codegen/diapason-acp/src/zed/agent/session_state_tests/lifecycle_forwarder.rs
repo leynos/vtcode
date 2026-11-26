@@ -42,12 +42,12 @@ async fn stopping_the_forwarder_stops_its_initial_snapshot_publisher() {
 
 /// Setup that runs after teardown must not install a forwarder.
 ///
-/// Installation spawns the forwarder and its initial-snapshot publisher
-/// before it publishes their handles. A close that reached teardown in that
-/// gap used to leave both tasks installed, so the session kept publishing into
-/// a lifecycle that had already stopped draining it. Installation now checks
-/// the closing state under the session-data lock that teardown also takes, so
-/// the stop-first order aborts the install. The opposite order stays safe by
+/// Installation used to spawn the forwarder and its initial-snapshot publisher
+/// before publishing their handles. A close that reached teardown in that gap
+/// left both tasks installed, so the session kept publishing into a lifecycle
+/// that had already stopped draining it. Installation now takes the session-data
+/// lock that teardown also takes and spawns nothing unless it wins the install,
+/// so the stop-first order aborts the install. The opposite order stays safe by
 /// mutual exclusion: installation completes, and teardown then stops exactly
 /// what it installed.
 #[tokio::test]

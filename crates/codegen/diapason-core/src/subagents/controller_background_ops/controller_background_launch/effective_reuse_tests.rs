@@ -227,3 +227,39 @@ async fn a_reuse_waits_for_the_active_records_owed_ledger_write() {
 
     controller.signal_shutdown().await;
 }
+
+/// A parentless record is left to the rebinding reservation inside a tool invocation.
+///
+/// The pre-lock selector cannot rebind the record - that needs the write lock -
+/// but it must not refuse it either: the ambient context names the session the
+/// tool call belongs to, and a record that names no parent has no owner to
+/// conflict with. Returning "already active" here made the rebind unreachable
+/// for every tool caller.
+#[tokio::test]
+async fn a_parentless_record_is_left_to_the_rebinding_reservation_inside_a_tool_invocation() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = active_record_controller(&temp, None).await;
+    {
+        let mut state = controller.state.write().await;
+        let record = state
+            .background_children
+            .get_mut("background-worker")
+            .expect("the active record");
+        record.parent_session_id = String::new();
+    }
+    let context = SubagentInvocationContext::new("parent-session".to_string(), Vec::new(), String::new());
+
+    let reused = with_subagent_invocation_context(
+        context,
+        controller.reusable_background_subprocess(&prepared_launch(None, None)),
+    )
+    .await
+    .expect("a tool invocation must not be refused a parentless record");
+
+    assert!(
+        reused.is_none(),
+        "the pre-lock selector cannot rebind the record, so it leaves it to the reservation"
+    );
+
+    controller.signal_shutdown().await;
+}

@@ -3,28 +3,21 @@ use super::base_provider_config;
 use crate::llm::factory::{LLMFactory, ProviderConfig, create_provider_for_model, create_provider_with_config};
 use crate::llm::provider::LLMError;
 
-#[test]
-fn create_provider_for_bare_minimax_model_uses_minimax_provider() {
-    let provider = create_provider_for_model("MiniMax-M3", "test-key".to_string(), None, None)
-        .expect("bare minimax model should resolve to minimax provider");
+/// A known model id resolves to the provider that serves it.
+///
+/// Every case is the same call and the same assertion, so the table is the
+/// whole contract. The unknown-model and unknown-provider cases stay separate
+/// tests: they assert different error shapes rather than a provider name.
+#[rstest::rstest]
+#[case::bare_minimax("MiniMax-M3", "minimax")]
+#[case::mistral("mistral-large-2512", "mistral")]
+#[case::nvidia("nvidia/nemotron-3-ultra-550b-a55b", "nvidia")]
+#[case::openrouter_repo_id("openai/gpt-oss-20b", "openrouter")]
+fn create_provider_for_known_model_uses_its_provider(#[case] model: &str, #[case] expected_provider: &str) {
+    let provider = create_provider_for_model(model, "test-key".to_string(), None, None)
+        .unwrap_or_else(|error| panic!("{model} should resolve to {expected_provider}: {error}"));
 
-    assert_eq!(provider.name(), "minimax");
-}
-
-#[test]
-fn create_provider_for_mistral_model_uses_mistral_provider() {
-    let provider = create_provider_for_model("mistral-large-2512", "test-key".to_string(), None, None)
-        .expect("mistral models should resolve through mistral provider");
-
-    assert_eq!(provider.name(), "mistral");
-}
-
-#[test]
-fn create_provider_for_nvidia_model_uses_nvidia_provider() {
-    let provider = create_provider_for_model("nvidia/nemotron-3-ultra-550b-a55b", "test-key".to_string(), None, None)
-        .expect("NVIDIA model should resolve to NVIDIA provider");
-
-    assert_eq!(provider.name(), "nvidia");
+    assert_eq!(provider.name(), expected_provider);
 }
 
 #[test]
@@ -41,14 +34,6 @@ fn create_provider_with_config_registers_merge_gateway() {
 
     assert_eq!(provider.name(), "merge-gateway");
     assert_eq!(provider.backend_kind(), diapason_commons::llm::BackendKind::MergeGateway);
-}
-
-#[test]
-fn create_provider_for_openai_repo_id_uses_openrouter_provider() {
-    let provider = create_provider_for_model("openai/gpt-oss-20b", "test-key".to_string(), None, None)
-        .expect("repo identifiers should preserve openrouter routing");
-
-    assert_eq!(provider.name(), "openrouter");
 }
 
 #[test]

@@ -1,6 +1,7 @@
 //! Shared fixtures and request helpers for the Lody management protocol tests.
 pub(super) use super::lody_background_fixtures::{
-    LODY_BACKGROUND_SCRIPT, LODY_EXITING_BACKGROUND_SCRIPT, write_lody_background_fixture, write_lody_background_script,
+    LODY_BACKGROUND_SCRIPT, LODY_EXITING_BACKGROUND_MARKER, LODY_EXITING_BACKGROUND_SCRIPT,
+    write_lody_background_fixture, write_lody_background_script,
 };
 use super::*;
 use agent_client_protocol::schema::v1::{
@@ -207,6 +208,19 @@ pub(super) fn lifecycle_task_meta(notification: &acp::AgentNotification) -> Opti
 /// Extracts the Lody task ID from a task-lifecycle session notification.
 pub(super) fn lifecycle_task_id(notification: &acp::AgentNotification) -> Option<String> {
     lifecycle_task_meta(notification)?.get("taskId")?.as_str().map(str::to_owned)
+}
+
+/// Reports whether a lifecycle notification announces its task with the initial
+/// `ToolCall` form.
+///
+/// A `ToolCallUpdate` for a call id the client never saw announced addresses a
+/// call it cannot resolve, so the first snapshot for a task must be a
+/// `ToolCall`.
+pub(super) fn lifecycle_announces_task(notification: &acp::AgentNotification) -> bool {
+    let acp::AgentNotification::SessionNotification(notification) = notification else {
+        return false;
+    };
+    matches!(&notification.update, acp::SessionUpdate::ToolCall(_))
 }
 
 pub(super) async fn lody_output_error(

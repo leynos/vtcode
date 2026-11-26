@@ -5,6 +5,7 @@ use tempfile::TempDir;
 use crate::config::DiapasonConfig;
 use crate::subagents::SubagentInvocationContext;
 use crate::subagents::background::{load_background_state, persist_background_state};
+use crate::subagents::background_ledger::{MigratedBackgroundLaunch, persist_background_ledger};
 
 use super::super::BackgroundRunReservation;
 use super::reserve_support::{
@@ -131,6 +132,52 @@ async fn a_reuse_from_another_invocation_parent_is_refused() {
     assert!(
         format!("{error:#}").contains("already active"),
         "the reservation must refuse it with the same message the reuse check uses: {error:#}"
+    );
+
+    controller.signal_shutdown().await;
+}
+
+/// A restart of a launch that moved to an owner is declined after its row was replaced.
+///
+/// A migration persists the launch under the owner's canonical id and records
+/// that it did so. Once the owner replaces the launch, no row names the session
+/// this controller observed, but the retained migration evidence still does.
+/// Without it the restart would read the ledger, find nothing under the
+/// ownerless id and nothing naming its observation, and claim a new launch
+/// beside the replacement the owner now runs.
+#[tokio::test]
+async fn a_restart_of_a_superseded_migration_is_declined() {
+    let temp = TempDir::new().expect("tempdir");
+    // The owner's row names its own replacement, while the evidence still
+    // records that the observed launch belonged to this record before it moved.
+    let owner_replacement =
+        persisted_row(&owned_row_id("session-a"), Some("session-a"), WORKER_AGENT, "exec-owner-replacement", true);
+    persist_background_ledger(
+        temp.path(),
+        vec![owner_replacement],
+        &[MigratedBackgroundLaunch {
+            base_id: WORKER.to_string(),
+            exec_session_id: OBSERVED_EXEC.to_string(),
+        }],
+    )
+    .await
+    .expect("seed the migrated launch and its owner's replacement");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+    insert_observed_record(&controller).await;
+
+    let reservation = controller
+        .reserve_background_run(&plan(worker_spec(), "exec-restart", Some(OBSERVED_EXEC)))
+        .await
+        .expect("a superseded migration is declined, not an error");
+
+    assert!(
+        matches!(reservation, BackgroundRunReservation::Declined),
+        "a restart must not claim a launch whose migration the owner has already replaced"
+    );
+    let persisted = load_background_state(temp.path()).await.expect("read the ledger");
+    assert!(
+        persisted.records.iter().all(|record| record.exec_session_id != "exec-restart"),
+        "a declined reservation must not write a replacement claim"
     );
 
     controller.signal_shutdown().await;

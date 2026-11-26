@@ -23,6 +23,7 @@ use super::{
     DefaultAcpSubagentControllerAttacher, OptionalSetupFailure, OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes,
     ZedAgent, ZedAgentSetup, configure_acp_tool_call_limits, report_optional_workspace_setup_outcomes,
 };
+use crate::acp;
 use crate::permissions::{AcpPermissionPrompter, DefaultPermissionPrompter};
 use crate::tooling::AcpToolRegistry;
 
@@ -47,11 +48,14 @@ struct SessionWorkspaceRuntimeSetup<'a> {
     workspace: &'a AcpSessionWorkspace,
     runtime_config: &'a SessionWorkspaceRuntimeConfig,
     vt_config: Option<&'a DiapasonConfig>,
-    /// Skips the workspace controller's restore of ownerless background
-    /// records. A resumed attach always sets this, because that restore waits
-    /// for the attach's required checkpoint and the workspace scope must not
-    /// relaunch a row the session controller may yet adopt.
-    defer_background_restore: bool,
+    /// The resumed attach this runtime is built for, when it defers the
+    /// workspace controller's restore of ownerless background records.
+    ///
+    /// A resumed attach always names itself, because that restore waits for the
+    /// attach's required checkpoint and the workspace scope must not relaunch a
+    /// row the session controller may yet adopt. The session is recorded as the
+    /// unresolved owner the deferred debt is held for.
+    deferred_by: Option<&'a acp::SessionId>,
 }
 
 struct PreparedWorkspace<'a> {
@@ -64,8 +68,9 @@ struct PreparedWorkspace<'a> {
     workspace_hooks_gated: bool,
     file_ops_tool: Option<FileOpsTool>,
     /// Forwarded to the workspace controller so this runtime can skip
-    /// restoring ownerless background records.
-    defer_background_restore: bool,
+    /// restoring ownerless background records, and recorded as the debt's
+    /// unresolved owner.
+    deferred_by: Option<&'a acp::SessionId>,
 }
 
 struct AcpWorkspaceToolSurface {
@@ -85,7 +90,8 @@ struct OptionalWorkspaceComponentsSetup<'a> {
     vt_config: Option<&'a DiapasonConfig>,
     workspace_gated: bool,
     workspace_root: &'a Path,
-    /// See [`SessionWorkspaceRuntimeSetup::defer_background_restore`].
+    /// Whether this build defers the workspace controller's restore of
+    /// ownerless records, because a resumed attach owns the runtime.
     defer_background_restore: bool,
 }
 
@@ -158,6 +164,20 @@ impl WorkspaceSetupPorts {
     /// counters recorded by any workspace appear in the agent's snapshot.
     pub(super) fn with_metrics(mut self, metrics: Arc<MetricsCollector>) -> Self {
         self.registry_setup = Arc::new(DefaultWorkspaceToolRegistrySetup { metrics: Some(metrics) });
+        self
+    }
+
+    /// Return these ports with `construction` installed as the file-operations
+    /// tool builder.
+    ///
+    /// Test-visible: production always composes the default adapter, and only a
+    /// test needs to intervene in workspace preparation.
+    #[cfg(test)]
+    pub(in crate::zed::agent) fn with_file_ops_tool_construction(
+        mut self,
+        construction: Arc<dyn WorkspaceFileOpsToolConstruction>,
+    ) -> Self {
+        self.file_ops_tool_construction = construction;
         self
     }
 
@@ -320,13 +340,14 @@ fn build_session_workspace_runtime<'a>(
 impl ZedAgent {
     /// Returns the workspace runtime leased to this session.
     ///
-    /// `defer_background_restore` marks an acquisition made by a resumed attach.
-    /// Such an attach restores no background work before its required history
-    /// checkpoint, because a restored child can outlive an attach that then
-    /// fails: the fail-closed path releases the workspace lease, but shutdown
-    /// aborts only tracked children, never restored background children. A
-    /// runtime it builds therefore skips the workspace controller's restore of
-    /// ownerless records and records the debt instead.
+    /// `deferred_by` names the resumed attach an acquisition is made for, and
+    /// marks that attach as deferring the workspace restore. Such an attach
+    /// restores no background work before its required history checkpoint,
+    /// because a restored child can outlive an attach that then fails: the
+    /// fail-closed path releases the workspace lease, but shutdown aborts only
+    /// tracked children, never restored background children. A runtime it builds
+    /// therefore skips the workspace controller's restore of ownerless records
+    /// and records the debt, blocked by that session, instead.
     ///
     /// A resumed attach never releases or runs the debt here. It releases the
     /// debt itself, after its required checkpoint, once its owner migration is
@@ -341,23 +362,26 @@ impl ZedAgent {
     /// live session still owns.
     ///
     /// Runtimes are cached by workspace root alone, so a later attach that
-    /// reuses one keeps the policy of the build that created it. A resume can
-    /// therefore reuse a runtime built with `defer_background_restore = false`.
-    /// That does not risk a duplicate process: the resumed attach reconciles
-    /// the workspace controller with its owner migration, adopting the rows it
-    /// still holds ownerless before the session controller is built.
+    /// reuses one keeps the debt the build that created it recorded. A resume
+    /// can therefore reuse a runtime a non-deferring build restored at once, or
+    /// one another resume built; either way it records itself as a blocker
+    /// before the restore can be claimed. That does not risk a duplicate
+    /// process: the resumed attach reconciles the workspace controller with its
+    /// owner migration, adopting the rows it still holds ownerless before the
+    /// session controller is built.
     ///
     /// The launch runtime is returned as-is for its own workspace root, so it
-    /// has already made that choice; `defer_background_restore` cannot undo a
+    /// has already made that choice; naming a deferring session cannot undo a
     /// restore the launch controller ran before the session attached. A resume
     /// therefore reconciles that controller with its owner migration instead of
     /// relying on the deferral for the launch root.
     pub(super) async fn workspace_runtime_for(
         &self,
         workspace: &AcpSessionWorkspace,
-        defer_background_restore: bool,
+        deferred_by: Option<&acp::SessionId>,
     ) -> anyhow::Result<SessionWorkspaceLease> {
         let workspace_root = workspace.path().to_path_buf();
+        let defer_background_restore = deferred_by.is_some();
         if self.launch_workspace_runtime.workspace_root == workspace_root {
             return Ok(SessionWorkspaceLease::unmanaged(Arc::clone(&self.launch_workspace_runtime)));
         }
@@ -377,7 +401,7 @@ impl ZedAgent {
                                     workspace,
                                     runtime_config: &self.workspace_runtime_config,
                                     vt_config: self.vt_config.as_deref(),
-                                    defer_background_restore,
+                                    deferred_by,
                                 },
                                 &self.workspace_setup_ports,
                             )
@@ -404,13 +428,21 @@ impl ZedAgent {
                 }
             };
 
+            // The deferring session is recorded as an unresolved owner before
+            // the restore can be claimed. A cached runtime may already be
+            // payable from another session's release, and that release says
+            // nothing about the rows this session launched.
+            if let Some(session_id) = deferred_by {
+                runtime.block_background_restore(session_id.0.as_ref());
+            }
             if let Some(lease) = SessionWorkspaceLease::acquire(Arc::clone(&runtime)).await? {
                 // A resumed attach defers everything to its own release after
                 // its required checkpoint, so this acquisition neither releases
                 // nor runs the debt. Any other acquisition may complete a
-                // restore a resume already released; claiming a still-blocked
-                // debt is impossible, because only the release makes it payable
-                // and no new session can establish that reconciliation.
+                // restore every deferring resume already released; claiming a
+                // still-blocked debt is impossible, because only a release
+                // makes it payable and no new session can establish another
+                // session's reconciliation.
                 if !defer_background_restore {
                     self.run_owed_workspace_background_restore(&runtime).await;
                 }
@@ -431,11 +463,12 @@ impl ZedAgent {
     /// that ran: a failed pass, or a caller cancelled while it runs, reinstates
     /// the debt so a later acquisition retries it instead of losing it.
     ///
-    /// The debt is only payable once a resumed attach has established that the
-    /// rows it launched carry their owner, and that attach calls this only
-    /// after its required history checkpoint. The ownerless rows the restore
-    /// takes are therefore genuinely nobody's, and a restored child can never
-    /// outlive an attach that then fails.
+    /// The debt is only payable once every resumed attach that deferred it has
+    /// established that the rows it launched carry their owner, and each such
+    /// attach releases its own blocker only after its required history
+    /// checkpoint. The ownerless rows the restore takes are therefore genuinely
+    /// nobody's, and a restored child can never outlive an attach that then
+    /// fails.
     ///
     /// A runtime without a controller, or whose configuration disables the
     /// restore, leaves the debt untouched rather than discharging it: those
@@ -497,7 +530,7 @@ fn prepare_launch_workspace<'a>(
         // reconciles this controller with the migration before it restores its
         // own rows, and the ledger merge refuses to write an ownerless copy
         // over the owned record of the same launch.
-        defer_background_restore: false,
+        deferred_by: None,
     })
 }
 
@@ -510,7 +543,7 @@ async fn prepare_session_workspace<'a>(
         workspace,
         runtime_config,
         vt_config,
-        defer_background_restore,
+        deferred_by,
     } = setup;
     let workspace_root = workspace.path().to_path_buf();
     let mut session_config = base_config.clone();
@@ -541,7 +574,7 @@ async fn prepare_session_workspace<'a>(
         primary_agents,
         workspace_hooks_gated,
         file_ops_tool,
-        defer_background_restore,
+        deferred_by,
     })
 }
 
@@ -584,7 +617,7 @@ async fn initialize_workspace_tool_registry(
             vt_config: prepared.vt_config,
             workspace_gated: prepared.workspace_hooks_gated,
             workspace_root: &prepared.workspace_root,
-            defer_background_restore: prepared.defer_background_restore,
+            defer_background_restore: prepared.deferred_by.is_some(),
         },
         ports,
     )
@@ -613,13 +646,12 @@ async fn build_prepared_workspace_runtime(
     .await?;
 
     // A deferred restore is not dropped, only postponed: the runtime records
-    // that it still owes one, so a later acquisition of the same runtime can
-    // run it once ownership is safe to reconcile. Every other build restored
-    // at once and owes nothing.
-    let pending_background_restore = if prepared.defer_background_restore {
-        PendingWorkspaceRestore::BlockedByOwnerMigration
-    } else {
-        PendingWorkspaceRestore::NotOwed
+    // that it still owes one, held by the session that deferred it, so a later
+    // acquisition of the same runtime can run it once ownership is safe to
+    // reconcile. Every other build restored at once and owes nothing.
+    let pending_background_restore = match prepared.deferred_by {
+        Some(session_id) => PendingWorkspaceRestore::deferred_for(session_id.0.as_ref()),
+        None => PendingWorkspaceRestore::NotOwed,
     };
     let runtime = SessionWorkspaceRuntime {
         workspace_root: prepared.workspace_root,

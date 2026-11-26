@@ -182,32 +182,43 @@ fn warn_task_lifecycle_notification_failure(session_correlation: &str, notificat
 }
 
 impl ZedAgent {
+    /// Starts the session's lifecycle forwarder, if it is not already running.
+    ///
+    /// The install decision is taken under the session-data lock before either
+    /// task is spawned or the observer is registered. Two overlapping
+    /// acquisitions of one session can both pass an unlocked fast path, so
+    /// spawning first would let the loser publish an initial `ToolCall` — and
+    /// its observer forward live updates — before it noticed it had lost. Only
+    /// the candidate that wins the install may publish anything.
     pub(super) fn ensure_task_lifecycle_forwarder(&self, session: &SessionHandle) -> anyhow::Result<()> {
-        let already_running = session
+        // Resolved before the install lock: both take locks of their own, and
+        // neither is part of the install decision.
+        let client = self.client();
+        let launch_controller = self.local_tool_registry.subagent_controller();
+        // Installing the handles is serialized with teardown: both take the
+        // session-data lock, so a close cannot stop the lifecycle between
+        // spawning these tasks and publishing their handles. The closing state
+        // is read under that same lock, so a close that already ran teardown
+        // first is observed here and aborts the install instead of leaving a
+        // forwarder publishing into a session that has stopped draining it.
+        let mut data = session
             .data
             .lock()
-            .map_err(|error| lock_poison_error("checking ACP task lifecycle forwarder state", error))?
-            .task_lifecycle_forwarder
-            .as_ref()
-            .is_some_and(|task| !task.is_finished());
-        if already_running {
+            .map_err(|error| lock_poison_error("registering ACP task lifecycle forwarder", error))?;
+        if session.is_closing() || data.task_lifecycle_forwarder.as_ref().is_some_and(|task| !task.is_finished()) {
             return Ok(());
         }
-
-        let Some(controller) = self.session_subagent_controller(session)? else {
+        let controller = match &data.workspace_runtime {
+            Some(_) => data.subagent_controller.clone(),
+            None => launch_controller,
+        };
+        let (Some(controller), Some(client)) = (controller, client) else {
             return Ok(());
         };
-        let Some(client) = self.client() else {
-            return Ok(());
-        };
-        let session_id = session
-            .data
-            .lock()
-            .map_err(|error| lock_poison_error("reading ACP session ID for task lifecycle forwarding", error))?
-            .session_id
-            .clone();
-        let metrics = session
-            .workspace_runtime()?
+        let session_id = data.session_id.clone();
+        let metrics = data
+            .workspace_runtime
+            .as_ref()
             .map(|runtime| runtime.local_tool_registry.metrics_collector())
             .unwrap_or_else(|| self.local_tool_registry.metrics_collector());
         let (sender, receiver) = mpsc::channel(128);
@@ -233,54 +244,18 @@ impl ZedAgent {
         // tasks that were already active at registration have no queued
         // transition. Publish their current snapshot explicitly: otherwise a
         // resumed task that never changes again stays invisible to the client.
-        let initial_sender = sender.clone();
-        let initial_session_id = session_id.clone();
-        let initial_controller = Arc::clone(&controller);
-        let initial_queue = queue;
-        let initial_metrics = Arc::clone(&metrics);
         // Keep the publisher's handle: it writes into the forwarder's queue, so
         // aborting only the forwarder would leave it enqueueing into a queue
         // nothing drains. It is stopped with the forwarder in every path.
         let initial_snapshot_task = tokio::spawn(async move {
-            publish_initial_task_snapshots(
-                &initial_controller,
-                &initial_session_id,
-                &initial_sender,
-                &initial_queue,
-                &initial_metrics,
-                snapshot_revision,
-            )
-            .await;
+            publish_initial_task_snapshots(&controller, &session_id, &sender, &queue, &metrics, snapshot_revision)
+                .await;
         });
-
-        // Installing the handles is serialized with teardown: both take the
-        // session-data lock, so a close cannot stop the lifecycle between
-        // spawning these tasks and publishing their handles. The closing state
-        // is read under that same lock, so a close that already ran teardown
-        // first is observed here and aborts the install instead of leaving a
-        // forwarder publishing into a session that has stopped draining it.
-        let mut data = match session
-            .data
-            .lock()
-            .map_err(|error| lock_poison_error("registering ACP task lifecycle forwarder", error))
-        {
-            Ok(data) => data,
-            Err(error) => {
-                initial_snapshot_task.abort();
-                forwarder.abort();
-                return Err(error);
-            }
-        };
-        if session.is_closing() || data.task_lifecycle_forwarder.as_ref().is_some_and(|task| !task.is_finished()) {
-            initial_snapshot_task.abort();
-            forwarder.abort();
-        } else {
-            if let Some(previous_publisher) = data.task_lifecycle_snapshot_publisher.replace(initial_snapshot_task) {
-                previous_publisher.abort();
-            }
-            data.task_lifecycle_forwarder = Some(forwarder);
-            data.task_lifecycle_registration = Some(registration);
+        if let Some(previous_publisher) = data.task_lifecycle_snapshot_publisher.replace(initial_snapshot_task) {
+            previous_publisher.abort();
         }
+        data.task_lifecycle_forwarder = Some(forwarder);
+        data.task_lifecycle_registration = Some(registration);
         Ok(())
     }
 }

@@ -243,12 +243,20 @@ pub fn kill_child_process_group_with_signal(_child: &mut tokio::process::Child, 
 }
 
 /// Kill a process by PID on Windows.
+///
+/// `taskkill` exits 128 when the target does not exist, and terminates the
+/// whole tree with `/T` and `/F`. A missing target is the terminal state
+/// termination asks for, not a fault: reporting it as an error would make
+/// `try_terminate` restore the killer and leave its helper tasks running, and
+/// every retry would fail the same way while the PID stays absent. Any other
+/// non-zero exit stays an error so a failed signal is retried.
 #[cfg(windows)]
 pub fn kill_process(pid: u32) -> io::Result<()> {
+    const TASKKILL_TARGET_NOT_FOUND: i32 = 128;
     let status = std::process::Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
         .status()?;
-    if status.success() {
+    if status.success() || status.code() == Some(TASKKILL_TARGET_NOT_FOUND) {
         Ok(())
     } else {
         Err(io::Error::other("taskkill failed"))

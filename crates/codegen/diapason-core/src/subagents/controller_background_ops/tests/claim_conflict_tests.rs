@@ -8,17 +8,23 @@ use tempfile::TempDir;
 
 use crate::config::DiapasonConfig;
 use crate::subagents::BackgroundSubprocessStatus;
+use crate::subagents::PersistedBackgroundRecord;
+use crate::subagents::SubagentInvocationContext;
 use crate::subagents::background::{load_background_state, persist_background_state};
 #[cfg(unix)]
 use crate::subagents::controller_persistence::ledger_write_checkpoints;
+use crate::subagents::with_subagent_invocation_context;
 
 use super::super::BackgroundRunReservation;
+use super::super::ExplicitStartAdmission;
+use super::super::controller_background_cancel::mark_background_stop_close_pending;
 #[cfg(unix)]
 use super::super::controller_background_lifecycle::background_launch_is_owed;
 use super::super::controller_background_settlement::pending_background_ledger_write_generation;
+use super::super::explicit_start_admission;
 use super::reserve_support::{
-    OBSERVED_EXEC, PERSISTED_STOPPED_STATUS, WORKER, WORKER_AGENT, insert_observed_record, persisted_row,
-    persisted_row_launched_at, persisted_row_with_status, plan, worker_spec,
+    OBSERVED_EXEC, PERSISTED_RUNNING_STATUS, PERSISTED_STOPPED_STATUS, WORKER, WORKER_AGENT, insert_observed_record,
+    persisted_row, persisted_row_launched_at, persisted_row_with_status, plan, worker_spec,
 };
 use super::support::{RecordingObserver, background_test_controller};
 
@@ -169,15 +175,18 @@ async fn a_reuse_for_another_parent_session_is_refused_without_an_invocation_con
 
 /// A bound replacement must confirm the ledger kept the claim it wrote.
 ///
-/// The save merges rather than replaces, and the claim's launch moment is its
-/// `updated_at` because it has not started. A persisted launch that began later
-/// than that - here a row seeded ahead of the wall clock, standing in for clock
-/// skew between writers - wins the merge, so the ledger still names the previous
-/// launch. Reporting `Reserved` then would start a process beside a launch the
-/// ledger names.
+/// The save merges rather than replaces, and a persisted launch that recorded
+/// its start outranks a claim that has not begun, so the ledger still names the
+/// previous launch. Reporting `Reserved` then would start a process beside a
+/// launch the ledger names. The persisted start is seeded ahead of the wall
+/// clock so the fixture also covers the clock skew between writers that first
+/// exposed this; the refusal must not depend on that ordering.
 #[tokio::test]
 async fn a_bound_replacement_the_ledger_did_not_record_is_refused() {
     let temp = TempDir::new().expect("tempdir");
+    // Derived from the wall clock: a fixed date would stop exercising the merge
+    // once that date had passed.
+    let skewed_start = (chrono::Utc::now() + chrono::Duration::days(3_650)).to_rfc3339();
     persist_background_state(
         temp.path(),
         vec![persisted_row_launched_at(
@@ -186,7 +195,7 @@ async fn a_bound_replacement_the_ledger_did_not_record_is_refused() {
             WORKER_AGENT,
             OBSERVED_EXEC,
             true,
-            Some("2030-01-01T00:00:00Z"),
+            Some(skewed_start.as_str()),
         )],
     )
     .await
@@ -352,6 +361,23 @@ async fn a_reuse_rebinds_a_parentless_record_onto_the_requesting_session() {
         pending_background_ledger_write_generation(&controller.state).is_some(),
         "the rebind must reach the ledger through the owed write"
     );
+    assert!(
+        controller
+            .retry_owed_background_ledger_write()
+            .await
+            .expect("the rebind's owed write succeeds"),
+        "the rebind is what the owed write persists"
+    );
+    let persisted = load_background_state(temp.path()).await.expect("reload the ledger");
+    let stored = persisted
+        .records
+        .iter()
+        .find(|record| record.id == WORKER)
+        .expect("the rebound record reaches the ledger");
+    assert_eq!(
+        stored.parent_session_id, "parent-session",
+        "the durable row must keep the parent the rebind gave it, or a restart loses the route"
+    );
 
     controller.publish_background_status(WORKER).await;
     assert!(
@@ -360,5 +386,156 @@ async fn a_reuse_rebinds_a_parentless_record_onto_the_requesting_session() {
     );
 
     drop(registration);
+    controller.signal_shutdown().await;
+}
+
+/// A parentless record is reused and rebound for a caller inside a tool invocation.
+///
+/// The ambient invocation context names the session the tool call belongs to. A
+/// record that names no parent predates parent tracking, so it has no owner to
+/// conflict with: comparing it against that context refused the reuse with the
+/// "already active" error, and the rebind that exists for exactly such a record
+/// could never run for a tool caller. The reuse must succeed and take the record
+/// onto the invoking session.
+#[tokio::test]
+async fn a_parentless_reuse_rebinds_inside_a_tool_invocation() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+    insert_observed_record(&controller).await;
+    {
+        let mut state = controller.state.write().await;
+        let record = state.background_children.get_mut(WORKER).expect("the observed launch");
+        record.parent_session_id = String::new();
+    }
+    let context = SubagentInvocationContext::new("parent-session".to_string(), Vec::new(), String::new());
+
+    let reservation = with_subagent_invocation_context(
+        context,
+        controller.reserve_background_run(&plan(worker_spec(), OBSERVED_EXEC, None)),
+    )
+    .await
+    .expect("a tool invocation may reuse a parentless record");
+
+    assert!(matches!(reservation, BackgroundRunReservation::Reused(_)));
+    let state = controller.state.read().await;
+    let record = state.background_children.get(WORKER).expect("record");
+    assert_eq!(
+        record.parent_session_id, "parent-session",
+        "the reuse takes the parentless record onto the invoking session"
+    );
+    drop(state);
+
+    controller.signal_shutdown().await;
+}
+
+/// A claim dropped under contention is settled by the next refresh.
+///
+/// The claim guard settles its record synchronously, so it cannot await the
+/// state lock. When another task holds that lock the status is left as it was,
+/// and the guard still clears the launch obligation: a `Starting` record that
+/// owes no launch is settled by the next refresh instead of exempting itself
+/// from settlement forever. The drop test above holds no lock, so this is the
+/// only case that reaches the contended branch.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_contended_claim_drop_leaves_the_record_for_refresh_to_settle() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+    let (entered, _release) = ledger_write_checkpoints::arm(temp.path());
+    {
+        let claimed_plan = plan(worker_spec(), "exec-contended", None);
+        let mut reserve = Box::pin(controller.reserve_background_run(&claimed_plan));
+        tokio::select! {
+            result = &mut reserve => {
+                panic!("the reservation answered before its claim write was parked: {result:?}")
+            }
+            () = entered.notified() => {}
+        }
+        // Holding the state lock across the drop is what makes the guard's
+        // non-blocking settle fail. The same guard also observes the claim the
+        // reservation wrote before it parked.
+        let held = controller.state.read().await;
+        assert_eq!(
+            held.background_children
+                .get(WORKER)
+                .expect("the claim is written before its save")
+                .status,
+            BackgroundSubprocessStatus::Starting,
+            "the claim exists in memory while its durable write is parked"
+        );
+        drop(reserve);
+        drop(held);
+    }
+    {
+        let state = controller.state.read().await;
+        let record = state.background_children.get(WORKER).expect("the claim leaves a record");
+        assert_eq!(
+            record.status,
+            BackgroundSubprocessStatus::Starting,
+            "a contended drop cannot settle the record, so it leaves it as it was"
+        );
+    }
+    assert!(
+        !background_launch_is_owed(&controller.state, WORKER, "exec-contended"),
+        "the contended drop still clears the launch obligation"
+    );
+
+    controller
+        .refresh_background_processes()
+        .await
+        .expect("the next refresh settles the orphaned claim");
+
+    let state = controller.state.read().await;
+    let record = state.background_children.get(WORKER).expect("record");
+    assert_eq!(
+        record.status,
+        BackgroundSubprocessStatus::Error,
+        "a claim whose driver dropped under contention must be settled by refresh, not left Starting"
+    );
+    assert!(record.ended_at.is_some(), "a settled claim has ended");
+    drop(state);
+
+    controller.signal_shutdown().await;
+}
+
+/// An explicit start's admission checks keep their precedence.
+///
+/// The checks are one decision over the persisted row and this controller's own
+/// obligations. An unconfirmed close outranks the exemption for a row naming
+/// this controller's own launch, because a stop whose close failed may still
+/// have a live process behind it; a desired row naming another launch is a
+/// competing claim; and a stop this controller owes declines the start. Each
+/// answer is exercised here without writing the ledger or publishing a record.
+#[rstest::rstest]
+#[case::admitted(None, false, ExplicitStartAdmission::Admitted)]
+#[case::unconfirmed_close_outranks_the_own_row(
+    Some(persisted_row_with_status(WORKER, None, WORKER_AGENT, OBSERVED_EXEC, false, PERSISTED_RUNNING_STATUS)),
+    false,
+    ExplicitStartAdmission::CloseUnconfirmed
+)]
+#[case::competing_claim(
+    Some(persisted_row(WORKER, None, WORKER_AGENT, "exec-other", true)),
+    false,
+    ExplicitStartAdmission::CompetingClaim
+)]
+#[case::stop_close_pending(None, true, ExplicitStartAdmission::StopClosePending)]
+#[tokio::test]
+async fn an_explicit_starts_admission_keeps_its_precedence(
+    #[case] persisted: Option<PersistedBackgroundRecord>,
+    #[case] stop_close_pending: bool,
+    #[case] expected: ExplicitStartAdmission,
+) {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+    insert_observed_record(&controller).await;
+    if stop_close_pending {
+        mark_background_stop_close_pending(&controller.state, WORKER, OBSERVED_EXEC);
+    }
+
+    let state = controller.state.read().await;
+    let admission = explicit_start_admission(&controller.state, &state, persisted.as_ref(), WORKER, "exec-replacement");
+    assert_eq!(admission, expected, "the admission checks must answer in their documented order");
+    drop(state);
+
     controller.signal_shutdown().await;
 }

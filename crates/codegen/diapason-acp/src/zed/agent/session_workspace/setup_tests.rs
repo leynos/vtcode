@@ -167,7 +167,7 @@ fn prepared_workspace<'a>(
         primary_agents: PrimaryAgentCatalogue::from_specs_with_default(&[], "duck"),
         workspace_hooks_gated: false,
         file_ops_tool: None,
-        defer_background_restore: false,
+        deferred_by: None,
     }
 }
 

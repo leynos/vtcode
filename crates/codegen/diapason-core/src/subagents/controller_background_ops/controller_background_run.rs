@@ -66,6 +66,26 @@ impl SubagentController {
         Ok(record.build_status_entry())
     }
 
+    /// Returns one record's projection while it still names `exec_session_id`.
+    ///
+    /// A record id outlives one launch, so a lookup made after an await can find
+    /// a replacement another caller has since reserved. Only the launch a caller
+    /// itself committed names the exec session it minted, which is what makes
+    /// this the entry that launch may report instead of whatever the id names
+    /// afterwards.
+    async fn background_entry_for_launch(
+        &self,
+        record_id: &str,
+        exec_session_id: &str,
+    ) -> Option<BackgroundSubprocessEntry> {
+        let state = self.state.read().await;
+        state
+            .background_children
+            .get(record_id)
+            .filter(|record| record.exec_session_id == exec_session_id)
+            .map(BackgroundRecord::build_status_entry)
+    }
+
     /// Publishes the projection of one background record and returns it.
     ///
     /// The snapshot and the session that routes it are read under one state
@@ -217,7 +237,20 @@ impl SubagentController {
             // generation this call observed.
             self.save_background_state().await?;
             clear_background_ledger_write_pending(&self.state, write_generation);
-            return self.background_status_for(&plan.record_id).await;
+            // The save awaited without the state lock, so another caller can
+            // stop this launch and reserve a replacement under the same record
+            // id while the write was in flight. Answering from whatever the
+            // record names now would report that replacement's process as the
+            // result of this launch, with settings and a parent this call never
+            // used. Answer for the launch this call committed, and report a
+            // launch that was taken over rather than reporting another one.
+            return match self.background_entry_for_launch(&plan.record_id, &plan.exec_session_id).await {
+                Some(entry) => Ok(entry),
+                None => bail!(
+                    "Background subprocess '{}' started, but another launch took its record before it could be reported",
+                    plan.spec.name
+                ),
+            };
         }
     }
 
@@ -241,10 +274,10 @@ impl SubagentController {
             return Ok(());
         }
         let _ledger_guard = lock_background_state(&self.config.workspace_root).await?;
-        let (persisted, _launch_moved) = self
+        let evidence = self
             .persisted_record_for(&plan.record_id, plan.exec_session_id.as_str())
             .await?;
-        let Some(row) = persisted else {
+        let Some(row) = evidence.record else {
             return Ok(());
         };
         if !persisted_background_row_is_desired(&row) {

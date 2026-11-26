@@ -4,6 +4,7 @@ use super::*;
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::super::background_ledger;
 use super::controller_background_lifecycle::clear_background_launch_owed;
 use super::controller_background_settlement::{
     mark_background_ledger_write_pending, persisted_background_row_is_desired,
@@ -168,6 +169,21 @@ pub(super) fn reuse_is_for_another_parent(record_parent_session_id: &str, reques
     !record_parent_session_id.is_empty() && record_parent_session_id != requested_parent_session_id
 }
 
+/// Reports whether the ambient invocation context refuses reuse of this record.
+///
+/// A record that names no parent predates parent tracking: it has no owner to
+/// conflict with, and reuse is what rebinds it onto the session that asked for
+/// it. Comparing an empty parent against the ambient context would refuse that
+/// reuse with the "already active" error before the rebind could run, so the
+/// comparison applies only to a record that names a parent.
+/// [`reuse_is_for_another_parent`] still compares the parent the request
+/// resolved, so a launch another parent drives stays refused.
+pub(super) fn reuse_is_refused_by_the_invocation_context(record_parent_session_id: &str) -> bool {
+    !record_parent_session_id.is_empty()
+        && current_subagent_invocation_context()
+            .is_some_and(|context| context.parent_session_id != record_parent_session_id)
+}
+
 /// Reports whether reuse must move a parentless record onto the requesting session.
 ///
 /// A record that names no parent predates parent tracking. Nothing routes its
@@ -243,36 +259,62 @@ pub(in crate::subagents) fn starting_background_record(plan: &BackgroundRunPlan)
     }
 }
 
+/// What the shared ledger says about one record and the launch a caller observed.
+#[derive(Debug, Default)]
+pub(super) struct PersistedLaunchEvidence {
+    /// The row stored under the canonical id the caller addresses.
+    pub(super) record: Option<PersistedBackgroundRecord>,
+    /// Whether a row under another canonical id names the observed launch.
+    pub(super) observed_launch_moved: bool,
+    /// Whether the observed launch was migrated to an owner and is no longer named there.
+    pub(super) observed_launch_superseded: bool,
+}
+
 impl SubagentController {
-    /// Reads one record's persisted copy and whether the same launch moved.
+    /// Reads what the ledger says about one record and the launch a caller observed.
     ///
-    /// The caller holds the ledger's file lock, so neither answer can change
-    /// between this read and the state write that acts on it. Every save takes
-    /// that lock, in this process and in any other that shares the workspace.
+    /// The caller holds the ledger's file lock, so none of these answers can
+    /// change between this read and the state write that acts on them. Every
+    /// save takes that lock, in this process and in any other that shares the
+    /// workspace.
     ///
     /// A launch whose row was migrated to its owner is persisted under that
     /// owner's canonical id, so a bound plan still addressing the ownerless id
-    /// finds no copy here. The launch has not disappeared, it has moved, and
-    /// reading that separately is what stops the reservation from replacing a
-    /// migrated record with a second process beside it.
+    /// finds no copy under its own id. The launch has not disappeared, it has
+    /// moved, and reading that separately is what stops the reservation from
+    /// replacing a migrated record with a second process beside it. Once that
+    /// owner's row names a different launch, no row names the observed session
+    /// any more; the retained migration evidence is the only durable statement
+    /// that the launch belonged to this record, and it is what stops a stale
+    /// restart from spawning beside the launch that now owns it.
     pub(super) async fn persisted_record_for(
         &self,
         record_id: &str,
         observed_exec_session_id: &str,
-    ) -> Result<(Option<PersistedBackgroundRecord>, bool)> {
+    ) -> Result<PersistedLaunchEvidence> {
         if self.config.managed_background_runtime {
-            return Ok((None, false));
+            return Ok(PersistedLaunchEvidence::default());
         }
-        let mut persisted = controller_persistence::collect_by_canonical_id(
-            load_background_state(&self.config.workspace_root).await?.records,
-        );
+        let ledger = background_ledger::load_background_ledger(&self.config.workspace_root).await?;
+        let mut persisted = controller_persistence::collect_by_canonical_id(ledger.records);
         // A row under another canonical id naming the observed launch means the
         // launch was migrated to its owner. Its intent does not matter: a
         // stopped migration is still not this controller's to replace.
-        let moved = persisted
+        let observed_launch_moved = persisted
             .iter()
             .any(|(id, record)| id != record_id && record.exec_session_id == observed_exec_session_id);
-        Ok((persisted.remove(record_id), moved))
+        let observed_launch_superseded = ledger
+            .migrated_launches
+            .iter()
+            .any(|launch| launch.exec_session_id == observed_exec_session_id)
+            && !persisted
+                .values()
+                .any(|record| record.exec_session_id == observed_exec_session_id);
+        Ok(PersistedLaunchEvidence {
+            record: persisted.remove(record_id),
+            observed_launch_moved,
+            observed_launch_superseded,
+        })
     }
 
     /// Reports whether the ledger keeps a desired row naming `exec_session_id`.

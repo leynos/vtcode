@@ -15,9 +15,19 @@ use hashbrown::HashMap;
 use tempfile::tempdir;
 
 /// Live output is returned as the `Live` variant unchanged.
+///
+/// The polling read reaches the archive fallback until the child produces
+/// output, so the session store is redirected at empty temporary storage:
+/// without it the lookup reads the real user state directory and could observe
+/// a concurrent test's session.
 #[tokio::test]
+#[serial_test::serial(session_dir_override)]
 async fn live_output_is_returned_unchanged() -> anyhow::Result<()> {
     let temp = tempdir()?;
+    let sessions_dir = temp.path().join("sessions");
+    std::fs::create_dir_all(&sessions_dir)?;
+    override_sessions_dir_for_tests(&sessions_dir);
+    let _override = SessionDirOverride;
     let root = canonicalize_workspace(temp.path());
     let (manager, _pty_sessions, reader) = reader_environment(&root);
     let exec_session_id = launched_exec_session_id("live-output-child");
@@ -113,9 +123,19 @@ async fn missing_exec_session_falls_back_to_the_archive() -> anyhow::Result<()> 
 }
 
 /// A task with no recorded path has nothing to serve.
+///
+/// The empty isolated store is what makes the assertion meaningful: the read
+/// resolves the task's session before it can answer, and without the override
+/// that lookup would consult the real user state directory and could serve an
+/// unrelated session's archive as this task's output.
 #[tokio::test]
+#[serial_test::serial(session_dir_override)]
 async fn a_task_without_a_recorded_path_stays_not_ready() -> anyhow::Result<()> {
     let temp = tempdir()?;
+    let sessions_dir = temp.path().join("sessions");
+    std::fs::create_dir_all(&sessions_dir)?;
+    override_sessions_dir_for_tests(&sessions_dir);
+    let _override = SessionDirOverride;
     let root = canonicalize_workspace(temp.path());
     let (_manager, _pty_sessions, reader) = reader_environment(&root);
     let exec_session_id = launched_exec_session_id("no-such-child-session");

@@ -31,8 +31,9 @@ use self::controller_background_settlement::{
 
 pub(in crate::subagents) use self::reservation::{BackgroundRunPlan, BackgroundRunRequest, BackgroundRunReservation};
 use self::reservation::{
-    ReservedClaimGuard, background_launch_conflicts, reuse_is_for_another_parent, reuse_needs_parent_rebind,
-    starting_background_record, usable_background_parent_session_id,
+    PersistedLaunchEvidence, ReservedClaimGuard, background_launch_conflicts, reuse_is_for_another_parent,
+    reuse_is_refused_by_the_invocation_context, reuse_needs_parent_rebind, starting_background_record,
+    usable_background_parent_session_id,
 };
 
 /// Disarms a reservation's claim guard when the claim has a new owner.
@@ -43,6 +44,78 @@ fn claim_guard_disarm(guard: Option<ReservedClaimGuard>) {
     if let Some(guard) = guard {
         guard.disarm();
     }
+}
+
+/// How an explicit start's admission checks answered.
+///
+/// The variants are ranked, and the ranking is the rule: an unconfirmed close
+/// is decided before the exemption for this controller's own row, because a
+/// close this process still owes names a process that may be live whoever holds
+/// the row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExplicitStartAdmission {
+    /// Neither the ledger nor this controller's obligations block the start.
+    Admitted,
+    /// A persisted row's launch is not confirmed closed, so a process may be live.
+    CloseUnconfirmed,
+    /// A desired ledger row names a launch this controller does not hold.
+    CompetingClaim,
+    /// This controller's own stop has not finished closing its process.
+    StopClosePending,
+}
+
+/// Decides whether an explicit start may claim the record it addresses.
+///
+/// The checks run in the reservation, under the ledger's file lock and the
+/// state write lock, so the row read here is the row another start would have to
+/// overwrite. Kept as a predicate over that state so the precedence can be
+/// exercised without writing the ledger or publishing a record.
+fn explicit_start_admission(
+    state_handle: &Arc<RwLock<ControllerState>>,
+    state: &ControllerState,
+    persisted: Option<&PersistedBackgroundRecord>,
+    record_id: &str,
+    exec_session_id: &str,
+) -> ExplicitStartAdmission {
+    if let Some(row) = persisted {
+        // A failure whose process close is unconfirmed names a process that may
+        // still be live, so its row is not a finished launch whoever holds it.
+        // This check comes before the own-record exemption below: a controller's
+        // own settled row with a close still owed is exactly the case that must
+        // not be replaced.
+        if background_record_close_is_unconfirmed(&BackgroundRecord::from_persisted(row.clone())) {
+            return ExplicitStartAdmission::CloseUnconfirmed;
+        }
+        // A desired row naming a launch this controller does not hold is another
+        // process's claim. The explicit-start pre-check reads the same row, but
+        // only before this lock is taken; two starts that both saw an empty
+        // ledger could otherwise reserve and spawn, leaving one launch in the
+        // ledger and two processes running. A stopped row is not a claim - an
+        // explicit start is how a stopped task is started again - and a row
+        // naming this controller's own record, or the launch this start
+        // proposes, is this launch's own copy.
+        let own_exec_session_id = state
+            .background_children
+            .get(record_id)
+            .map(|record| record.exec_session_id.as_str());
+        if Some(row.exec_session_id.as_str()) != own_exec_session_id
+            && row.exec_session_id != exec_session_id
+            && persisted_background_row_is_desired(row)
+        {
+            return ExplicitStartAdmission::CompetingClaim;
+        }
+    }
+    // A stop is not finished until its process is closed. Replacing the record
+    // now would publish a new launch over a process no record names, and clear
+    // the obligation that a later reconcile still needs to discharge.
+    if state
+        .background_children
+        .get(record_id)
+        .is_some_and(|record| background_stop_close_is_pending(state_handle, record_id, &record.exec_session_id))
+    {
+        return ExplicitStartAdmission::StopClosePending;
+    }
+    ExplicitStartAdmission::Admitted
 }
 
 impl SubagentController {
@@ -113,19 +186,35 @@ impl SubagentController {
         // compares its observation with the row another process may have
         // written; an unbound plan observed no launch of its own, so the row is
         // the only way a claim another start wrote can be seen.
-        let (persisted, launch_moved) = if ledger_guard.is_some() {
-            let (persisted, moved) = self
-                .persisted_record_for(&plan.record_id, plan.observed_exec_session_id())
-                .await?;
-            // A migrated row is evidence about the launch a plan observed. An
-            // unbound plan observed none, so a row that merely moved cannot
-            // decline a start that replaces nothing.
-            (persisted, moved && plan.expected_exec_session_id.is_some())
+        let evidence = if ledger_guard.is_some() {
+            self.persisted_record_for(&plan.record_id, plan.observed_exec_session_id())
+                .await?
         } else {
-            (None, false)
+            PersistedLaunchEvidence::default()
         };
+        // A migrated row is evidence about the launch a plan observed. An unbound
+        // plan observed none, so a row that merely moved cannot decline a start
+        // that replaces nothing.
+        let launch_moved = evidence.observed_launch_moved && plan.expected_exec_session_id.is_some();
+        let launch_superseded = evidence.observed_launch_superseded;
+        let persisted = evidence.record;
         let (reservation, adopted_exec_session_id, claim_is_durable, claim_guard) = {
             let mut state = self.state.write().await;
+            // An explicit start is unbound, so nothing ties it to the row the
+            // ledger holds: its admission is one decision over that row and this
+            // controller's obligations. A bound plan replaces the launch it
+            // observed and compares the row directly instead.
+            let admission = if plan.expected_exec_session_id.is_some() {
+                ExplicitStartAdmission::Admitted
+            } else {
+                explicit_start_admission(
+                    &self.state,
+                    &state,
+                    persisted.as_ref(),
+                    plan.record_id.as_str(),
+                    plan.exec_session_id.as_str(),
+                )
+            };
             if let Some(expected_exec_session_id) = plan.expected_exec_session_id.as_deref() {
                 let still_owns_launch = state
                     .background_children
@@ -143,8 +232,10 @@ impl SubagentController {
                 // id, or it was migrated to its owner and is now persisted
                 // elsewhere. Either way it is not this controller's to
                 // replace: spawning now would put a second process beside the
-                // migrated record.
-                if !still_owns_launch || launch_moved || competing_claim {
+                // migrated record. A migration whose owner has since replaced
+                // the launch leaves no row naming the observed session, so the
+                // retained migration evidence is what refuses the stale restart.
+                if !still_owns_launch || launch_moved || launch_superseded || competing_claim {
                     (BackgroundRunReservation::Declined, None, false, None)
                 } else {
                     // `adopt_cancellation_into` is the one place that decides
@@ -189,46 +280,17 @@ impl SubagentController {
                         (BackgroundRunReservation::Reserved, None, ledger_guard.is_some(), Some(guard))
                     }
                 }
-            } else if persisted.as_ref().is_some_and(|row| {
-                // A failure whose process close is unconfirmed names a process
-                // that may still be live, so its row is not a finished launch
-                // whoever holds it. This check comes before the own-record
-                // exemption below: a controller's own settled row with a close
-                // still owed is exactly the case that must not be replaced.
-                background_record_close_is_unconfirmed(&BackgroundRecord::from_persisted(row.clone()))
-            }) {
+            } else if admission == ExplicitStartAdmission::CloseUnconfirmed {
                 bail!(
                     "Background subprocess '{}' still owes the close of its previous launch; refresh the background tasks before starting it",
                     plan.spec.name
                 );
-            } else if persisted.as_ref().is_some_and(|row| {
-                // A desired row naming a launch this controller does not hold is
-                // another process's claim. The explicit-start pre-check reads
-                // the same row, but only before this lock is taken; two starts
-                // that both saw an empty ledger could otherwise reserve and
-                // spawn, leaving one launch in the ledger and two processes
-                // running. A stopped row is not a claim - an explicit start is
-                // how a stopped task is started again - and a row naming this
-                // controller's own record is this launch's own copy.
-                let own_exec_session_id = state
-                    .background_children
-                    .get(&plan.record_id)
-                    .map(|record| record.exec_session_id.as_str());
-                Some(row.exec_session_id.as_str()) != own_exec_session_id
-                    && row.exec_session_id != plan.exec_session_id
-                    && persisted_background_row_is_desired(row)
-            }) {
+            } else if admission == ExplicitStartAdmission::CompetingClaim {
                 bail!(
                     "Background subprocess '{}' already has a launch claimed by another controller; refresh the background tasks before starting it",
                     plan.spec.name
                 );
-            } else if state.background_children.get(&plan.record_id).is_some_and(|record| {
-                background_stop_close_is_pending(&self.state, &plan.record_id, &record.exec_session_id)
-            }) {
-                // A stop is not finished until its process is closed. Replacing
-                // the record now would publish a new launch over a process no
-                // record names, and clear the obligation that a later reconcile
-                // still needs to discharge.
+            } else if admission == ExplicitStartAdmission::StopClosePending {
                 (BackgroundRunReservation::Declined, None, false, None)
             } else {
                 let active = state.background_children.get(&plan.record_id).and_then(|record| {
@@ -252,10 +314,12 @@ impl SubagentController {
                         // The same rule applies here, where the decision is
                         // really made, and it compares the resolved parent as
                         // well as the ambient invocation context: a caller with
-                        // no context must not reuse a foreign launch either.
+                        // no context must not reuse a foreign launch either. A
+                        // parentless record has no owner to conflict with, so
+                        // both comparisons exempt it; the rebind below is what
+                        // takes it onto the requesting session.
                         if reuse_is_for_another_parent(&parent_session_id, &plan.parent_session_id)
-                            || current_subagent_invocation_context()
-                                .is_some_and(|context| context.parent_session_id != parent_session_id)
+                            || reuse_is_refused_by_the_invocation_context(&parent_session_id)
                         {
                             bail!("A background subprocess with this agent name is already active");
                         }
@@ -318,11 +382,11 @@ impl SubagentController {
             {
                 // A bound replacement reports `Reserved` only once the ledger
                 // holds the claim. The save merges rather than replaces, and a
-                // claim can lose that merge - a `Starting` claim's moment is its
-                // `updated_at`, so clock skew against a persisted `started_at`
-                // is enough - leaving `Ok(())` for a write that kept another
-                // row. Anyone reading the ledger would then see a launch this
-                // controller is about to start beside.
+                // claim can lose that merge - a persisted launch that recorded
+                // its start outranks a claim that has not begun - leaving
+                // `Ok(())` for a write that kept another row. Anyone reading the
+                // ledger would then see a launch this controller is about to
+                // start beside.
                 Ok(()) if plan.expected_exec_session_id.is_some() => {
                     match self.persisted_claim_names(&plan.exec_session_id).await {
                         Ok(true) => None,
@@ -340,29 +404,22 @@ impl SubagentController {
             None
         };
         if let Some(error) = claim_write_error {
-            // A bound replacement must not spawn a process the ledger cannot
-            // name: another process would read the previous row and start its
-            // own. The claim is withdrawn so the caller reports the fault
-            // instead of publishing a launch that never ran.
-            if plan.expected_exec_session_id.is_some() {
-                // The settlement saves the record, so the ledger lock must be
-                // released first: the save takes the same lock. The guard is
-                // disarmed because the settlement, not the drop handler,
-                // settles the claim it wrote.
-                drop(ledger_guard);
-                claim_guard_disarm(claim_guard);
-                self.settle_failed_background_restart(&plan.record_id, &plan.exec_session_id, &error)
-                    .await;
-                return Err(error);
-            }
-            // An explicit start keeps the process it is about to spawn and owes
-            // the write, exactly as a failed save has always been handled.
-            mark_background_ledger_write_pending(&self.state);
-            tracing::warn!(
-                record_id = plan.record_id.as_str(),
-                error = %error,
-                "Failed to persist the background launch claim; the write remains owed"
-            );
+            // No ledger-backed start may spawn a process the ledger cannot name:
+            // another controller would read the previous row and start its own,
+            // and a later save cannot undo either process. The claim is
+            // withdrawn so the caller reports the fault instead of publishing a
+            // launch no durable row records. A nested scope owns no ledger, so
+            // it never reaches this: its claim is memory-only by construction.
+            //
+            // The settlement saves the record, so the ledger lock must be
+            // released first: the save takes the same lock. The guard is disarmed
+            // because the settlement, not the drop handler, settles the claim it
+            // wrote.
+            drop(ledger_guard);
+            claim_guard_disarm(claim_guard);
+            self.settle_failed_background_restart(&plan.record_id, &plan.exec_session_id, &error)
+                .await;
+            return Err(error);
         }
         // The ledger lock is released before publishing: observers run user
         // code, which must not hold a lock every save in the workspace needs.

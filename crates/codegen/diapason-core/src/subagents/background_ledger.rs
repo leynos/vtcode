@@ -210,14 +210,19 @@ impl PersistedBackgroundRecord {
         super::background::background_record_id_for_owner(self.agent_name.as_str(), None)
     }
 
-    /// When this launch actually began, as the ordering evidence for restarts.
+    /// The launch instant this copy records, as the ordering evidence for restarts.
     ///
     /// A refresh advances `updated_at` without changing intent or exec session,
-    /// so it cannot prove a launch is newer. `started_at` is stamped once when
-    /// the process starts; records that never started fall back to the write
-    /// time, which is the only evidence their copy carries.
+    /// so the write time cannot prove a launch is newer. `started_at` is stamped
+    /// once when the process starts, and it is the only instant that is evidence
+    /// of a launch. A copy that never started is a claim: it records no launch at
+    /// all, so it reports the earliest representable instant instead of its
+    /// mutable write time. Ordering it that way is what stops a claim whose
+    /// `updated_at` some pass advanced from outranking a launch that really
+    /// began, while two claims still compare equal and leave their write times to
+    /// the merge's freshness rule.
     pub(crate) fn launch_moment(&self) -> DateTime<Utc> {
-        self.started_at.unwrap_or(self.updated_at)
+        self.started_at.unwrap_or(DateTime::<Utc>::MIN_UTC)
     }
 
     /// Whether this record was written at or after `other`.
@@ -390,31 +395,31 @@ mod launch_identity_tests;
 
 #[cfg(test)]
 mod tests {
-    //! Verifies the persisted record keeps its documented colour aliases.
+    //! Verifies the persisted record keeps its documented colour aliases and
+    //! reports only recorded launches as ordering evidence.
 
     use super::*;
     use chrono::{DateTime, Utc};
     use serde_json::json;
 
-    #[test]
-    fn persisted_background_record_accepts_colour_and_serializes_the_fixed_key() {
-        let now = DateTime::<Utc>::UNIX_EPOCH;
-        let record = PersistedBackgroundRecord {
-            id: "background-1".to_string(),
-            agent_name: "colour-agent".to_string(),
-            display_label: "Colour agent".to_string(),
-            description: "A persistence wire fixture".to_string(),
+    /// A persisted record carrying the given start and write instants.
+    fn persisted_launch(started_at: Option<DateTime<Utc>>, updated_at: DateTime<Utc>) -> PersistedBackgroundRecord {
+        PersistedBackgroundRecord {
+            id: "background-worker".to_string(),
+            agent_name: "worker".to_string(),
+            display_label: "Worker".to_string(),
+            description: "A persistence fixture".to_string(),
             source: "project".to_string(),
-            colour: Some("orchid".to_string()),
+            colour: None,
             owner_session_id: None,
             session_id: "session-1".to_string(),
             parent_session_id: "parent-session".to_string(),
             exec_session_id: "exec-1".to_string(),
             desired_enabled: true,
             status: BackgroundSubprocessStatus::Running,
-            created_at: now,
-            updated_at: now,
-            started_at: Some(now),
+            created_at: DateTime::<Utc>::UNIX_EPOCH,
+            updated_at,
+            started_at,
             ended_at: None,
             pid: None,
             prompt: "resume".to_string(),
@@ -426,7 +431,14 @@ mod tests {
             model_override: None,
             reasoning_override: None,
             restart_attempts: 0,
-        };
+        }
+    }
+
+    #[test]
+    fn persisted_background_record_accepts_colour_and_serializes_the_fixed_key() {
+        let now = DateTime::<Utc>::UNIX_EPOCH;
+        let mut record = persisted_launch(Some(now), now);
+        record.colour = Some("orchid".to_string());
 
         let mut canonical = serde_json::to_value(&record).expect("the persisted record should serialize");
         assert_eq!(canonical.get("color"), Some(&json!("orchid")), "persisted state should use the fixed wire key");
@@ -444,6 +456,30 @@ mod tests {
         let british: PersistedBackgroundRecord =
             serde_json::from_value(canonical).expect("the British persisted-record alias should deserialize");
         assert_eq!(british.colour.as_deref(), Some("orchid"), "the British alias should preserve persisted colour");
+    }
+
+    /// A claim records no launch, so a started launch always outranks it.
+    ///
+    /// The claim's `updated_at` is a write time that any later pass can
+    /// advance. Ordering a started replacement against it let a claim that never
+    /// ran keep the ledger row, so the process that really began was dropped
+    /// from the ledger. The recorded start must win whatever the claim's write
+    /// time says.
+    #[test]
+    fn a_started_launch_outranks_a_refreshed_unstarted_claim() {
+        let claim_write_time = DateTime::<Utc>::UNIX_EPOCH + chrono::Duration::days(1);
+        let started_at = DateTime::<Utc>::UNIX_EPOCH;
+        let claim = persisted_launch(None, claim_write_time);
+        let started = persisted_launch(Some(started_at), started_at);
+
+        assert!(
+            claim.launch_moment() < claim.updated_at,
+            "an unstarted claim must not report its write time as a launch moment"
+        );
+        assert!(
+            started.launch_moment() >= claim.launch_moment(),
+            "a launch that recorded its start must outrank an unstarted claim whose write time is later"
+        );
     }
 
     /// The extended ledger path stays the one the rest of the module reads.

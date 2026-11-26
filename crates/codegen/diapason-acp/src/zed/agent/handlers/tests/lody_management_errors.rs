@@ -48,8 +48,9 @@ fn advertised_capabilities_include_background_tasks_only_when_enabled() {
 ///
 /// The agent here has no subagent controller at all, which is the
 /// capability-disabled configuration: management must report unavailability
-/// rather than succeed, and unknown sessions or malformed parameters must not
-/// distinguish themselves from each other through extra detail.
+/// rather than succeed. A malformed request reports a fixed detail category,
+/// never the deserializer's own diagnostic, so the full `data` payload is
+/// asserted for both malformed cases.
 #[tokio::test]
 async fn lody_management_reports_bounded_reasons_for_invalid_requests() {
     let workspace = TempDir::new().expect("Lody management workspace");
@@ -102,8 +103,12 @@ async fn lody_management_reports_bounded_reasons_for_invalid_requests() {
                     .await
                     .expect_err("a request without a session ID must be rejected");
             assert_eq!(
-                missing_session.data.as_ref().and_then(|data| data.get("reason")),
-                Some(&serde_json::json!("invalid_lody_subagent_params"))
+                missing_session.data,
+                Some(serde_json::json!({
+                    "reason": "invalid_lody_subagent_params",
+                    "detail": "request_parameters_invalid",
+                })),
+                "a request without a session ID must report the bounded malformed-request payload"
             );
 
             let mistyped_tail = lody_ext(
@@ -116,8 +121,12 @@ async fn lody_management_reports_bounded_reasons_for_invalid_requests() {
             .await
             .expect_err("a non-numeric tail must be rejected");
             assert_eq!(
-                mistyped_tail.data.as_ref().and_then(|data| data.get("reason")),
-                Some(&serde_json::json!("invalid_lody_subagent_params"))
+                mistyped_tail.data,
+                Some(serde_json::json!({
+                    "reason": "invalid_lody_subagent_params",
+                    "detail": "request_parameters_invalid",
+                })),
+                "a mistyped tail must report the same bounded payload, not its diagnostic"
             );
 
             let unavailable = lody_ext(

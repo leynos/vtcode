@@ -78,77 +78,63 @@ fn running_record() -> BackgroundRecord {
     }
 }
 
-/// An exited session settles the record and the settlement is written.
-///
-/// This is the case refresh exists for: the process ended while nobody was
-/// watching. The single restart allowance is already spent, so the record
-/// becomes `Error` with an end instant. Nothing else ever looks at it again, so
-/// the outcome must be owed to the ledger in the same lock that stores it.
-#[tokio::test]
-async fn an_exited_launch_settles_error_and_reaches_the_ledger() {
-    let temp = TempDir::new().expect("tempdir");
-    persist_background_state(temp.path(), vec![running_record().into_persisted()])
-        .await
-        .expect("seed the durable live row");
-    let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
-        .await
-        .expect("controller");
-    {
-        let mut state = controller.state.write().await;
-        state.background_children.insert(WORKER.to_string(), running_record());
-    }
-    assert!(
-        pending_background_ledger_write_generation(&controller.state).is_none(),
-        "the fixture starts with no pending write, so only the settlement can raise one"
-    );
-
-    let exited = exited_snapshot(7);
-    controller
-        .update_background_record_state_observed(
-            WORKER,
-            Some(LIVE_EXEC),
-            Some(BackgroundSubprocessStatus::Running),
-            Some(exited),
-        )
-        .await
-        .expect("an exit is not a settlement failure");
-
-    let owed = pending_background_ledger_write_generation(&controller.state);
-    assert!(owed.is_some(), "the terminal settlement must owe the ledger the outcome it recorded");
-    assert!(
-        controller
-            .retry_owed_background_ledger_write()
-            .await
-            .expect("the owed write succeeds"),
-        "the raised obligation is what refresh retries"
-    );
-
-    let persisted = load_background_state(temp.path()).await.expect("reload the ledger");
-    let stored = persisted
-        .records
-        .iter()
-        .find(|record| record.id == WORKER)
-        .expect("the settled record reaches the ledger");
-    assert_eq!(
-        stored.status,
-        BackgroundSubprocessStatus::Error,
-        "the ledger must report the run that ended, not the live row it replaced"
-    );
-    assert!(stored.ended_at.is_some(), "a terminal row carries its end instant");
-
-    controller.signal_shutdown().await;
+/// One observation that ends a launch, as the refresh pass sees it.
+#[derive(Clone, Copy)]
+enum TerminalObservation {
+    /// The exec session is readable and has exited with this code.
+    Exited(i32),
+    /// The exec session is gone.
+    Missing,
 }
 
-/// A stopped launch observed as exited settles `Stopped` and is written.
+impl TerminalObservation {
+    /// The snapshot a refresh reads for this observation.
+    fn snapshot(self) -> Option<DiapasonExecSession> {
+        match self {
+            Self::Exited(exit_code) => Some(exited_snapshot(exit_code)),
+            Self::Missing => None,
+        }
+    }
+}
+
+/// Every terminal settlement of a refresh reaches the ledger.
 ///
-/// The other terminal arm: the record was already no longer desired, so the
-/// exit is its successful completion. It is skipped by every later pass in
-/// exactly the same way, so it needs the same obligation.
+/// Refresh is the only path that sees an exec session end, and a record it
+/// settles becomes terminal: the next pass skips it and restore filters it out.
+/// Nothing else ever looks at it again, so the outcome must be owed to the
+/// ledger in the same lock that stores it; without that the durable row kept
+/// reporting a run that had ended, and a resumed session restored a task that
+/// could never come back.
+///
+/// The arms share one body because they differ only in the facts that decide
+/// the outcome: whether the record is still wanted, the observation, and the
+/// terminal state it settles. A change to the contract then cannot leave one
+/// arm settling something the ledger never receives. The full-refresh entry
+/// point is covered separately below.
+#[rstest::rstest]
+#[case::exited_while_desired(
+    true,
+    TerminalObservation::Exited(7),
+    BackgroundSubprocessStatus::Error,
+    Some("exited with code 7")
+)]
+#[case::exited_after_stop(false, TerminalObservation::Exited(0), BackgroundSubprocessStatus::Stopped, None)]
+#[case::missing_while_desired(
+    true,
+    TerminalObservation::Missing,
+    BackgroundSubprocessStatus::Error,
+    Some("is not running")
+)]
 #[tokio::test]
-async fn an_exited_launch_settles_stopped_and_reaches_the_ledger() {
+async fn a_terminal_settlement_reaches_the_ledger(
+    #[case] desired_enabled: bool,
+    #[case] observation: TerminalObservation,
+    #[case] expected_status: BackgroundSubprocessStatus,
+    #[case] expected_error: Option<&str>,
+) {
     let temp = TempDir::new().expect("tempdir");
     let mut record = running_record();
-    record.desired_enabled = false;
+    record.desired_enabled = desired_enabled;
     persist_background_state(temp.path(), vec![record.clone().into_persisted()])
         .await
         .expect("seed the durable row");
@@ -159,22 +145,26 @@ async fn an_exited_launch_settles_stopped_and_reaches_the_ledger() {
         let mut state = controller.state.write().await;
         state.background_children.insert(WORKER.to_string(), record);
     }
+    assert!(
+        pending_background_ledger_write_generation(&controller.state).is_none(),
+        "the fixture starts with no pending write, so only the settlement can raise one"
+    );
 
     controller
         .update_background_record_state_observed(
             WORKER,
             Some(LIVE_EXEC),
             Some(BackgroundSubprocessStatus::Running),
-            Some(exited_snapshot(0)),
+            observation.snapshot(),
         )
         .await
-        .expect("an exit is not a settlement failure");
+        .expect("an observed end is not a settlement failure");
     assert!(
         controller
             .retry_owed_background_ledger_write()
             .await
             .expect("the owed write succeeds"),
-        "the stopped settlement must be owed to the ledger"
+        "the raised obligation is what refresh retries, so the settlement must have raised one"
     );
 
     let persisted = load_background_state(temp.path()).await.expect("reload the ledger");
@@ -183,54 +173,16 @@ async fn an_exited_launch_settles_stopped_and_reaches_the_ledger() {
         .iter()
         .find(|record| record.id == WORKER)
         .expect("the settled record reaches the ledger");
-    assert_eq!(stored.status, BackgroundSubprocessStatus::Stopped);
-    assert!(stored.ended_at.is_some(), "a stopped row carries its end instant");
-
-    controller.signal_shutdown().await;
-}
-
-/// A missing session with no retry left settles `Error` and is written.
-///
-/// The missing-session arm reaches a terminal status too, and for the same
-/// reason: refresh is the only observer, and it skips the record afterwards.
-#[tokio::test]
-async fn a_missing_launch_settles_error_and_reaches_the_ledger() {
-    let temp = TempDir::new().expect("tempdir");
-    persist_background_state(temp.path(), vec![running_record().into_persisted()])
-        .await
-        .expect("seed the durable live row");
-    let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
-        .await
-        .expect("controller");
-    {
-        let mut state = controller.state.write().await;
-        state.background_children.insert(WORKER.to_string(), running_record());
+    assert_eq!(stored.status, expected_status, "the ledger must report the outcome the settlement recorded");
+    assert!(stored.ended_at.is_some(), "a terminal row carries its end instant");
+    match expected_error {
+        Some(expected) => assert!(
+            stored.error.as_deref().is_some_and(|error| error.contains(expected)),
+            "the durable row carries the reason the run ended: {:?}",
+            stored.error
+        ),
+        None => assert_eq!(stored.error, None, "a completed stop carries no failure: {:?}", stored.error),
     }
-
-    controller
-        .update_background_record_state_observed(WORKER, Some(LIVE_EXEC), None, None)
-        .await
-        .expect("a missing session is not a settlement failure");
-    assert!(
-        controller
-            .retry_owed_background_ledger_write()
-            .await
-            .expect("the owed write succeeds"),
-        "the missing-session settlement must be owed to the ledger"
-    );
-
-    let persisted = load_background_state(temp.path()).await.expect("reload the ledger");
-    let stored = persisted
-        .records
-        .iter()
-        .find(|record| record.id == WORKER)
-        .expect("the settled record reaches the ledger");
-    assert_eq!(stored.status, BackgroundSubprocessStatus::Error);
-    assert!(
-        stored.error.as_deref().is_some_and(|error| error.contains("is not running")),
-        "the durable row carries the reason the run ended: {:?}",
-        stored.error
-    );
 
     controller.signal_shutdown().await;
 }

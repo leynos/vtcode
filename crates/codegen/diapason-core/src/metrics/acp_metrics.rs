@@ -67,18 +67,23 @@ impl fmt::Debug for AcpManagementGuard {
 
 impl AcpManagementGuard {
     /// Records the request outcome and elapsed time, then releases the gauge.
+    ///
+    /// The duration is sampled before the collector lock is taken. A scrape
+    /// can hold that lock, and charging the wait to the request would report a
+    /// fast management call as slow under metrics contention.
     pub fn finish(mut self, succeeded: bool) {
         self.finished = true;
-        self.state
-            .lock()
-            .record_management_outcome(succeeded, self.started_at.elapsed());
+        let elapsed = self.started_at.elapsed();
+        self.state.lock().record_management_outcome(succeeded, elapsed);
     }
 }
 
 impl Drop for AcpManagementGuard {
     fn drop(&mut self) {
         if !self.finished {
-            self.state.lock().record_management_outcome(false, self.started_at.elapsed());
+            // Sampled before the lock for the same reason as `finish`.
+            let elapsed = self.started_at.elapsed();
+            self.state.lock().record_management_outcome(false, elapsed);
         }
     }
 }
