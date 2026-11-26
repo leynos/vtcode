@@ -1,14 +1,14 @@
 //! Symlink-safe copying and durable migration report persistence.
 
 use std::ffi::OsStr;
-use std::fs::{self, File};
+use std::fs;
 use std::io::{self, Read, Write};
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow};
 
-use super::super::{create_private_new_file, ensure_migration_dir, ensure_private_dir, open_no_follow};
+use super::super::private_files::{remove_temporary_file, unique_private_file};
+use super::super::{ensure_migration_dir, ensure_private_dir, open_no_follow};
 use super::{DiapasonPaths, MigrationEntry, MigrationFailure, MigrationReport, MigrationSkip, MigrationSkipReason};
 
 fn copy_legacy_tree(source: &Path, destination: &Path, report: &mut MigrationReport) -> Result<()> {
@@ -93,7 +93,8 @@ fn copy_regular_file(source: &Path, destination: &Path, report: &mut MigrationRe
     ensure_migration_dir(parent)?;
     let mut input =
         open_no_follow(source).with_context(|| format!("could not safely open legacy file {}", source.display()))?;
-    let (temporary, mut output) = unique_private_file(parent, destination.file_name().unwrap_or(OsStr::new("file")))?;
+    let (temporary, mut output) =
+        unique_private_file(parent, destination.file_name().unwrap_or(OsStr::new("file")), "migration")?;
     let result: Result<()> = (|| {
         let _bytes_copied = io::copy(&mut input, &mut output)?;
         output.sync_all()?;
@@ -140,7 +141,8 @@ pub(super) fn write_private_atomic(destination: &Path, contents: &[u8]) -> Resul
         .parent()
         .ok_or_else(|| anyhow!("private file {} has no parent", destination.display()))?;
     ensure_private_dir(parent)?;
-    let (temporary, mut file) = unique_private_file(parent, destination.file_name().unwrap_or(OsStr::new("file")))?;
+    let (temporary, mut file) =
+        unique_private_file(parent, destination.file_name().unwrap_or(OsStr::new("file")), "migration")?;
     let result: io::Result<()> = (|| {
         file.write_all(contents)?;
         file.sync_all()?;
@@ -171,29 +173,4 @@ pub(super) fn valid_migration_marker(path: &Path) -> io::Result<bool> {
     let mut contents = Vec::new();
     let _bytes_read = file.read_to_end(&mut contents)?;
     Ok(contents == b"legacy migration completed\n")
-}
-
-fn unique_private_file(parent: &Path, stem: &OsStr) -> Result<(PathBuf, File)> {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or_default();
-    let stem = stem.to_string_lossy();
-    for attempt in 0..32u8 {
-        let temporary = parent.join(format!(".{stem}.{}.{}.{}.migration", std::process::id(), timestamp, attempt));
-        match create_private_new_file(&temporary) {
-            Ok(file) => return Ok((temporary, file)),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error).with_context(|| format!("could not create {}", temporary.display())),
-        }
-    }
-    bail!("could not allocate a unique migration temporary file in {}", parent.display())
-}
-
-fn remove_temporary_file(path: &Path) {
-    if let Err(error) = fs::remove_file(path)
-        && error.kind() != io::ErrorKind::NotFound
-    {
-        tracing::debug!(path = %path.display(), %error, "failed to remove temporary migration file");
-    }
 }

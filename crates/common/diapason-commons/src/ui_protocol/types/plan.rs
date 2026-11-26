@@ -7,31 +7,47 @@
 /// A step in an implementation plan.
 #[derive(Clone, Debug)]
 pub struct PlanStep {
+    /// One-based position of the step within its phase.
     pub number: usize,
+    /// Short description of the work the step performs.
     pub description: String,
+    /// Optional expanded instructions for the step.
     pub details: Option<String>,
+    /// Paths the step is expected to touch.
     pub files: Vec<String>,
+    /// Whether the step has been marked complete.
     pub completed: bool,
 }
 
 /// A phase in an implementation plan (groups related steps).
 #[derive(Clone, Debug)]
 pub struct PlanPhase {
+    /// Phase heading as it appears in the plan.
     pub name: String,
+    /// Steps belonging to this phase, in plan order.
     pub steps: Vec<PlanStep>,
+    /// Whether the phase has steps and all of them are complete.
     pub completed: bool,
 }
 
 /// Structured plan content for display in the Implementation Blueprint panel.
 #[derive(Clone, Debug)]
 pub struct PlanContent {
+    /// Plan title supplied by the caller.
     pub title: String,
+    /// First paragraph of the plan, used as the panel summary.
     pub summary: String,
+    /// Path of the plan document when the plan was loaded from a file.
     pub file_path: Option<String>,
+    /// Phases parsed from the plan markdown, in document order.
     pub phases: Vec<PlanPhase>,
+    /// Open questions listed in the plan.
     pub open_questions: Vec<String>,
+    /// Original markdown the plan was parsed from.
     pub raw_content: String,
+    /// Number of steps found across all phases.
     pub total_steps: usize,
+    /// Number of steps marked complete across all phases.
     pub completed_steps: usize,
 }
 

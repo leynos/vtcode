@@ -148,7 +148,7 @@ impl DiapasonPaths {
             .parent()
             .ok_or_else(|| anyhow!("private file {} has no parent", destination.display()))?;
         let stem = destination.file_name().unwrap_or_else(|| OsStr::new("file"));
-        let (temporary, mut file) = unique_private_file(parent, stem)?;
+        let (temporary, mut file) = unique_private_file(parent, stem, "tmp")?;
         let result: io::Result<()> = (|| {
             file.write_all(contents)?;
             file.sync_all()?;
@@ -186,7 +186,7 @@ impl DiapasonPaths {
             .parent()
             .ok_or_else(|| anyhow!("private file {} has no parent", destination.display()))?;
         let stem = destination.file_name().unwrap_or_else(|| OsStr::new("file"));
-        let (temporary, mut file) = unique_private_file(parent, stem)?;
+        let (temporary, mut file) = unique_private_file(parent, stem, "tmp")?;
         let result: io::Result<bool> = (|| {
             file.write_all(contents)?;
             file.sync_all()?;

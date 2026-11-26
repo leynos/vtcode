@@ -229,14 +229,19 @@ pub(super) fn validate_no_escaping_symlink_ancestors(path: &Path, allow_missing_
     Ok(())
 }
 
-pub(super) fn unique_private_file(parent: &Path, stem: &OsStr) -> Result<(PathBuf, File)> {
+/// Create a private file under a unique temporary name in `parent`.
+///
+/// `suffix` names the temporary-file extension without its leading dot, so the
+/// resulting name is `.{stem}.{pid}.{timestamp}.{attempt}.{suffix}`. Callers
+/// use distinct suffixes to distinguish the reason a temporary file exists.
+pub(super) fn unique_private_file(parent: &Path, stem: &OsStr, suffix: &str) -> Result<(PathBuf, File)> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or_default();
     let stem = stem.to_string_lossy();
     for attempt in 0..32u8 {
-        let temporary = parent.join(format!(".{stem}.{}.{}.{}.tmp", std::process::id(), timestamp, attempt));
+        let temporary = parent.join(format!(".{stem}.{}.{}.{}.{suffix}", std::process::id(), timestamp, attempt));
         match create_private_new_file(&temporary) {
             Ok(file) => return Ok((temporary, file)),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,

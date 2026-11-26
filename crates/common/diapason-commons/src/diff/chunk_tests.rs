@@ -117,3 +117,39 @@ fn chunks_remove_only() {
     let has_delete = chunks.iter().any(|c| matches!(c, Chunk::Delete(_)));
     assert!(has_delete);
 }
+
+#[test]
+fn chunks_very_long_identical() {
+    let text = "x".repeat(10_000);
+    let chunks = compute_diff_chunks(&text, &text);
+    assert_eq!(chunks.len(), 1);
+    assert!(matches!(chunks[0], Chunk::Equal(_)));
+}
+
+#[test]
+fn chunks_single_char_diff() {
+    let chunks = compute_diff_chunks("a", "b");
+    assert!(!chunks.is_empty());
+    let has_delete = chunks.iter().any(|c| matches!(c, Chunk::Delete(_)));
+    let has_insert = chunks.iter().any(|c| matches!(c, Chunk::Insert(_)));
+    assert!(has_delete && has_insert);
+}
+
+#[test]
+fn chunks_prefix_suffix_optimization() {
+    // Verify that common prefix and suffix are preserved as Equal chunks.
+    // Myers works character-by-character, so the middle diff is char-level.
+    let old = "AAAA BBBB CCCC";
+    let new = "AAAA DDDD CCCC";
+    let chunks = compute_diff_chunks(old, new);
+
+    // First chunk should be Equal prefix "AAAA "
+    assert!(matches!(&chunks[0], Chunk::Equal(s) if *s == "AAAA "));
+    // Last chunk should be Equal suffix " CCCC"
+    assert!(matches!(chunks.last().expect("chunks must not be empty"), Chunk::Equal(s) if *s == " CCCC"));
+    // Middle should contain deletes and inserts (character-level)
+    let has_delete = chunks.iter().any(|c| matches!(c, Chunk::Delete(_)));
+    let has_insert = chunks.iter().any(|c| matches!(c, Chunk::Insert(_)));
+    assert!(has_delete, "expected Delete chunks in middle");
+    assert!(has_insert, "expected Insert chunks in middle");
+}

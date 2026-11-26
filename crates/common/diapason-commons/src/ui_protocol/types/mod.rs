@@ -6,24 +6,38 @@
 /// Message kind tag for inline transcript lines.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InlineMessageKind {
+    /// Output produced by the agent.
     Agent,
+    /// An error report shown in the transcript.
     Error,
+    /// Informational output that is neither an error nor a warning.
     Info,
+    /// A policy or permission notice attributed to the agent.
     Policy,
+    /// Output captured from a pseudo-terminal session.
     Pty,
+    /// A tool invocation or its result.
     Tool,
+    /// Input entered by the user.
     User,
+    /// A non-fatal warning.
     Warning,
 }
 
 /// A single slash-command entry for the suggestion palette.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SlashCommandItem {
+    /// Command name without the leading slash, such as `new`; the palette
+    /// prefixes it with `/` when rendering and completing the command.
     pub name: String,
+    /// Short summary shown beside the name and searched when the name does not
+    /// match the typed query.
     pub description: String,
 }
 
 impl SlashCommandItem {
+    /// Create a palette entry from a command name, given without the leading
+    /// slash, and its description.
     pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
         Self { name: name.into(), description: description.into() }
     }

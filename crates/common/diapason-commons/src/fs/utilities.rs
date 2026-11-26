@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::image::has_supported_image_extension;
 
@@ -19,11 +19,22 @@ pub fn ensure_dir_exists_sync(path: &Path) -> Result<()> {
 }
 
 /// Read a file with contextual error message (sync)
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read, for example because it is
+/// missing, the caller lacks permission, or its contents are not valid UTF-8.
+/// The message names the supplied `context` and the path.
 pub fn read_file_with_context_sync(path: &Path, context: &str) -> Result<String> {
     std::fs::read_to_string(path).with_context(|| format!("Failed to read {}: {}", context, path.display()))
 }
 
 /// Write a file with contextual error message (sync)
+///
+/// # Errors
+///
+/// Returns an error if the parent directory cannot be created, or if the
+/// contents cannot be written to the path.
 pub fn write_file_with_context_sync(path: &Path, content: &str, context: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         ensure_dir_exists_sync(parent)?;
@@ -32,6 +43,11 @@ pub fn write_file_with_context_sync(path: &Path, content: &str, context: &str) -
 }
 
 /// Write a JSON file (sync)
+///
+/// # Errors
+///
+/// Returns an error if `data` cannot be serialised to pretty-printed JSON, or
+/// if the resulting document cannot be written.
 pub fn write_json_file_sync<T: Serialize>(path: &Path, data: &T) -> Result<()> {
     let json = serde_json::to_string_pretty(data)
         .with_context(|| format!("Failed to serialize data for {}", path.display()))?;
@@ -40,6 +56,11 @@ pub fn write_json_file_sync<T: Serialize>(path: &Path, data: &T) -> Result<()> {
 }
 
 /// Read and parse a JSON file (sync)
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read, or if its contents are not
+/// valid JSON for `T`.
 pub fn read_json_file_sync<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
     let content = read_file_with_context_sync(path, "JSON file")?;
 
@@ -120,23 +141,49 @@ where
     raw
 }
 
+/// Resolve an image-path candidate after unescaping whitespace and expanding
+/// the `file://` scheme and `~/` home prefix.
+///
+/// Returns `None` when the candidate is home-relative but no home directory can
+/// be determined.
+fn resolve_image_path_candidate(candidate: &str) -> Option<PathBuf> {
+    let unescaped = unescape_whitespace(candidate);
+    let path_str = unescaped.strip_prefix("file://").unwrap_or(unescaped.as_str());
+    match path_str.strip_prefix("~/") {
+        Some(rest) => dirs::home_dir().map(|home| home.join(rest)),
+        None => Some(PathBuf::from(path_str)),
+    }
+}
+
 /// Convenience wrapper for [`trim_trailing_image_path`] that checks
 /// image file extensions via [`has_supported_image_extension`].
 ///
 /// Handles `file://` scheme and `~/` home expansion before checking.
 pub fn trim_trailing_image_path_str(raw: &str) -> &str {
     trim_trailing_image_path(raw, |candidate| {
-        let unescaped = unescape_whitespace(candidate);
-        let mut path_str = unescaped.as_str();
-        if let Some(rest) = path_str.strip_prefix("file://") {
-            path_str = rest;
-        }
-        if let Some(rest) = path_str.strip_prefix("~/") {
-            if let Some(home) = dirs::home_dir() {
-                return has_supported_image_extension(&home.join(rest));
-            }
-            return false;
-        }
-        has_supported_image_extension(Path::new(path_str))
+        resolve_image_path_candidate(candidate).is_some_and(|path| has_supported_image_extension(&path))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::trim_trailing_image_path_str;
+
+    #[test]
+    fn trim_trailing_image_path_str_stops_before_trailing_prose() {
+        let raw = "/tmp/capture.png can you see this";
+        assert_eq!(trim_trailing_image_path_str(raw), "/tmp/capture.png");
+    }
+
+    #[test]
+    fn trim_trailing_image_path_str_leaves_unsupported_extension_untouched() {
+        let raw = "/tmp/notes.txt can you see this";
+        assert_eq!(trim_trailing_image_path_str(raw), raw);
+    }
+
+    #[test]
+    fn trim_trailing_image_path_str_accepts_path_without_spaces() {
+        let raw = "/tmp/capture.png";
+        assert_eq!(trim_trailing_image_path_str(raw), raw);
+    }
 }
