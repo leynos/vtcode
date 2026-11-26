@@ -46,7 +46,7 @@ pub fn write_file_with_context_sync(path: &Path, content: &str, context: &str) -
 ///
 /// # Errors
 ///
-/// Returns an error if `data` cannot be serialised to pretty-printed JSON, or
+/// Returns an error if `data` cannot be serialized to pretty-printed JSON, or
 /// if the resulting document cannot be written.
 pub fn write_json_file_sync<T: Serialize>(path: &Path, data: &T) -> Result<()> {
     let json = serde_json::to_string_pretty(data)
