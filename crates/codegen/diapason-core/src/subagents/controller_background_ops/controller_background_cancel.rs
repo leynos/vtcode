@@ -484,7 +484,7 @@ enum BackgroundCancellationMode {
 }
 
 /// The stable lead-in a stop's close fault carries in a record's error text.
-pub(super) const BACKGROUND_CLOSE_FAULT_PREFIX: &str = "Failed to close the background subprocess's exec session";
+pub(crate) const BACKGROUND_CLOSE_FAULT_PREFIX: &str = "Failed to close the background subprocess's exec session";
 
 /// The summary a record carries while a stop's close is still owed.
 ///
@@ -534,7 +534,7 @@ pub(super) fn background_record_close_is_unconfirmed(record: &BackgroundRecord) 
 /// was only the fault keeps no error, and an error that never carried the fault
 /// is returned unchanged. Removing the clause is what records the confirmation:
 /// the durable evidence of an unconfirmed close is the fault itself.
-fn error_without_close_fault(error: Option<String>) -> Option<String> {
+pub(crate) fn error_without_close_fault(error: Option<String>) -> Option<String> {
     let error = error?;
     let Some(index) = error.find(BACKGROUND_CLOSE_FAULT_PREFIX) else {
         return Some(error);

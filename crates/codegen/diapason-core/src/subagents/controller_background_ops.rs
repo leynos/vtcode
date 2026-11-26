@@ -19,6 +19,7 @@ mod tests;
 use super::*;
 
 pub use self::controller_background_cancel::BackgroundStopOutcome;
+pub(crate) use self::controller_background_cancel::error_without_close_fault;
 pub(in crate::subagents) use self::controller_background_cancel::rekey_pending_background_stop_close;
 use self::controller_background_cancel::{background_record_close_is_unconfirmed, background_stop_close_is_pending};
 use self::controller_background_lifecycle::mark_background_launch_owed;

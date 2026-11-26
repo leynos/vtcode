@@ -10,6 +10,15 @@ use super::super::controller_background_cancel::{
 };
 use super::support::background_record;
 use super::support::background_test_controller;
+
+/// Reads the record's own error, which is the durable copy a retry consults.
+///
+/// The projection deliberately omits the close-fault clause, so a test that
+/// asserts the fault exists must read the record, not the entry.
+async fn durable_error(controller: &crate::subagents::SubagentController, id: &str) -> Option<String> {
+    let state = controller.state.read().await;
+    state.background_children.get(id).and_then(|record| record.error.clone())
+}
 #[cfg(unix)]
 use super::support::{session_is_gone, start_sleep_session, write_ledger};
 
@@ -62,9 +71,15 @@ async fn a_close_fault_keeps_the_stop_owed_until_a_retry_succeeds() {
         entry
             .error
             .as_deref()
-            .is_some_and(|error| error.contains("close transport fault")),
-        "the close fault must be visible: {:?}",
+            .is_none_or(|error| !error.contains("close transport fault")),
+        "the close fault is ledger evidence and must not reach a client: {:?}",
         entry.error
+    );
+    assert!(
+        durable_error(&controller, "background-worker")
+            .await
+            .is_some_and(|error| error.contains("close transport fault")),
+        "the record must still carry the fault a retry is owed for"
     );
     assert!(
         background_stop_close_is_pending(&controller.state, "background-worker", exec_session_id),
@@ -283,7 +298,13 @@ async fn a_close_fault_preserves_a_terminal_error() {
     );
     let error = entry.error.as_deref().expect("the terminal record keeps an error");
     assert!(error.contains("Background subprocess exited unexpectedly"), "the original failure is kept: {error}");
-    assert!(error.contains("terminal close fault"), "the close fault is added: {error}");
+    assert!(!error.contains("terminal close fault"), "the close fault must not reach a client: {error}");
+    assert!(
+        durable_error(&controller, "background-worker")
+            .await
+            .is_some_and(|error| error.contains("terminal close fault")),
+        "the record must still carry the fault a retry is owed for"
+    );
     assert_eq!(entry.summary.as_deref(), Some("worker summary"), "the run's summary is not replaced");
     assert!(background_stop_close_is_pending(&controller.state, "background-worker", exec_session_id));
 
@@ -357,9 +378,15 @@ async fn an_adopted_stop_is_not_terminal_before_its_close_succeeds() {
         entry
             .error
             .as_deref()
-            .is_some_and(|error| error.contains("adopted close transport fault")),
-        "the close fault must be visible: {:?}",
+            .is_none_or(|error| !error.contains("adopted close transport fault")),
+        "the close fault is ledger evidence and must not reach a client: {:?}",
         entry.error
+    );
+    assert!(
+        durable_error(&controller, "background-worker")
+            .await
+            .is_some_and(|error| error.contains("adopted close transport fault")),
+        "the record must still carry the fault a retry is owed for"
     );
     assert!(
         background_stop_close_is_pending(&controller.state, "background-worker", exec_session_id),

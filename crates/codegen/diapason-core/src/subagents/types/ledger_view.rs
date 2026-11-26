@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use super::super::controller_background_ops::error_without_close_fault;
 use super::foreground::StatusEntryBuilder;
 use super::status::{BackgroundSubprocessEntry, BackgroundSubprocessStatus};
 
@@ -67,7 +68,12 @@ impl StatusEntryBuilder for BackgroundRecord {
             ended_at: self.ended_at,
             pid: self.pid,
             summary: self.summary.clone(),
-            error: self.error.clone(),
+            // The close fault is durable evidence this record still owes a
+            // close, and it is kept on the record for that reason. It is not a
+            // run outcome, so a client is not told about it: the status and the
+            // pending-stop summary already carry that state, and the text names
+            // an exec session and can quote the transport error behind it.
+            error: error_without_close_fault(self.error.clone()),
             archive_path: self.archive_path.clone(),
             transcript_path: self.transcript_path.clone(),
         }

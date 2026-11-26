@@ -131,9 +131,20 @@ async fn a_spent_close_retry_reports_a_pending_stop() {
             .entry()
             .error
             .as_deref()
-            .is_some_and(|error| error.contains("close transport fault")),
-        "the outcome's record names the close fault: {:?}",
+            .is_none_or(|error| !error.contains("close transport fault")),
+        "the close fault is ledger evidence and must not reach a client: {:?}",
         outcome.entry().error
+    );
+    let durable = {
+        let state = controller.state.read().await;
+        state
+            .background_children
+            .get("background-worker")
+            .and_then(|record| record.error.clone())
+    };
+    assert!(
+        durable.is_some_and(|error| error.contains("close transport fault")),
+        "the outcome's record must still carry the fault a spent retry recorded"
     );
     assert!(
         !background_stop_close_is_pending(&controller.state, "background-worker", exec_session_id),

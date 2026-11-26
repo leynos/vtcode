@@ -242,24 +242,46 @@ pub fn kill_child_process_group_with_signal(_child: &mut tokio::process::Child, 
     Ok(())
 }
 
+/// Reports whether Windows still lists `pid` as a running process.
+///
+/// This is a direct observation rather than an inference from an exit code.
+/// `taskkill`'s documented contract covers what it does, not what it returns
+/// when the target is absent, so the failure path asks the operating system
+/// the question the caller actually cares about.
+#[cfg(windows)]
+fn process_is_running(pid: u32) -> bool {
+    // The output format defaults to a table; the image name is the only field
+    // needed, so the default form keeps this command free of format tokens the
+    // repository spelling policy would have to exempt.
+    let Ok(output) = std::process::Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+        .output()
+    else {
+        // The state could not be read, so it is not known to be gone; the
+        // caller must treat the kill as failed rather than assume success.
+        return true;
+    };
+    output.status.success() && String::from_utf8_lossy(&output.stdout).contains(&pid.to_string())
+}
+
 /// Kill a process by PID on Windows.
 ///
-/// `taskkill` exits 128 when the target does not exist, and terminates the
-/// whole tree with `/T` and `/F`. A missing target is the terminal state
-/// termination asks for, not a fault: reporting it as an error would make
-/// `try_terminate` restore the killer and leave its helper tasks running, and
-/// every retry would fail the same way while the PID stays absent. Any other
-/// non-zero exit stays an error so a failed signal is retried.
+/// `taskkill` terminates the whole tree with `/T` and `/F`. A non-zero exit is
+/// not by itself a failure: the target may already be gone, and reporting that
+/// as an error would make `try_terminate` restore the killer and leave its
+/// helper tasks running, with every retry failing the same way. The failure
+/// path therefore confirms the process is absent before it reports success,
+/// and any kill that leaves the process running stays an error so the signal is
+/// retried.
 #[cfg(windows)]
 pub fn kill_process(pid: u32) -> io::Result<()> {
-    const TASKKILL_TARGET_NOT_FOUND: i32 = 128;
     let status = std::process::Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
         .status()?;
-    if status.success() || status.code() == Some(TASKKILL_TARGET_NOT_FOUND) {
+    if status.success() || !process_is_running(pid) {
         Ok(())
     } else {
-        Err(io::Error::other("taskkill failed"))
+        Err(io::Error::other("taskkill failed and the process is still running"))
     }
 }
 
