@@ -155,7 +155,12 @@ pub(in crate::zed::agent) fn attach_acp_subagent_controller<'a>(
                 // scope that can bring it back, and it restores only those
                 // ownerless records.
                 None => {
-                    restore_legacy_background_subagents(&controller, &controller_vt_cfg, &agent_config.workspace).await
+                    Box::pin(restore_legacy_background_subagents(
+                        &controller,
+                        &controller_vt_cfg,
+                        &agent_config.workspace,
+                    ))
+                    .await
                 }
             }
         };
@@ -199,7 +204,9 @@ pub(in crate::zed::agent) async fn restore_acp_session_background_subagents(
     let Some(config) = vt_config.filter(|config| config.subagents.enabled) else {
         return OptionalSetupOutcome::DisabledByConfiguration;
     };
-    let failures = restore_configured_background_subagents(controller, config, workspace_root).await;
+    // The restore pass is large enough to trip `clippy::large_futures` in every
+    // caller that awaits this outcome; boxing it here keeps them all small.
+    let failures = Box::pin(restore_configured_background_subagents(controller, config, workspace_root)).await;
     OptionalSetupOutcome::attached_with_degradation(failures)
 }
 
@@ -265,7 +272,7 @@ async fn restore_configured_background_subagents(
     if !config.subagents.background.auto_restore {
         return Vec::new();
     }
-    match background_restore::restore_owned(controller, workspace_root).await {
+    match Box::pin(background_restore::restore_owned(controller, workspace_root)).await {
         Ok(_) => Vec::new(),
         Err(error) => {
             log_suppressed_error(&error, OPTIONAL_SETUP_OPERATION, "background_subagent_restore_failed");

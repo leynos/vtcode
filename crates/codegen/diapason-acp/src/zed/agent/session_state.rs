@@ -16,6 +16,7 @@ use diapason_core::core::threads::ThreadBootstrap;
 use diapason_core::hooks::{LifecycleHookEngine, SessionStartTrigger};
 use diapason_core::llm::provider::{FinishReason, Message};
 use diapason_core::utils::session_archive::SessionArchive;
+use futures::future::BoxFuture;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, warn};
 
@@ -168,98 +169,106 @@ impl ZedAgent {
 
     /// Programmatic equivalent of the SACP `session/new` handler — exposed
     /// for tests and for the SACP handler shim to call.
-    pub(crate) async fn new_session(&self, req: acp::NewSessionRequest) -> Result<acp::NewSessionResponse, acp::Error> {
-        let workspace = self.workspace_policy.resolve_client_cwd(&req.cwd).await?;
-        let desired_trust = self
-            .workspace_runtime_config
-            .zed_config
-            .workspace_trust
-            .to_workspace_trust_level();
-        let _trust_outcome = self
-            .workspace_trust_synchronizer
-            .synchronize(workspace.path(), desired_trust)
-            .await
-            .map_err(|error| {
-                log_suppressed_error(&error, "new_session", "workspace_trust_sync_failed");
+    /// The future is boxed because the session-open path is large enough to
+    /// trip `clippy::large_futures` at every one of its call sites — the
+    /// request handlers and the tests alike.
+    pub(crate) fn new_session(
+        &self,
+        req: acp::NewSessionRequest,
+    ) -> BoxFuture<'_, Result<acp::NewSessionResponse, acp::Error>> {
+        Box::pin(async move {
+            let workspace = self.workspace_policy.resolve_client_cwd(&req.cwd).await?;
+            let desired_trust = self
+                .workspace_runtime_config
+                .zed_config
+                .workspace_trust
+                .to_workspace_trust_level();
+            let _trust_outcome = self
+                .workspace_trust_synchronizer
+                .synchronize(workspace.path(), desired_trust)
+                .await
+                .map_err(|error| {
+                    log_suppressed_error(&error, "new_session", "workspace_trust_sync_failed");
+                    safe_internal_error(
+                        "new_session",
+                        "workspace_trust_sync_failed",
+                        "Unable to synchronize workspace trust",
+                    )
+                })?;
+            let workspace_lease = self.workspace_runtime_for(&workspace, None).await.map_err(|error| {
+                log_suppressed_error(&error, "new_session", "workspace_runtime_setup_failed");
                 safe_internal_error(
                     "new_session",
-                    "workspace_trust_sync_failed",
-                    "Unable to synchronize workspace trust",
+                    "workspace_runtime_setup_failed",
+                    "Unable to initialize ACP workspace runtime",
                 )
             })?;
-        let workspace_lease = self.workspace_runtime_for(&workspace, None).await.map_err(|error| {
-            log_suppressed_error(&error, "new_session", "workspace_runtime_setup_failed");
-            safe_internal_error(
-                "new_session",
-                "workspace_runtime_setup_failed",
-                "Unable to initialize ACP workspace runtime",
-            )
-        })?;
-        let session_id = self
-            .register_durable_session(workspace_lease, req.meta)
-            .await
-            .map_err(|error| {
-                log_suppressed_error(&error, "new_session", "session_archive_initialization_failed");
-                safe_internal_error(
-                    "new_session",
-                    "session_archive_initialization_failed",
-                    "Unable to initialize ACP session storage",
-                )
-            })?;
-        let session = match self.session_handle(&session_id) {
-            Ok(Some(session)) => session,
-            Ok(None) => {
+            let session_id = self
+                .register_durable_session(workspace_lease, req.meta)
+                .await
+                .map_err(|error| {
+                    log_suppressed_error(&error, "new_session", "session_archive_initialization_failed");
+                    safe_internal_error(
+                        "new_session",
+                        "session_archive_initialization_failed",
+                        "Unable to initialize ACP session storage",
+                    )
+                })?;
+            let session = match self.session_handle(&session_id) {
+                Ok(Some(session)) => session,
+                Ok(None) => {
+                    self.discard_failed_new_session(&session_id).await;
+                    return Err(acp::Error::internal_error().data("newly registered ACP session is missing"));
+                }
+                Err(error) => {
+                    self.discard_failed_new_session(&session_id).await;
+                    log_suppressed_error(&error, "new_session", "session_registration_failed");
+                    return Err(safe_internal_error(
+                        "new_session",
+                        "session_registration_failed",
+                        "Unable to register ACP session",
+                    ));
+                }
+            };
+            if let Err(error) = self.ensure_task_lifecycle_forwarder(&session) {
                 self.discard_failed_new_session(&session_id).await;
-                return Err(acp::Error::internal_error().data("newly registered ACP session is missing"));
-            }
-            Err(error) => {
-                self.discard_failed_new_session(&session_id).await;
-                log_suppressed_error(&error, "new_session", "session_registration_failed");
+                log_suppressed_error(&error, "new_session", "task_lifecycle_setup_failed");
                 return Err(safe_internal_error(
                     "new_session",
-                    "session_registration_failed",
-                    "Unable to register ACP session",
+                    "task_lifecycle_setup_failed",
+                    "Unable to initialize ACP session updates",
                 ));
             }
-        };
-        if let Err(error) = self.ensure_task_lifecycle_forwarder(&session) {
-            self.discard_failed_new_session(&session_id).await;
-            log_suppressed_error(&error, "new_session", "task_lifecycle_setup_failed");
-            return Err(safe_internal_error(
-                "new_session",
-                "task_lifecycle_setup_failed",
-                "Unable to initialize ACP session updates",
-            ));
-        }
-        if let Err(error) = self.run_session_start_hooks(&session).await {
-            self.discard_failed_new_session(&session_id).await;
-            log_suppressed_error(&error, "new_session", "session_start_hook_failed");
-            return Err(safe_internal_error(
-                "new_session",
-                "session_start_hook_failed",
-                "Unable to run ACP session start hooks",
-            ));
-        }
-        let config_options = match self.current_session_config_options(&session) {
-            Ok(config_options) => config_options,
-            Err(error) => {
+            if let Err(error) = self.run_session_start_hooks(&session).await {
                 self.discard_failed_new_session(&session_id).await;
-                log_suppressed_error(&error, "new_session", "session_configuration_failed");
+                log_suppressed_error(&error, "new_session", "session_start_hook_failed");
                 return Err(safe_internal_error(
                     "new_session",
-                    "session_configuration_failed",
-                    "Unable to read ACP session configuration",
+                    "session_start_hook_failed",
+                    "Unable to run ACP session start hooks",
                 ));
             }
-        };
+            let config_options = match self.current_session_config_options(&session) {
+                Ok(config_options) => config_options,
+                Err(error) => {
+                    self.discard_failed_new_session(&session_id).await;
+                    log_suppressed_error(&error, "new_session", "session_configuration_failed");
+                    return Err(safe_internal_error(
+                        "new_session",
+                        "session_configuration_failed",
+                        "Unable to read ACP session configuration",
+                    ));
+                }
+            };
 
-        if let Err(error) = self.send_available_commands_update(&session_id).await {
-            warn!(%error, "Failed to advertise initial slash commands");
-        }
+            if let Err(error) = self.send_available_commands_update(&session_id).await {
+                warn!(%error, "Failed to advertise initial slash commands");
+            }
 
-        debug!(%session_id, "Created ACP session");
+            debug!(%session_id, "Created ACP session");
 
-        Ok(acp::NewSessionResponse::new(session_id).config_options(config_options))
+            Ok(acp::NewSessionResponse::new(session_id).config_options(config_options))
+        })
     }
 }
 

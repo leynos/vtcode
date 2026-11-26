@@ -134,7 +134,7 @@ pub(super) async fn restore_owned(
     controller: &SubagentController,
     workspace_root: &Path,
 ) -> anyhow::Result<Vec<BackgroundSubprocessEntry>> {
-    restore_with_rollback(controller, workspace_root, controller.restore_background_subagents()).await
+    Box::pin(restore_with_rollback(controller, workspace_root, controller.restore_background_subagents())).await
 }
 
 /// Restores background records that predate session ownership, rolling back a
