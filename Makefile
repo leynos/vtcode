@@ -62,7 +62,10 @@ INTERROGATE = $(UV) tool run --from 'interrogate==$(INTERROGATE_VERSION)' interr
 interrogate:
 	$(INTERROGATE) $(INTERROGATE_TARGETS)
 
-lint: interrogate lint-shell lint-policies spelling github-actions-lint lint-clippy lint-docs
+# Make adds this prerequisite to the `lint` rule below, which stays as it was.
+lint: interrogate
+
+lint: lint-shell lint-policies spelling github-actions-lint lint-clippy lint-docs
 
 github-actions-lint:
 	$(YAMLLINT) --config-file .yamllint.yml .github/workflows
