@@ -5,6 +5,7 @@ use diapason_config::core::AnthropicConfig;
 use diapason_config::core::{CustomProviderApiFormat, CustomProviderConfig, ResolvedCustomProviderProfile};
 use diapason_config::{ModelConfig, OpenAIConfig, PromptCachingConfig, TimeoutsConfig};
 use futures::StreamExt;
+use std::future::Future;
 use std::sync::Arc;
 
 use crate::provider::{
@@ -20,6 +21,24 @@ mod openai_backends;
 use admission::CustomProviderAdmission;
 pub use admission::{CustomProviderAdmissionMetrics, custom_provider_admission_metrics};
 use openai_backends::CustomProviderOpenAIRequestConfig;
+
+tokio::task_local! {
+    static SUBAGENT_REQUEST_CONTEXT: ();
+}
+
+/// Runs provider construction in the subagent request context.
+///
+/// Custom-provider admission captures this context when a provider router is
+/// built so child requests use the provider-shared child budget. Parent ACP
+/// routers are built outside this scope and retain access to the full provider
+/// capacity.
+pub async fn with_subagent_request_context<F: Future>(future: F) -> F::Output {
+    SUBAGENT_REQUEST_CONTEXT.scope((), future).await
+}
+
+pub(crate) fn is_subagent_request_context() -> bool {
+    SUBAGENT_REQUEST_CONTEXT.try_with(|()| ()).is_ok()
+}
 
 pub struct CustomProviderBackendRouter {
     provider_key: String,

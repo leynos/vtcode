@@ -337,24 +337,23 @@ impl SubagentController {
                     bootstrap_messages: &bootstrap_messages,
                 })
                 .await?;
-            let mut runner = Box::pin(
-                AgentRunner::new_with_bootstrap(
-                    agent_type_for_spec(&spec),
-                    runtime.resolved_model,
-                    self.config.api_key.clone(),
-                    runtime.effective_workspace.clone(),
-                    session_id.clone(),
-                    RunnerSettings {
-                        reasoning_effort: Some(runtime.child_reasoning_effort),
-                        verbosity: None,
-                    },
-                    None,
-                    archive.bootstrap,
-                    Some(runtime.child_cfg.clone()),
-                    self.config.openai_chatgpt_auth.clone(),
-                )
-                .await?,
-            );
+            let runner = diapason_llm::providers::with_subagent_request_context(AgentRunner::new_with_bootstrap(
+                agent_type_for_spec(&spec),
+                runtime.resolved_model,
+                self.config.api_key.clone(),
+                runtime.effective_workspace.clone(),
+                session_id.clone(),
+                RunnerSettings {
+                    reasoning_effort: Some(runtime.child_reasoning_effort),
+                    verbosity: None,
+                },
+                None,
+                archive.bootstrap,
+                Some(runtime.child_cfg.clone()),
+                self.config.openai_chatgpt_auth.clone(),
+            ))
+            .await?;
+            let mut runner = Box::pin(runner);
             runner.set_quiet(true);
             runner.set_subagent_mode(true);
             Ok(PreparedChildExecution {

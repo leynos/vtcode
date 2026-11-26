@@ -62,6 +62,7 @@ pub use anthropic::AnthropicProvider;
 pub use copilot::CopilotProvider;
 pub use custom_provider::{
     CustomProviderAdmissionMetrics, CustomProviderBackendRouter, custom_provider_admission_metrics,
+    with_subagent_request_context,
 };
 pub use deepseek::DeepSeekProvider;
 pub use evolink::EvolinkProvider;

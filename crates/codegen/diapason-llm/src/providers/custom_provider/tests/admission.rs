@@ -1,5 +1,8 @@
 //! Tests endpoint-scoped request admission, capacity limits, and queue outcomes.
-use super::super::{CustomProviderAdmission, CustomProviderBackendRouter, custom_provider_admission_metrics};
+use super::super::{
+    CustomProviderAdmission, CustomProviderBackendRouter, custom_provider_admission_metrics,
+    with_subagent_request_context,
+};
 use diapason_config::core::{CustomProviderConfig, CustomProviderRequestPolicyConfig};
 use proptest::prelude::*;
 use rstest::rstest;
@@ -230,6 +233,99 @@ async fn router_instances_share_admission_for_the_same_endpoint_and_isolate_othe
 }
 
 #[tokio::test]
+async fn shared_provider_child_budget_preserves_parent_capacity_across_sessions() {
+    let _admission_test_guard = ADMISSION_TEST_LOCK.lock().await;
+    let parent_admission = admission_for_capacity("cross-session-parent-priority", 2);
+    let sibling_parent_admission = admission_for_capacity("cross-session-parent-priority", 2);
+    let first_child_admission =
+        with_subagent_request_context(async { admission_for_capacity("cross-session-parent-priority", 2) }).await;
+    let second_child_admission =
+        with_subagent_request_context(async { admission_for_capacity("cross-session-parent-priority", 2) }).await;
+
+    let first_parent_permit = parent_admission
+        .acquire()
+        .await
+        .expect("first parent should be admitted")
+        .expect("configured parent capacity should return a permit");
+    let second_parent_permit = sibling_parent_admission
+        .acquire()
+        .await
+        .expect("second parent should be admitted")
+        .expect("configured parent capacity should return a permit");
+
+    let mut first_queued_child = tokio::spawn(async move {
+        first_child_admission
+            .acquire()
+            .await
+            .expect("first queued child should eventually be admitted")
+            .expect("configured child capacity should return a permit")
+    });
+    let mut second_queued_child = tokio::spawn(async move {
+        second_child_admission
+            .acquire()
+            .await
+            .expect("second queued child should eventually be admitted")
+            .expect("configured child capacity should return a permit")
+    });
+    tokio::task::yield_now().await;
+    assert!(!first_queued_child.is_finished(), "parent requests must retain both provider slots");
+    assert!(!second_queued_child.is_finished(), "parent requests must retain both provider slots");
+
+    drop(first_parent_permit);
+    let first_child_permit = tokio::time::timeout(Duration::from_secs(1), &mut first_queued_child)
+        .await
+        .expect("releasing a parent slot should admit a queued child")
+        .expect("first queued child task should complete");
+    drop(first_child_permit);
+    drop(second_parent_permit);
+    let second_child_permit = tokio::time::timeout(Duration::from_secs(1), &mut second_queued_child)
+        .await
+        .expect("releasing the second parent slot should admit the other child")
+        .expect("second queued child task should complete");
+    drop(second_child_permit);
+
+    let sibling_parent_admission = admission_for_capacity("cross-session-parent-priority-running-child", 2);
+    let first_child_admission = with_subagent_request_context(async {
+        admission_for_capacity("cross-session-parent-priority-running-child", 2)
+    })
+    .await;
+    let second_child_admission = with_subagent_request_context(async {
+        admission_for_capacity("cross-session-parent-priority-running-child", 2)
+    })
+    .await;
+
+    let first_child_permit = first_child_admission
+        .acquire()
+        .await
+        .expect("first child should be admitted")
+        .expect("configured child capacity should return a permit");
+    let mut queued_child = tokio::spawn(async move {
+        second_child_admission
+            .acquire()
+            .await
+            .expect("queued child should eventually be admitted")
+            .expect("configured child capacity should return a permit")
+    });
+    tokio::task::yield_now().await;
+    assert!(!queued_child.is_finished(), "the provider-wide child budget should cap children at limit - 1");
+
+    let parent_permit = tokio::time::timeout(Duration::from_millis(100), sibling_parent_admission.acquire())
+        .await
+        .expect("a parent request must retain the provider's final slot")
+        .expect("parent request should be admitted")
+        .expect("configured parent capacity should return a permit");
+    drop(parent_permit);
+    assert!(!queued_child.is_finished(), "releasing a parent slot must not release a child budget slot");
+
+    drop(first_child_permit);
+    let second_child_permit = tokio::time::timeout(Duration::from_secs(1), &mut queued_child)
+        .await
+        .expect("released child budget should admit the queued child")
+        .expect("queued child task should complete");
+    drop(second_child_permit);
+}
+
+#[tokio::test]
 async fn request_admission_reports_queue_timeout_after_the_configured_wait() {
     let _admission_test_guard = ADMISSION_TEST_LOCK.lock().await;
     let metrics_before = custom_provider_admission_metrics();
@@ -237,6 +333,8 @@ async fn request_admission_reports_queue_timeout_after_the_configured_wait() {
         provider_name: Arc::from("queue-timeout-regression"),
         semaphore: Some(Arc::new(Semaphore::new(1))),
         queue_timeout: Duration::from_millis(5),
+        shared: None,
+        is_subagent: false,
     };
     let _held = admission.acquire().await.expect("first request permit");
 
@@ -269,6 +367,8 @@ async fn closed_request_admission_has_stable_error_metadata() {
         provider_name: Arc::from("closed-gate-regression"),
         semaphore: Some(semaphore),
         queue_timeout: Duration::from_millis(5),
+        shared: None,
+        is_subagent: false,
     };
 
     let error = admission.acquire().await.expect_err("closed gate should reject admission");
