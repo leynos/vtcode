@@ -168,6 +168,7 @@ impl MessageMetadata {
     }
 
     /// Mark this message as compressed, recording the original and new token counts.
+    #[cfg(test)]
     fn mark_compressed(&mut self, original_tokens: usize, compressed_tokens: usize) {
         self.compression_status = CompressionStatus::Compressed {
             original_token_count: original_tokens,
@@ -177,6 +178,7 @@ impl MessageMetadata {
     }
 
     /// Mark this message as summarized.
+    #[cfg(test)]
     fn mark_summarized(&mut self, original_tokens: usize, summary_tokens: usize) {
         self.compression_status = CompressionStatus::Summarized {
             original_token_count: original_tokens,
@@ -186,12 +188,14 @@ impl MessageMetadata {
     }
 
     /// Set the importance score (clamped to [0.0, 1.0]).
+    #[cfg(test)]
     fn set_importance(&mut self, score: f64) {
         self.importance_score = score.clamp(0.0, 1.0);
     }
 
     /// Returns the original (pre-compression) token count, or the current count
     /// if the message was never compressed.
+    #[cfg(test)]
     fn original_token_count(&self) -> usize {
         match self.compression_status {
             CompressionStatus::Uncompressed => self.estimated_tokens,
@@ -202,6 +206,7 @@ impl MessageMetadata {
     }
 
     /// Returns the effective (post-compression) token count.
+    #[cfg(test)]
     fn effective_token_count(&self) -> usize {
         match self.compression_status {
             CompressionStatus::Uncompressed => self.estimated_tokens,
@@ -213,34 +218,29 @@ impl MessageMetadata {
 }
 
 /// Tracks the compression state of a single message in conversation history.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CompressionStatus {
     /// Message is in its original uncompressed form.
+    #[default]
     Uncompressed,
     /// Message has been compressed with token-level preservation of information.
     Compressed {
+        /// Token count before compression.
         original_token_count: usize,
+        /// Token count after compression.
         summary_token_count: usize,
     },
     /// Message has been semantically summarized (lossy compression).
     Summarized {
+        /// Token count before summarization.
         original_token_count: usize,
+        /// Token count after summarization.
         summary_token_count: usize,
     },
     /// Message has been dropped from the active context but may be in long-term
     /// memory.
     Dropped,
-}
-
-#[allow(
-    clippy::derivable_impls,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
-impl Default for CompressionStatus {
-    fn default() -> Self {
-        Self::Uncompressed
-    }
 }
 
 #[cfg(test)]

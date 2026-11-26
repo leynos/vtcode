@@ -1,33 +1,38 @@
-#![expect(
-    clippy::indexing_slicing,
-    clippy::string_slice,
-    reason = "Preview counts and UTF-8 offsets are computed from source lengths and boundary helpers."
-)]
-
 //! Shared preview formatting helpers.
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// A head/tail window over a slice.
 pub struct HeadTailPreview<'a, T> {
+    /// Items taken from the start of the slice.
     pub head: &'a [T],
+    /// Items taken from the end of the slice.
     pub tail: &'a [T],
+    /// Number of items omitted between `head` and `tail`.
     pub hidden_count: usize,
     total: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// A head/tail window over the lines of a text block.
 pub struct TextLineExcerpt<'a> {
+    /// Lines taken from the start of the text.
     pub head: Vec<&'a str>,
+    /// Lines taken from the end of the text.
     pub tail: Vec<&'a str>,
+    /// Number of lines omitted between `head` and `tail`.
     pub hidden_count: usize,
+    /// Total number of lines in the source text.
     pub total: usize,
 }
 
+/// Return the terminal display width of `text`.
 pub fn display_width(text: &str) -> usize {
     UnicodeWidthStr::width(text)
 }
 
+/// Truncate `text` to at most `max_width` display columns.
 pub fn truncate_to_display_width(text: &str, max_width: usize) -> &str {
     if max_width == 0 {
         return "";
@@ -40,7 +45,7 @@ pub fn truncate_to_display_width(text: &str, max_width: usize) -> &str {
     for (idx, ch) in text.char_indices() {
         let char_width = UnicodeWidthChar::width(ch).unwrap_or(0);
         if consumed_width + char_width > max_width {
-            return &text[..idx];
+            return text.get(..idx).unwrap_or_default();
         }
         consumed_width += char_width;
     }
@@ -48,6 +53,7 @@ pub fn truncate_to_display_width(text: &str, max_width: usize) -> &str {
     text
 }
 
+/// Truncate `text` to `max_width` columns, appending `ellipsis`.
 pub fn truncate_with_ellipsis(text: &str, max_width: usize, ellipsis: &str) -> String {
     if max_width == 0 {
         return String::new();
@@ -65,6 +71,7 @@ pub fn truncate_with_ellipsis(text: &str, max_width: usize, ellipsis: &str) -> S
     format!("{truncated}{ellipsis}")
 }
 
+/// Right-pad `text` with `pad_char` until it reaches `width` columns.
 pub fn pad_to_display_width(text: &str, width: usize, pad_char: char) -> String {
     let current = display_width(text);
     if current >= width {
@@ -75,6 +82,7 @@ pub fn pad_to_display_width(text: &str, width: usize, pad_char: char) -> String 
     format!("{text}{padding}")
 }
 
+/// Return the trailing portion of `value` that fits in `max_width` columns.
 pub fn suffix_for_display_width(value: &str, max_width: usize) -> &str {
     if display_width(value) <= max_width {
         return value;
@@ -94,9 +102,10 @@ pub fn suffix_for_display_width(value: &str, max_width: usize) -> &str {
         start_idx = idx;
     }
 
-    &value[start_idx..]
+    value.get(start_idx..).unwrap_or_default()
 }
 
+/// Format the summary line shown in place of hidden lines.
 pub fn format_hidden_lines_summary(hidden: usize) -> String {
     if hidden == 1 {
         "… +1 line".to_string()
@@ -110,7 +119,7 @@ fn split_head_tail_preview<'a, T>(items: &'a [T], head: usize, tail: usize) -> H
     if total <= head.saturating_add(tail) {
         return HeadTailPreview {
             head: items,
-            tail: &items[total..],
+            tail: items.get(total..).unwrap_or_default(),
             hidden_count: 0,
             total,
         };
@@ -121,13 +130,14 @@ fn split_head_tail_preview<'a, T>(items: &'a [T], head: usize, tail: usize) -> H
     let hidden_count = total.saturating_sub(head_count + tail_count);
 
     HeadTailPreview {
-        head: &items[..head_count],
-        tail: &items[total - tail_count..],
+        head: items.get(..head_count).unwrap_or_default(),
+        tail: items.get(total - tail_count..).unwrap_or_default(),
         hidden_count,
         total,
     }
 }
 
+/// Build a head/tail preview of at most `limit` items, preferring `preferred_head`.
 pub fn split_head_tail_preview_with_limit<'a, T>(
     items: &'a [T],
     limit: usize,
@@ -135,8 +145,8 @@ pub fn split_head_tail_preview_with_limit<'a, T>(
 ) -> HeadTailPreview<'a, T> {
     if limit == 0 {
         return HeadTailPreview {
-            head: &items[..0],
-            tail: &items[..0],
+            head: items.get(..0).unwrap_or_default(),
+            tail: items.get(..0).unwrap_or_default(),
             hidden_count: items.len(),
             total: items.len(),
         };
@@ -145,7 +155,7 @@ pub fn split_head_tail_preview_with_limit<'a, T>(
     if items.len() <= limit {
         return HeadTailPreview {
             head: items,
-            tail: &items[items.len()..],
+            tail: items.get(items.len()..).unwrap_or_default(),
             hidden_count: 0,
             total: items.len(),
         };
@@ -155,6 +165,7 @@ pub fn split_head_tail_preview_with_limit<'a, T>(
     split_head_tail_preview(items, head, tail)
 }
 
+/// Split `limit` into a head and tail count, reserving one line for the summary.
 pub fn summary_window(limit: usize, preferred_head: usize) -> (usize, usize) {
     if limit <= 2 {
         return (0, limit);
@@ -165,6 +176,7 @@ pub fn summary_window(limit: usize, preferred_head: usize) -> (usize, usize) {
     (head, tail)
 }
 
+/// Excerpt the first `head` and last `tail` lines of `text`.
 pub fn excerpt_text_lines<'a>(text: &'a str, head: usize, tail: usize) -> TextLineExcerpt<'a> {
     let lines: Vec<&str> = text.lines().collect();
     let total = lines.len();
@@ -182,13 +194,14 @@ pub fn excerpt_text_lines<'a>(text: &'a str, head: usize, tail: usize) -> TextLi
     let hidden_count = total.saturating_sub(head_count + tail_count);
 
     TextLineExcerpt {
-        head: lines[..head_count].to_vec(),
-        tail: lines[total - tail_count..].to_vec(),
+        head: lines.get(..head_count).unwrap_or_default().to_vec(),
+        tail: lines.get(total - tail_count..).unwrap_or_default().to_vec(),
         hidden_count,
         total,
     }
 }
 
+/// Excerpt `text` down to at most `limit` lines, preferring `preferred_head`.
 pub fn excerpt_text_lines_with_limit<'a>(text: &'a str, limit: usize, preferred_head: usize) -> TextLineExcerpt<'a> {
     let lines: Vec<&str> = text.lines().collect();
     let preview = split_head_tail_preview_with_limit(lines.as_slice(), limit, preferred_head);
@@ -205,6 +218,7 @@ fn format_hidden_bytes_summary(hidden: usize) -> String {
     format!("… [{hidden} bytes omitted] …")
 }
 
+/// Condense `content` to its first `head_bytes` and last `tail_bytes`.
 pub fn condense_text_bytes(content: &str, head_bytes: usize, tail_bytes: usize) -> String {
     let byte_len = content.len();
     let max_inline = head_bytes + tail_bytes;
@@ -218,32 +232,37 @@ pub fn condense_text_bytes(content: &str, head_bytes: usize, tail_bytes: usize) 
 
     let omitted = byte_len.saturating_sub(head_end).saturating_sub(byte_len - tail_start);
 
-    format!("{}\n\n{}\n\n{}", &content[..head_end], format_hidden_bytes_summary(omitted), &content[tail_start..])
+    format!(
+        "{}\n\n{}\n\n{}",
+        content.get(..head_end).unwrap_or_default(),
+        format_hidden_bytes_summary(omitted),
+        content.get(tail_start..).unwrap_or_default()
+    )
 }
 
+/// Return the last `tail_bytes` of `content`, limited to `max_lines` lines.
 pub fn tail_preview_text(content: &str, tail_bytes: usize, max_lines: usize) -> String {
     if content.is_empty() {
         return String::new();
     }
 
     let tail_start = ceil_char_boundary(content, content.len().saturating_sub(tail_bytes));
-    let tail_slice = &content[tail_start..];
+    let tail_slice = content.get(tail_start..).unwrap_or_default();
 
-    let mut line_start = 0usize;
-    if max_lines > 0 {
-        let mut seen = 0usize;
-        for (idx, b) in tail_slice.as_bytes().iter().enumerate().rev() {
-            if *b == b'\n' {
-                seen += 1;
-                if seen >= max_lines {
-                    line_start = idx.saturating_add(1);
-                    break;
-                }
-            }
-        }
-    }
+    let line_start = if max_lines == 0 {
+        0
+    } else {
+        tail_slice
+            .as_bytes()
+            .iter()
+            .enumerate()
+            .rev()
+            .filter(|(_, byte)| **byte == b'\n')
+            .nth(max_lines - 1)
+            .map_or(0, |(index, _)| index.saturating_add(1))
+    };
 
-    let preview = &tail_slice[line_start..];
+    let preview = tail_slice.get(line_start..).unwrap_or_default();
     let omitted = tail_start.saturating_add(line_start);
     if omitted == 0 {
         return preview.to_string();
@@ -277,99 +296,5 @@ fn ceil_char_boundary(value: &str, index: usize) -> usize {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn truncate_to_display_width_respects_wide_chars() {
-        let value = "表表表";
-        assert_eq!(truncate_to_display_width(value, 5), "表表");
-    }
-
-    #[test]
-    fn truncate_with_ellipsis_respects_width_budget() {
-        assert_eq!(truncate_with_ellipsis("abcdef", 4, "…"), "abc…");
-    }
-
-    #[test]
-    fn pad_to_display_width_handles_wide_chars() {
-        let padded = pad_to_display_width("表", 4, ' ');
-        assert_eq!(display_width(padded.as_str()), 4);
-    }
-
-    #[test]
-    fn suffix_for_display_width_preserves_tail() {
-        assert_eq!(suffix_for_display_width("hello/world.rs", 8), "world.rs");
-    }
-
-    #[test]
-    fn split_head_tail_preview_preserves_hidden_count() {
-        let items = [1, 2, 3, 4, 5, 6, 7];
-        let preview = split_head_tail_preview(&items, 2, 2);
-        assert_eq!(preview.head, &[1, 2]);
-        assert_eq!(preview.tail, &[6, 7]);
-        assert_eq!(preview.hidden_count, 3);
-        assert_eq!(preview.total, 7);
-    }
-
-    #[test]
-    fn split_head_tail_preview_keeps_short_input_intact() {
-        let items = [1, 2, 3];
-        let preview = split_head_tail_preview(&items, 2, 2);
-        assert_eq!(preview.head, &[1, 2, 3]);
-        assert!(preview.tail.is_empty());
-        assert_eq!(preview.hidden_count, 0);
-    }
-
-    #[test]
-    fn split_head_tail_preview_with_limit_preserves_total_and_gap() {
-        let items = [1, 2, 3, 4, 5, 6, 7];
-        let preview = split_head_tail_preview_with_limit(&items, 6, 3);
-        assert_eq!(preview.head, &[1, 2]);
-        assert_eq!(preview.tail, &[5, 6, 7]);
-        assert_eq!(preview.hidden_count, 2);
-        assert_eq!(preview.total, 7);
-    }
-
-    #[test]
-    fn summary_window_reserves_gap_row() {
-        assert_eq!(summary_window(6, 3), (2, 3));
-        assert_eq!(summary_window(2, 3), (0, 2));
-    }
-
-    #[test]
-    fn hidden_lines_summary_matches_existing_copy() {
-        assert_eq!(format_hidden_lines_summary(1), "… +1 line");
-        assert_eq!(format_hidden_lines_summary(4), "… +4 lines");
-    }
-
-    #[test]
-    fn excerpt_text_lines_builds_head_tail_vectors() {
-        let preview = excerpt_text_lines("l1\nl2\nl3\nl4\nl5\nl6", 2, 2);
-        assert_eq!(preview.head, vec!["l1", "l2"]);
-        assert_eq!(preview.tail, vec!["l5", "l6"]);
-        assert_eq!(preview.hidden_count, 2);
-        assert_eq!(preview.total, 6);
-    }
-
-    #[test]
-    fn condense_text_bytes_respects_utf8_boundaries() {
-        let mut content = "a".repeat(7);
-        content.push('é');
-        content.push_str("bbbbbbbb");
-
-        let preview = condense_text_bytes(&content, 8, 4);
-        assert!(preview.contains("bytes omitted"));
-        assert!(preview.is_char_boundary(0));
-    }
-
-    #[test]
-    fn tail_preview_text_keeps_last_lines_only() {
-        let input = (0..20).map(|index| format!("line-{index}")).collect::<Vec<_>>().join("\n");
-
-        let preview = tail_preview_text(&input, 40, 3);
-        assert!(preview.contains("bytes omitted"));
-        assert!(preview.contains("line-19"));
-        assert!(!preview.contains("line-1\n"));
-    }
-}
+#[path = "preview_tests.rs"]
+mod tests;

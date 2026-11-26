@@ -9,7 +9,9 @@ use crate::ansi_capabilities::{ColourScheme, detect_colour_scheme};
 /// Terminal background theme for diff rendering.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiffTheme {
+    /// Dark terminal background.
     Dark,
+    /// Light terminal background.
     Light,
 }
 
@@ -22,6 +24,7 @@ impl DiffTheme {
         }
     }
 
+    /// Return whether this theme targets a light background.
     pub fn is_light(self) -> bool {
         self == Self::Light
     }
@@ -30,8 +33,11 @@ impl DiffTheme {
 /// Terminal colour capability level for palette selection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiffColourLevel {
+    /// 24-bit colour support.
     TrueColour,
+    /// 256-colour palette support.
     Ansi256,
+    /// Basic 16-colour support.
     Ansi16,
 }
 

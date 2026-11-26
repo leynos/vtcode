@@ -4,12 +4,15 @@ use anyhow::{Context, Result};
 use base64::Engine as _;
 use std::path::Path;
 
+/// Largest file accepted for inline model input (50 MiB).
 pub const MAX_INPUT_FILE_BYTES: u64 = 50 * 1024 * 1024;
 
 /// File data prepared for inline model input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileInputData {
+    /// Base64-encoded file contents.
     pub base64_data: String,
+    /// File name reported to the provider.
     pub filename: String,
     file_path: String,
     size: u64,
@@ -51,16 +54,17 @@ pub async fn read_input_file_any_path<P: AsRef<Path>>(file_path: P) -> Result<Fi
         base64_data: base64::engine::general_purpose::STANDARD.encode(&file_contents),
         filename,
         file_path: path.display().to_string(),
-        size: file_contents.len() as u64,
+        size: u64::try_from(file_contents.len()).unwrap_or(u64::MAX),
     })
 }
 
+/// Return the decoded size of a base64 `file_data` payload.
 pub fn decoded_base64_size(file_data: &str) -> Result<u64> {
     let payload = inline_base64_payload(file_data);
     let decoded = base64::engine::general_purpose::STANDARD
         .decode(payload)
         .context("Invalid base64 file_data payload")?;
-    Ok(decoded.len() as u64)
+    Ok(u64::try_from(decoded.len()).unwrap_or(u64::MAX))
 }
 
 fn inline_base64_payload(file_data: &str) -> &str {

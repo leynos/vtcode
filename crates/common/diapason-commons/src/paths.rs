@@ -1,7 +1,4 @@
-#![expect(
-    unused_results,
-    reason = "Path normalization intentionally ignores the boolean returned by pop after a validated component check."
-)]
+//! Lexical and workspace-aware path resolution helpers.
 
 use anyhow::{Context, Result, anyhow, bail};
 use std::path::{Component, Path, PathBuf};
@@ -13,7 +10,7 @@ pub fn normalize_path(path: &Path) -> PathBuf {
     for component in path.components() {
         match component {
             Component::ParentDir => {
-                normalized.pop();
+                let _ = normalized.pop();
             }
             Component::CurDir => {}
             Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
@@ -537,9 +534,13 @@ impl<T> PathResolver for T where T: WorkspacePaths + ?Sized {}
 /// Enumeration describing the conceptual scope of a file path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathScope {
+    /// A path inside the workspace.
     Workspace,
+    /// A path inside the user configuration directory.
     Config,
+    /// A path inside the user cache directory.
     Cache,
+    /// A path inside the telemetry directory.
     Telemetry,
 }
 
@@ -855,7 +856,7 @@ mod tests {
         assert!(canonical.exists());
 
         // Cleanup
-        tokio::fs::remove_file(&test_file).await.ok();
+        let _ = tokio::fs::remove_file(&test_file).await.ok();
     }
 
     #[tokio::test]
@@ -899,7 +900,7 @@ mod tests {
         assert!(canonical.to_string_lossy().ends_with("missing.txt"));
 
         // Cleanup
-        tokio::fs::remove_dir(&test_dir).await.ok();
+        let _ = tokio::fs::remove_dir(&test_dir).await.ok();
     }
 
     #[test]
