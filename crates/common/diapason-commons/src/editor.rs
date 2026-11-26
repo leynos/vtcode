@@ -8,7 +8,7 @@ use percent_encoding::percent_decode_str;
 use url::Url;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// A zero-based position inside an editor buffer.
+/// A one-based position inside an editor buffer.
 pub struct EditorPoint {
     /// One-based line number.
     pub line: usize,

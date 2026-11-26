@@ -19,7 +19,9 @@ use num_traits::ToPrimitive;
 fn resident_set_size_mb() -> Option<f64> {
     let pid = sysinfo::get_current_pid().ok()?;
     let mut system = sysinfo::System::new();
-    system.refresh_processes_specifics(
+    // The returned count of refreshed processes is not used; discard it
+    // explicitly so the `unused_results` lint stays quiet on macOS.
+    let _ = system.refresh_processes_specifics(
         sysinfo::ProcessesToUpdate::Some(&[pid]),
         true,
         sysinfo::ProcessRefreshKind::nothing().with_memory(),

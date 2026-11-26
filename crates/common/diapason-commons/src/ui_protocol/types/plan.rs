@@ -109,12 +109,6 @@ impl PlanContent {
                 continue;
             }
 
-            // Extract summary from first paragraph
-            if summary.is_empty() && !trimmed.is_empty() && !trimmed.starts_with('#') {
-                summary = trimmed.to_string();
-                continue;
-            }
-
             // Phase headers (## Phase X: ...)
             if let Some(phase_name) = trimmed.strip_prefix("## ") {
                 finish_phase(&mut phases, &mut current_phase);
@@ -157,6 +151,13 @@ impl PlanContent {
             // Question items
             if trimmed.starts_with("- (") || trimmed.starts_with("- ?") {
                 open_questions.push(trimmed.trim_start_matches("- ").to_string());
+            }
+
+            // Fallback summary: the first line that is not a heading, a step,
+            // or a question. Running it after the structural branches keeps a
+            // checkbox out of the summary when the plan opens with a phase.
+            if summary.is_empty() && !trimmed.is_empty() && !trimmed.starts_with('#') {
+                summary = trimmed.to_string();
             }
         }
 
@@ -210,5 +211,22 @@ mod tests {
         assert_eq!(plan.summary, "Focus on startup latency.");
         assert_eq!(plan.total_steps, 2);
         assert_eq!(plan.raw_content.lines().next(), Some("Summary"));
+    }
+
+    #[test]
+    fn keeps_checkbox_steps_out_of_the_fallback_summary() {
+        // A plan whose summary section is empty and whose first content is a
+        // phase: the unchecked step must count as a step, not become the
+        // summary, so progress stays at one of two rather than two of two.
+        let plan = PlanContent::from_markdown(
+            "Implementation Plan".to_string(),
+            "## Summary\n\n## Phase A\n[ ] First\n[x] Second\n",
+            None,
+        );
+
+        assert_eq!(plan.summary, "");
+        assert_eq!(plan.total_steps, 2);
+        assert_eq!(plan.completed_steps, 1);
+        assert_eq!(plan.progress_percent(), 50);
     }
 }

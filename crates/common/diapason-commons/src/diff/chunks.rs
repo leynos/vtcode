@@ -86,7 +86,7 @@ fn append_middle_diff<'a>(old_middle: &'a str, new_middle: &'a str, result: &mut
     let old_chars: Vec<char> = old_middle.chars().collect();
     let new_chars: Vec<char> = new_middle.chars().collect();
     let edits = myers_diff(&old_chars, &new_chars);
-    let mut state = MiddleDiff::new(old_middle, new_middle, result);
+    let mut state = MiddleDiff::new(old_middle, new_middle, result, old_chars, new_chars);
     for edit in edits {
         if !state.apply(edit) {
             break;
@@ -109,10 +109,16 @@ struct MiddleDiff<'a, 'b> {
 }
 
 impl<'a, 'b> MiddleDiff<'a, 'b> {
-    fn new(old_middle: &'a str, new_middle: &'a str, result: &'b mut Vec<Chunk<'a>>) -> Self {
+    fn new(
+        old_middle: &'a str,
+        new_middle: &'a str,
+        result: &'b mut Vec<Chunk<'a>>,
+        old_chars: Vec<char>,
+        new_chars: Vec<char>,
+    ) -> Self {
         Self {
-            old_chars: old_middle.chars().collect(),
-            new_chars: new_middle.chars().collect(),
+            old_chars,
+            new_chars,
             old_byte_starts: old_middle.char_indices().map(|(idx, _)| idx).collect(),
             new_byte_starts: new_middle.char_indices().map(|(idx, _)| idx).collect(),
             old_middle,

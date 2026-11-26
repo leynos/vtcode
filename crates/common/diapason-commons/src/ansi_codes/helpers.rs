@@ -168,7 +168,10 @@ pub fn ends_with_ansi(text: &str) -> bool {
 
 #[inline]
 #[must_use]
-/// Return the printable width of `text` once ANSI sequences are stripped.
+/// Return the byte length of `text` once ANSI sequences are stripped.
+///
+/// This counts UTF-8 bytes, not terminal columns: `"界"` reports `3`. Callers
+/// that need display columns must measure the stripped text separately.
 pub fn display_width(text: &str) -> usize {
     crate::ansi::strip_ansi(text).len()
 }
