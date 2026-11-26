@@ -7,25 +7,31 @@ use anstyle::{Color as AnsiColourEnum, Effects, Style as AnsiStyle};
 /// Inline text styling with foreground/background colour and text effects.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InlineTextStyle {
+    /// Foreground colour, if the segment sets one.
     pub colour: Option<AnsiColourEnum>,
+    /// Background colour, if the segment sets one.
     pub bg_colour: Option<AnsiColourEnum>,
+    /// Text effects such as bold, italic, underline or dim.
     pub effects: Effects,
 }
 
 impl InlineTextStyle {
     #[must_use]
+    /// Return this style with the foreground colour replaced.
     pub fn with_colour(mut self, colour: Option<AnsiColourEnum>) -> Self {
         self.colour = colour;
         self
     }
 
     #[must_use]
+    /// Return this style with the background colour replaced.
     pub fn with_bg_colour(mut self, colour: Option<AnsiColourEnum>) -> Self {
         self.bg_colour = colour;
         self
     }
 
     #[must_use]
+    /// Fill in the foreground colour only when this style has none.
     pub fn merge_colour(mut self, fallback: Option<AnsiColourEnum>) -> Self {
         if self.colour.is_none() {
             self.colour = fallback;
@@ -34,6 +40,7 @@ impl InlineTextStyle {
     }
 
     #[must_use]
+    /// Fill in the background colour only when this style has none.
     pub fn merge_bg_colour(mut self, fallback: Option<AnsiColourEnum>) -> Self {
         if self.bg_colour.is_none() {
             self.bg_colour = fallback;
@@ -42,30 +49,35 @@ impl InlineTextStyle {
     }
 
     #[must_use]
+    /// Enable bold text.
     pub fn bold(mut self) -> Self {
         self.effects |= Effects::BOLD;
         self
     }
 
     #[must_use]
+    /// Enable italic text.
     pub fn italic(mut self) -> Self {
         self.effects |= Effects::ITALIC;
         self
     }
 
     #[must_use]
+    /// Enable underlined text.
     pub fn underline(mut self) -> Self {
         self.effects |= Effects::UNDERLINE;
         self
     }
 
     #[must_use]
+    /// Enable dimmed text.
     pub fn dim(mut self) -> Self {
         self.effects |= Effects::DIMMED;
         self
     }
 
     #[must_use]
+    /// Convert to an `anstyle::Style`, falling back to `fallback` for the foreground.
     pub fn to_ansi_style(&self, fallback: Option<AnsiColourEnum>) -> AnsiStyle {
         let mut style = AnsiStyle::new();
         if let Some(colour) = self.colour.or(fallback) {
@@ -93,33 +105,46 @@ impl InlineTextStyle {
 /// A styled text segment with shared style.
 #[derive(Clone, Debug, Default)]
 pub struct InlineSegment {
+    /// Segment text.
     pub text: String,
+    /// Style shared by every copy of this segment.
     pub style: Arc<InlineTextStyle>,
 }
 
 /// A clickable link target inside a transcript line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InlineLinkTarget {
+    /// An external URL opened by the host when activated.
     Url(String),
 }
 
 /// Byte-range inside a line that is a clickable link.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InlineLinkRange {
+    /// Start byte offset, inclusive.
     pub start: usize,
+    /// End byte offset, exclusive.
     pub end: usize,
+    /// Activation target for the range.
     pub target: InlineLinkTarget,
 }
 
 /// Resolved theme colours for inline rendering.
 #[derive(Clone, Debug, Default)]
 pub struct InlineTheme {
+    /// Default foreground colour.
     pub foreground: Option<AnsiColourEnum>,
+    /// Default background colour.
     pub background: Option<AnsiColourEnum>,
+    /// Primary accent colour.
     pub primary: Option<AnsiColourEnum>,
+    /// Secondary accent colour.
     pub secondary: Option<AnsiColourEnum>,
+    /// Accent colour for tool headers.
     pub tool_accent: Option<AnsiColourEnum>,
+    /// Body colour for tool output.
     pub tool_body: Option<AnsiColourEnum>,
+    /// Body colour for PTY output.
     pub pty_body: Option<AnsiColourEnum>,
 }
 
@@ -131,54 +156,83 @@ pub struct InlineTheme {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum InlineHeaderStatusTone {
     #[default]
+    /// The badge reports a healthy state.
     Ready,
+    /// The badge reports a degraded state.
     Warning,
+    /// The badge reports a failure.
     Error,
 }
 
 /// A labelled status badge for the header bar.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InlineHeaderStatusBadge {
+    /// Badge text.
     pub text: String,
+    /// Visual tone of the badge.
     pub tone: InlineHeaderStatusTone,
 }
 
 /// A compact pill badge rendered in the header.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InlineHeaderBadge {
+    /// Badge text.
     pub text: String,
+    /// Style applied to the badge.
     pub style: InlineTextStyle,
+    /// Whether the badge paints its background across the full pill.
     pub full_background: bool,
 }
 
 /// A title + content highlight block in the header.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InlineHeaderHighlight {
+    /// Highlight title.
     pub title: String,
+    /// Highlight body lines.
     pub lines: Vec<String>,
 }
 
 /// Session metadata displayed in the inline header.
 #[derive(Clone, Debug)]
 pub struct InlineHeaderContext {
+    /// Application name shown first in the header.
     pub app_name: String,
+    /// Active provider label.
     pub provider: String,
+    /// Active model label.
     pub model: String,
+    /// Context window size in tokens, when known.
     pub context_window_size: Option<usize>,
+    /// Application version string.
     pub version: String,
+    /// Search-tool status badge.
     pub search_tools: Option<InlineHeaderStatusBadge>,
+    /// Persistent-memory status badge.
     pub persistent_memory: Option<InlineHeaderStatusBadge>,
+    /// Pull-request review status badge.
     pub pr_review: Option<InlineHeaderStatusBadge>,
+    /// Editor context summary, when available.
     pub editor_context: Option<String>,
+    /// Git status summary.
     pub git: String,
+    /// Reasoning effort summary.
     pub reasoning: String,
+    /// Current reasoning stage, when one is active.
     pub reasoning_stage: Option<String>,
+    /// Workspace trust summary.
     pub workspace_trust: String,
+    /// Tool availability summary.
     pub tools: String,
+    /// MCP server summary.
     pub mcp: String,
+    /// Active primary agent name.
     pub primary_agent: Option<String>,
+    /// Colour used to render the primary agent name.
     pub primary_agent_colour: Option<String>,
+    /// Additional highlight blocks shown in the header.
     pub highlights: Vec<InlineHeaderHighlight>,
+    /// Badges describing active subagents.
     pub subagent_badges: Vec<InlineHeaderBadge>,
 }
 

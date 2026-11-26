@@ -6,8 +6,11 @@ use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::time::timeout;
 
+/// Default timeout applied to ordinary asynchronous operations (30 seconds).
 pub const DEFAULT_ASYNC_TIMEOUT: Duration = Duration::from_secs(30);
+/// Timeout for operations expected to complete quickly (5 seconds).
 pub const SHORT_ASYNC_TIMEOUT: Duration = Duration::from_secs(5);
+/// Timeout for long-running operations such as large transfers (5 minutes).
 pub const LONG_ASYNC_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Execute a future with a timeout and context

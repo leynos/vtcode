@@ -1,10 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    clippy::cast_possible_truncation,
-    unused_results,
-    reason = "Snapshot reads use bounded counts and serialize platform timestamps into the documented compact format."
-)]
-
 //! Cheap workspace environment-delta observability.
 //!
 //! Long-horizon agents operate in a *changing environment*: files are written,
@@ -18,12 +11,14 @@
 //! each turn boundary and to persist as a derived view.
 
 use std::collections::BTreeMap;
+#[cfg(test)]
 use std::io;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 /// Directories never traversed when capturing a snapshot.
+#[cfg(test)]
 const SKIP_DIRS: &[&str] = &[
     ".git",
     ".svn",
@@ -48,6 +43,7 @@ pub struct FileStat {
 }
 
 /// Number of leading bytes sampled for the content fingerprint.
+#[cfg(test)]
 const HASH_SAMPLE_BYTES: usize = 4096;
 
 /// A point-in-time fingerprint of a workspace's tracked files.
@@ -74,12 +70,14 @@ pub struct SnapshotDelta {
 ///
 /// Files larger than `max_file_bytes` are fingerprinted by size + mtime only
 /// (the head hash is set to 0) to keep capture O(files) rather than O(bytes).
+#[cfg(test)]
 fn capture(workspace: &Path, max_file_bytes: u64) -> io::Result<WorkspaceSnapshot> {
     let mut files = BTreeMap::new();
     collect(workspace, workspace, max_file_bytes, &mut files)?;
     Ok(WorkspaceSnapshot { files, captured_at: now_rfc3339() })
 }
 
+#[cfg(test)]
 fn collect(root: &Path, dir: &Path, max_file_bytes: u64, out: &mut BTreeMap<String, FileStat>) -> io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
@@ -104,10 +102,12 @@ fn collect(root: &Path, dir: &Path, max_file_bytes: u64, out: &mut BTreeMap<Stri
                         .modified()
                         .ok()
                         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                        .map(|d| d.as_nanos() as i64)
+                        .map(|d| i64::try_from(d.as_nanos()).unwrap_or(i64::MAX))
                         .unwrap_or(0);
+                    // Hash only the leading sample of files within the size
+                    // budget; larger files contribute a zero head hash.
                     let head_hash = if size <= max_file_bytes { hash_head(&path) } else { 0 };
-                    out.insert(rel, FileStat { size, mtime_ns, head_hash });
+                    let _previous = out.insert(rel, FileStat { size, mtime_ns, head_hash });
                 }
                 Err(_) => continue,
             }
@@ -117,15 +117,16 @@ fn collect(root: &Path, dir: &Path, max_file_bytes: u64, out: &mut BTreeMap<Stri
 }
 
 /// FNV-1a 64-bit hash of the first [`HASH_SAMPLE_BYTES`] bytes of `path`.
+#[cfg(test)]
 fn hash_head(path: &Path) -> u64 {
-    const SEED: u64 = 0xcbf29ce484222325;
-    const PRIME: u64 = 0x100000001b3;
+    const SEED: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0100_0000_01b3;
     let mut hash = SEED;
     let mut buf = [0u8; HASH_SAMPLE_BYTES];
     if let Ok(mut f) = std::fs::File::open(path) {
         use std::io::Read;
         if let Ok(n) = f.read(&mut buf) {
-            for &b in &buf[..n] {
+            for &b in buf.get(..n).unwrap_or_default() {
                 hash ^= u64::from(b);
                 hash = hash.wrapping_mul(PRIME);
             }
@@ -155,11 +156,13 @@ pub fn diff(old: &WorkspaceSnapshot, new: &WorkspaceSnapshot) -> SnapshotDelta {
 
 /// Whether the delta indicates meaningful environment drift.
 #[must_use]
+#[cfg(test)]
 fn is_drift(delta: &SnapshotDelta) -> bool {
     !delta.added.is_empty() || !delta.changed.is_empty() || !delta.removed.is_empty()
 }
 
 /// Persist a snapshot as JSON (e.g. as a session derived view).
+#[cfg(test)]
 fn save_json(snapshot: &WorkspaceSnapshot, path: &Path) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -169,11 +172,13 @@ fn save_json(snapshot: &WorkspaceSnapshot, path: &Path) -> io::Result<()> {
 }
 
 /// Load a previously persisted snapshot.
+#[cfg(test)]
 fn load_json(path: &Path) -> io::Result<WorkspaceSnapshot> {
     let bytes = std::fs::read(path)?;
     serde_json::from_slice(&bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
+#[cfg(test)]
 fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339()
 }

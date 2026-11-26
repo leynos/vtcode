@@ -35,11 +35,11 @@ pub fn read_file_with_context_sync(path: &Path, context: &str) -> Result<String>
 ///
 /// Returns an error if the parent directory cannot be created, or if the
 /// contents cannot be written to the path.
-pub fn write_file_with_context_sync(path: &Path, content: &str, context: &str) -> Result<()> {
+pub fn write_file_with_context_sync(path: &Path, payload: &str, context: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         ensure_dir_exists_sync(parent)?;
     }
-    std::fs::write(path, content).with_context(|| format!("Failed to write {}: {}", context, path.display()))
+    std::fs::write(path, payload).with_context(|| format!("Failed to write {}: {}", context, path.display()))
 }
 
 /// Write a JSON file (sync)
@@ -77,23 +77,18 @@ pub fn is_image_path(path: &Path) -> bool {
 }
 
 /// Check whether a string is a Windows absolute path (e.g., `C:\...` or `C:/...`).
-#[expect(
-    clippy::indexing_slicing,
-    reason = "Indices 0, 1 and 2 are covered by the preceding `bytes.len() > 2` check."
-)]
 pub fn is_windows_absolute_path(path: &str) -> bool {
     let bytes = path.as_bytes();
-    bytes.len() > 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && (bytes[2] == b'\\' || bytes[2] == b'/')
+    bytes.len() > 2
+        && bytes.first().is_some_and(u8::is_ascii_alphabetic)
+        && bytes.get(1) == Some(&b':')
+        && matches!(bytes.get(2), Some(b'\\' | b'/'))
 }
 
 /// Remove backslash-escaped whitespace from a token.
 ///
 /// A backslash followed by an ASCII whitespace character is replaced by the
 /// whitespace character itself.  All other characters are passed through.
-#[expect(
-    unused_results,
-    reason = "The peeked character has already been pushed to `result`; consuming it only advances the iterator."
-)]
 pub fn unescape_whitespace(token: &str) -> String {
     let mut result = String::with_capacity(token.len());
     let mut chars = token.chars().peekable();
@@ -103,7 +98,7 @@ pub fn unescape_whitespace(token: &str) -> String {
             && next.is_ascii_whitespace()
         {
             result.push(*next);
-            chars.next();
+            let _ = chars.next();
             continue;
         }
         result.push(ch);
@@ -120,10 +115,6 @@ pub fn unescape_whitespace(token: &str) -> String {
 ///
 /// The `candidate_check` closure receives a trimmed candidate string and
 /// returns `true` if it should be accepted as a valid image path.
-#[expect(
-    clippy::string_slice,
-    reason = "`last_space` comes from `rfind(' ')`, so it is a character boundary within `candidate`."
-)]
 pub fn trim_trailing_image_path<F>(raw: &str, candidate_check: F) -> &str
 where
     F: Fn(&str) -> bool,
@@ -133,7 +124,7 @@ where
     }
     let mut candidate = raw.trim_end();
     while let Some(last_space) = candidate.rfind(' ') {
-        candidate = &candidate[..last_space];
+        candidate = candidate.get(..last_space).unwrap_or_default();
         if candidate_check(candidate) {
             return candidate;
         }

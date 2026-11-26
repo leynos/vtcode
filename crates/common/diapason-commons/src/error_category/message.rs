@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use super::ErrorCategory;
 
 #[must_use]
+/// Classify an erased `anyhow` error by its message.
 pub fn classify_anyhow_error(err: &anyhow::Error) -> ErrorCategory {
     let msg = err.to_string().to_ascii_lowercase();
     classify_error_message(&msg)

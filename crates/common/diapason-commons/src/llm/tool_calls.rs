@@ -126,14 +126,16 @@ impl ToolCall {
         }
 
         match self.call_type.as_str() {
-            "function" => self.validate_function(),
+            "function" => self.validate_function()?,
             // For custom tools, we allow raw text payload without JSON validation
             "custom" => self.validate_named_function(
                 "Custom tool call missing function details",
                 "Custom tool name cannot be empty",
-            ),
-            _ => Err(format!("Unsupported tool call type: {}", self.call_type)),
+            )?,
+            _ => return Err(format!("Unsupported tool call type: {}", self.call_type)),
         }
+
+        Ok(())
     }
 
     /// Validates that function details are present and carry a non-empty name.
@@ -148,9 +150,10 @@ impl ToolCall {
     /// Validates a function-type tool call, including its JSON arguments.
     fn validate_function(&self) -> Result<(), String> {
         self.validate_named_function("Function tool call missing function details", "Function name cannot be empty")?;
-        self.parsed_arguments()
-            .map(|_| ())
-            .map_err(|error| format!("Invalid JSON in function arguments: {error}"))
+        let _ = self
+            .parsed_arguments()
+            .map_err(|error| format!("Invalid JSON in function arguments: {error}"))?;
+        Ok(())
     }
 }
 
@@ -210,8 +213,8 @@ fn extract_balanced_json(input: &str) -> Option<&str> {
 
         match ch {
             '"' => in_string = true,
-            _ if ch as u32 == opening as u32 => depth += 1,
-            _ if ch as u32 == closing as u32 => {
+            _ if u32::from(ch) == u32::from(opening) => depth += 1,
+            _ if u32::from(ch) == u32::from(closing) => {
                 depth = depth.saturating_sub(1);
                 if depth == 0 {
                     let end = start + offset + ch.len_utf8();

@@ -1,5 +1,9 @@
 //! Implementation-plan data extracted from the original UI protocol types module.
 
+use num_traits::ToPrimitive;
+
+use crate::utils::saturating_float_to_u8;
+
 // ---------------------------------------------------------------------------
 // Plan types
 // ---------------------------------------------------------------------------
@@ -51,6 +55,25 @@ pub struct PlanContent {
     pub completed_steps: usize,
 }
 
+fn finish_phase(phases: &mut Vec<PlanPhase>, current_phase: &mut Option<PlanPhase>) {
+    if let Some(phase) = current_phase.take() {
+        phases.push(phase);
+    }
+}
+
+fn add_plan_step(current_phase: &mut Option<PlanPhase>, description: &str, completed: bool) {
+    let Some(phase) = current_phase else {
+        return;
+    };
+    phase.steps.push(PlanStep {
+        number: phase.steps.len() + 1,
+        description: description.to_owned(),
+        details: None,
+        files: Vec::new(),
+        completed,
+    });
+}
+
 impl PlanContent {
     /// Parse plan content from markdown.
     pub fn from_markdown(title: String, content: &str, file_path: Option<String>) -> Self {
@@ -75,26 +98,20 @@ impl PlanContent {
             }
 
             if reading_summary {
-                if !trimmed.is_empty() {
-                    if summary.is_empty() {
-                        summary = trimmed.to_string();
-                    }
+                if trimmed.is_empty() {
                     reading_summary = false;
+                    continue;
                 }
-                continue;
-            }
-
-            // Extract summary from first paragraph
-            if summary.is_empty() && !trimmed.is_empty() && !trimmed.starts_with('#') {
-                summary = trimmed.to_string();
+                if summary.is_empty() {
+                    summary = trimmed.to_string();
+                }
+                reading_summary = false;
                 continue;
             }
 
             // Phase headers (## Phase X: ...)
             if let Some(phase_name) = trimmed.strip_prefix("## ") {
-                if let Some(phase) = current_phase.take() {
-                    phases.push(phase);
-                }
+                finish_phase(&mut phases, &mut current_phase);
                 current_phase = Some(PlanPhase {
                     name: phase_name.to_string(),
                     steps: Vec::new(),
@@ -105,61 +122,42 @@ impl PlanContent {
 
             // Open questions section
             if trimmed == "## Open Questions" {
-                if let Some(phase) = current_phase.take() {
-                    phases.push(phase);
-                }
+                finish_phase(&mut phases, &mut current_phase);
                 continue;
             }
 
             // Step items ([ ] or [x] prefixed)
             if let Some(rest) = trimmed.strip_prefix("[ ] ") {
                 total_steps += 1;
-                if let Some(ref mut phase) = current_phase {
-                    phase.steps.push(PlanStep {
-                        number: phase.steps.len() + 1,
-                        description: rest.to_string(),
-                        details: None,
-                        files: Vec::new(),
-                        completed: false,
-                    });
-                }
+                add_plan_step(&mut current_phase, rest, false);
                 continue;
             }
 
             if let Some(rest) = trimmed.strip_prefix("[x] ").or_else(|| trimmed.strip_prefix("[X] ")) {
                 total_steps += 1;
                 completed_steps += 1;
-                if let Some(ref mut phase) = current_phase {
-                    phase.steps.push(PlanStep {
-                        number: phase.steps.len() + 1,
-                        description: rest.to_string(),
-                        details: None,
-                        files: Vec::new(),
-                        completed: true,
-                    });
-                }
+                add_plan_step(&mut current_phase, rest, true);
                 continue;
             }
 
             // Numbered steps (1. **Step 1** ...)
             if trimmed.starts_with(|c: char| c.is_ascii_digit()) && trimmed.contains('.') {
                 total_steps += 1;
-                if let Some(ref mut phase) = current_phase {
-                    let desc = trimmed.split_once('.').map(|x| x.1).unwrap_or("").trim();
-                    phase.steps.push(PlanStep {
-                        number: phase.steps.len() + 1,
-                        description: desc.to_string(),
-                        details: None,
-                        files: Vec::new(),
-                        completed: false,
-                    });
-                }
+                let description = trimmed.split_once('.').map_or("", |(_, rest)| rest).trim();
+                add_plan_step(&mut current_phase, description, false);
                 continue;
             }
 
             // Question items
             if trimmed.starts_with("- (") || trimmed.starts_with("- ?") {
                 open_questions.push(trimmed.trim_start_matches("- ").to_string());
+            }
+
+            // Fallback summary: the first line that is not a heading, a step,
+            // or a question. Running it after the structural branches keeps a
+            // checkbox out of the summary when the plan opens with a phase.
+            if summary.is_empty() && !trimmed.is_empty() && !trimmed.starts_with('#') {
+                summary = trimmed.to_string();
             }
         }
 
@@ -187,19 +185,13 @@ impl PlanContent {
     }
 
     /// Get progress as a percentage.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "The ratio is rendered as a whole percentage; the float-to-`u8` cast truncates toward zero and saturates, which is the intended display behaviour."
-    )]
-    #[expect(
-        clippy::cast_sign_loss,
-        reason = "Both step counts are unsigned and the ratio is multiplied by a positive constant, so the percentage is never negative."
-    )]
     pub fn progress_percent(&self) -> u8 {
         if self.total_steps == 0 {
             0
         } else {
-            ((self.completed_steps as f32 / self.total_steps as f32) * 100.0) as u8
+            let completed_steps = self.completed_steps.to_f32().unwrap_or(f32::MAX);
+            let total_steps = self.total_steps.to_f32().unwrap_or(f32::MAX);
+            saturating_float_to_u8(completed_steps / total_steps * 100.0)
         }
     }
 }
@@ -219,5 +211,22 @@ mod tests {
         assert_eq!(plan.summary, "Focus on startup latency.");
         assert_eq!(plan.total_steps, 2);
         assert_eq!(plan.raw_content.lines().next(), Some("Summary"));
+    }
+
+    #[test]
+    fn keeps_checkbox_steps_out_of_the_fallback_summary() {
+        // A plan whose summary section is empty and whose first content is a
+        // phase: the unchecked step must count as a step, not become the
+        // summary, so progress stays at one of two rather than two of two.
+        let plan = PlanContent::from_markdown(
+            "Implementation Plan".to_string(),
+            "## Summary\n\n## Phase A\n[ ] First\n[x] Second\n",
+            None,
+        );
+
+        assert_eq!(plan.summary, "");
+        assert_eq!(plan.total_steps, 2);
+        assert_eq!(plan.completed_steps, 1);
+        assert_eq!(plan.progress_percent(), 50);
     }
 }

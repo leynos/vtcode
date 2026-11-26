@@ -1,10 +1,5 @@
 //! Terminal notification modes, detection, and emission helpers.
 
-#![expect(
-    clippy::let_underscore_must_use,
-    reason = "ANSI output cleanup intentionally ignores the best-effort flush result."
-)]
-
 use super::{BEL, OSC};
 use once_cell::sync::Lazy;
 use std::io::{IsTerminal, Write};
@@ -70,7 +65,7 @@ fn is_bell_enabled(default_enabled: bool) -> bool {
 #[inline]
 fn emit_bell() {
     print!("{BEL}");
-    let _ = std::io::stdout().flush();
+    let _flush_result = std::io::stdout().flush();
 }
 
 /// Notify the user, selecting the transport automatically.
@@ -173,14 +168,14 @@ fn send_osc777_notification(message: Option<&str>) {
     let title = sanitize_notification_text("Diapason");
     let payload = build_osc777_payload(&title, &body);
     print!("{payload}{BEL}");
-    let _ = std::io::stdout().flush();
+    let _flush_result = std::io::stdout().flush();
 }
 
 fn send_osc9_notification(message: Option<&str>) {
     let body = sanitize_notification_text(message.unwrap_or("Human approval required"));
     let payload = build_osc9_payload(&body);
     print!("{payload}{BEL}");
-    let _ = std::io::stdout().flush();
+    let _flush_result = std::io::stdout().flush();
 }
 
 fn sanitize_notification_text(raw: &str) -> String {

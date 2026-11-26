@@ -45,6 +45,7 @@ impl ErrorCategory {
     /// circuit breaker thresholds).
     #[inline]
     #[must_use]
+    #[cfg(test)]
     pub(super) const fn is_llm_mistake(&self) -> bool {
         matches!(self, ErrorCategory::InvalidParameters)
     }

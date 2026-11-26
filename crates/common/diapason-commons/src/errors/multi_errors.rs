@@ -64,6 +64,7 @@ impl<E> MultiErrors<E> {
     /// Consume the collector and return the underlying error vector.
     #[cfg(test)]
     #[must_use]
+    #[cfg(test)]
     pub(super) fn into_inner(self) -> Vec<E> {
         self.errors
     }

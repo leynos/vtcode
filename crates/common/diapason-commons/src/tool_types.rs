@@ -1,8 +1,3 @@
-#![expect(
-    clippy::cast_possible_truncation,
-    reason = "Quality scores are normalized to the documented 0..=100 display range before narrowing."
-)]
-
 //! Shared runtime types for the Diapason tool system.
 //!
 //! This module provides types shared between the LLM and tools subsystems,
@@ -15,6 +10,8 @@
 //! - [`EnhancedToolResult`] - tool result with quality metadata
 //! - [`ResultMetadata`] - quality/confidence scoring for tool results
 //! - [`tool_names`] - tool name constants used across subsystems
+
+use crate::utils::saturating_float_to_u8;
 
 // ---------------------------------------------------------------------------
 // CompactStr type alias
@@ -76,18 +73,25 @@ pub const NETWORK_ERROR_PATTERNS: &[&str] = &["connection", "timeout", "network"
 
 /// Default capacity hints for common collections
 pub const DEFAULT_VEC_CAPACITY: usize = 32;
+/// Default capacity hint for hash maps.
 pub const DEFAULT_HASHMAP_CAPACITY: usize = 16;
+/// Default capacity hint for strings.
 pub const DEFAULT_STRING_CAPACITY: usize = 256;
 
 /// Context optimization constants following AGENTS.md guidelines
 pub const MAX_SEARCH_RESULTS: usize = 5;
+/// Maximum number of items summarized in a list.
 pub const MAX_LIST_ITEMS_SUMMARY: usize = 5;
+/// Prefix of the overflow indicator.
 pub const OVERFLOW_INDICATOR_PREFIX: &str = "[+]";
+/// Suffix of the overflow indicator.
 pub const OVERFLOW_INDICATOR_SUFFIX: &str = "more items]";
 
 /// Common tool operation limits
 pub const MAX_FILE_SIZE_FOR_PROCESSING: usize = 100 * 1024 * 1024; // 100MB
+/// Maximum number of context lines included in a tool result.
 pub const MAX_CONTEXT_LINES: usize = 20;
+/// Maximum number of output tokens included in a tool result.
 pub const MAX_OUTPUT_TOKENS: usize = 4000;
 
 /// Reusable empty JSON object schema `{"type": "object"}` for tool parameter definitions.
@@ -250,6 +254,10 @@ impl ResultMetadata {
     }
 }
 
+fn quality_percentage(score: f32) -> u32 {
+    u32::from(saturating_float_to_u8((score * 100.0).round().max(0.0))).min(100)
+}
+
 /// Enhanced tool result with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnhancedToolResult {
@@ -271,6 +279,7 @@ pub struct EnhancedToolResult {
 }
 
 impl EnhancedToolResult {
+    /// Wrap a freshly produced tool value.
     pub fn new(value: Value, metadata: ResultMetadata, tool_name: impl Into<CompactStr>) -> Self {
         Self {
             value,
@@ -284,6 +293,7 @@ impl EnhancedToolResult {
         }
     }
 
+    /// Wrap a tool value served from the cache.
     pub fn from_cache(value: Value, metadata: ResultMetadata, tool_name: impl Into<CompactStr>) -> Self {
         Self {
             value,
@@ -310,12 +320,8 @@ impl EnhancedToolResult {
     }
 
     /// Convert to a message-friendly format
-    #[allow(
-        clippy::cast_sign_loss,
-        reason = "Intentional compatibility, platform, or test-only suppression."
-    )] // quality_score is always 0.0-1.0
     pub fn to_summary(&self) -> String {
-        let quality = ((self.metadata.quality_score() * 100.0).round().max(0.0) as u32).min(100);
+        let quality = quality_percentage(self.metadata.quality_score()).min(100);
         match self.metadata.completeness {
             ResultCompleteness::Complete => {
                 format!("{} found {} results (confidence: {}%)", self.tool_name, self.metadata.result_count, quality)
@@ -343,4 +349,15 @@ pub trait ResultScorer {
 
     /// Tool name this scorer handles
     fn tool_name(&self) -> &str;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::quality_percentage;
+
+    #[test]
+    fn quality_percentage_preserves_explicit_hundred_bound() {
+        assert_eq!(quality_percentage(2.55), 100, "display confidence must never exceed 100 percent");
+        assert_eq!(quality_percentage(f32::MAX), 100, "maximum scores remain bounded");
+    }
 }

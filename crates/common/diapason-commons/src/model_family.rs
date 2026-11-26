@@ -139,12 +139,14 @@ impl ModelFamily {
     }
 
     /// Get the auto-compact token limit, computing a default if not set
+    #[cfg(test)]
     fn auto_compact_token_limit(&self) -> Option<i64> {
         self.auto_compact_token_limit
             .or(self.context_window.map(Self::default_auto_compact_limit))
     }
 
     /// Compute the default auto-compact limit (90% of context window)
+    #[cfg(test)]
     const fn default_auto_compact_limit(context_window: i64) -> i64 {
         (context_window * 9) / 10
     }
@@ -155,6 +157,7 @@ impl ModelFamily {
     }
 
     /// Check if this family supports a specific feature
+    #[cfg(test)]
     fn supports_feature(&self, feature: &str) -> bool {
         match feature {
             "reasoning" | "thinking" => self.supports_thinking,

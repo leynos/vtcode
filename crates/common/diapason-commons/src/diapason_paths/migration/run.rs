@@ -27,6 +27,80 @@ enum MarkerState {
     Absent,
 }
 
+/// Inspects the migration marker, recording any failure in `report`.
+fn inspect_marker(marker: &Path, report: &mut MigrationReport) -> MarkerState {
+    match fs::symlink_metadata(marker) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            report.failures.push(MigrationFailure {
+                path: marker.to_path_buf(),
+                error: "migration marker is a symlink; refusing to follow it".to_string(),
+            });
+            MarkerState::Blocked
+        }
+        Ok(metadata) if metadata.is_file() => match valid_migration_marker(marker) {
+            Ok(true) => MarkerState::Completed,
+            Ok(false) => {
+                report.failures.push(MigrationFailure {
+                    path: marker.to_path_buf(),
+                    error: "migration marker has invalid contents or permissions".to_string(),
+                });
+                MarkerState::Blocked
+            }
+            Err(error) => {
+                report.failures.push(MigrationFailure {
+                    path: marker.to_path_buf(),
+                    error: format!("could not validate migration marker: {error}"),
+                });
+                MarkerState::Blocked
+            }
+        },
+        Ok(_) => {
+            report.failures.push(MigrationFailure {
+                path: marker.to_path_buf(),
+                error: "migration marker is not a regular file".to_string(),
+            });
+            MarkerState::Blocked
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => MarkerState::Absent,
+        Err(error) => {
+            report.failures.push(MigrationFailure {
+                path: marker.to_path_buf(),
+                error: format!("could not inspect migration marker: {error}"),
+            });
+            MarkerState::Blocked
+        }
+    }
+}
+
+/// Returns whether the legacy root can be traversed, recording failures in `report`.
+fn legacy_root_is_safe(legacy_root: &Path, report: &mut MigrationReport) -> bool {
+    match fs::symlink_metadata(legacy_root) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            report.failures.push(MigrationFailure {
+                path: legacy_root.to_path_buf(),
+                error: "legacy root is a symlink; refusing to traverse it".to_string(),
+            });
+            false
+        }
+        Ok(metadata) if !metadata.is_dir() => {
+            report.failures.push(MigrationFailure {
+                path: legacy_root.to_path_buf(),
+                error: "legacy root is not a directory".to_string(),
+            });
+            false
+        }
+        Ok(_) => true,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => true,
+        Err(error) => {
+            report.failures.push(MigrationFailure {
+                path: legacy_root.to_path_buf(),
+                error: format!("could not inspect legacy root: {error}"),
+            });
+            false
+        }
+    }
+}
+
 impl LegacyMigrator {
     /// Creates a migrator bound to one resolved global path policy.
     pub fn new(paths: DiapasonPaths) -> Self {
@@ -148,79 +222,5 @@ impl LegacyMigrator {
             });
         }
         report
-    }
-}
-
-/// Inspects the migration marker, recording any failure in `report`.
-fn inspect_marker(marker: &Path, report: &mut MigrationReport) -> MarkerState {
-    match fs::symlink_metadata(marker) {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            report.failures.push(MigrationFailure {
-                path: marker.to_path_buf(),
-                error: "migration marker is a symlink; refusing to follow it".to_string(),
-            });
-            MarkerState::Blocked
-        }
-        Ok(metadata) if metadata.is_file() => match valid_migration_marker(marker) {
-            Ok(true) => MarkerState::Completed,
-            Ok(false) => {
-                report.failures.push(MigrationFailure {
-                    path: marker.to_path_buf(),
-                    error: "migration marker has invalid contents or permissions".to_string(),
-                });
-                MarkerState::Blocked
-            }
-            Err(error) => {
-                report.failures.push(MigrationFailure {
-                    path: marker.to_path_buf(),
-                    error: format!("could not validate migration marker: {error}"),
-                });
-                MarkerState::Blocked
-            }
-        },
-        Ok(_) => {
-            report.failures.push(MigrationFailure {
-                path: marker.to_path_buf(),
-                error: "migration marker is not a regular file".to_string(),
-            });
-            MarkerState::Blocked
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => MarkerState::Absent,
-        Err(error) => {
-            report.failures.push(MigrationFailure {
-                path: marker.to_path_buf(),
-                error: format!("could not inspect migration marker: {error}"),
-            });
-            MarkerState::Blocked
-        }
-    }
-}
-
-/// Returns whether the legacy root can be traversed, recording failures in `report`.
-fn legacy_root_is_safe(legacy_root: &Path, report: &mut MigrationReport) -> bool {
-    match fs::symlink_metadata(legacy_root) {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            report.failures.push(MigrationFailure {
-                path: legacy_root.to_path_buf(),
-                error: "legacy root is a symlink; refusing to traverse it".to_string(),
-            });
-            false
-        }
-        Ok(metadata) if !metadata.is_dir() => {
-            report.failures.push(MigrationFailure {
-                path: legacy_root.to_path_buf(),
-                error: "legacy root is not a directory".to_string(),
-            });
-            false
-        }
-        Ok(_) => true,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => true,
-        Err(error) => {
-            report.failures.push(MigrationFailure {
-                path: legacy_root.to_path_buf(),
-                error: format!("could not inspect legacy root: {error}"),
-            });
-            false
-        }
     }
 }
