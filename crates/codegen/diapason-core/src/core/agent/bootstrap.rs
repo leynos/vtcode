@@ -175,6 +175,7 @@ fn create_llm_client(config: &AgentConfig) -> Result<AnyClient> {
             anthropic: None,
             model_behaviour: config.model_behaviour.clone(),
             workspace_root: Some(config.workspace.clone()),
+            request_admission_class: diapason_llm::provider_config_types::RequestAdmissionClass::Parent,
         },
     )
     .with_context(|| format!("Failed to initialize provider '{provider_name}'"))?;

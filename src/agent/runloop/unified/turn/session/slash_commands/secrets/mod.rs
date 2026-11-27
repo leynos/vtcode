@@ -538,6 +538,7 @@ fn reload_provider_client_if_matching(
             anthropic: None,
             model_behaviour: ctx.config.model_behaviour.clone(),
             workspace_root: Some(ctx.config.workspace.clone()),
+            request_admission_class: diapason_core::llm::factory::RequestAdmissionClass::Parent,
         },
     ) {
         Ok(provider) => provider,

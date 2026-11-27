@@ -84,6 +84,7 @@ pub(crate) async fn finalize_model_selection(
                 anthropic: None,
                 model_behaviour: config.model_behaviour.clone(),
                 workspace_root: Some(config.workspace.clone()),
+                request_admission_class: diapason_core::llm::factory::RequestAdmissionClass::Parent,
             },
         )
         .context("Failed to initialize provider for the selected model")?;

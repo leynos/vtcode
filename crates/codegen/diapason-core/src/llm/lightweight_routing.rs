@@ -265,6 +265,7 @@ pub fn create_provider_for_model_route(
             anthropic: vt_cfg.map(|cfg| cfg.provider.anthropic.clone()),
             model_behaviour: runtime_config.model_behaviour.clone(),
             workspace_root: Some(runtime_config.workspace.clone()),
+            request_admission_class: diapason_llm::provider_config_types::RequestAdmissionClass::Parent,
         },
     )
     .with_context(|| {

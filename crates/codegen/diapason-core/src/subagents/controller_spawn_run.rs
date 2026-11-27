@@ -70,6 +70,10 @@ enum ChildWaitOutcome {
     TimedOut,
 }
 
+fn child_wait_deadline(timeout: std::time::Duration) -> Option<tokio::time::Instant> {
+    tokio::time::Instant::now().checked_add(timeout)
+}
+
 impl SubagentController {
     /// Spawns a new subagent child process from a [`SpawnAgentRequest`].
     pub async fn spawn(&self, request: SpawnAgentRequest) -> Result<SubagentStatusEntry> {
@@ -347,7 +351,7 @@ impl SubagentController {
         let timeout = std::time::Duration::from_millis(
             timeout_ms.unwrap_or_else(|| self.config.vt_cfg.subagents.default_timeout_seconds.saturating_mul(1000)),
         );
-        let deadline = tokio::time::Instant::now() + timeout;
+        let deadline = child_wait_deadline(timeout);
 
         loop {
             match self.wait_for_child_change(targets, deadline).await {
@@ -369,7 +373,11 @@ impl SubagentController {
         None
     }
 
-    async fn wait_for_child_change(&self, targets: &[String], deadline: tokio::time::Instant) -> ChildWaitOutcome {
+    async fn wait_for_child_change(
+        &self,
+        targets: &[String],
+        deadline: Option<tokio::time::Instant>,
+    ) -> ChildWaitOutcome {
         let notifies = {
             let state = self.state.read().await;
             targets
@@ -392,11 +400,16 @@ impl SubagentController {
             return ChildWaitOutcome::Terminal(Box::new(entry));
         }
 
-        let sleep = tokio::time::sleep_until(deadline);
-        tokio::pin!(sleep);
-        tokio::select! {
-            _ = &mut sleep => ChildWaitOutcome::TimedOut,
-            _ = &mut wait_any => ChildWaitOutcome::Notified,
+        if let Some(deadline) = deadline {
+            let sleep = tokio::time::sleep_until(deadline);
+            tokio::pin!(sleep);
+            tokio::select! {
+                _ = &mut sleep => ChildWaitOutcome::TimedOut,
+                _ = &mut wait_any => ChildWaitOutcome::Notified,
+            }
+        } else {
+            wait_any.await;
+            ChildWaitOutcome::Notified
         }
     }
 
@@ -956,6 +969,11 @@ fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync:
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[test]
+    fn unrepresentable_child_wait_timeout_has_no_deadline() {
+        assert!(child_wait_deadline(Duration::MAX).is_none());
+    }
 
     #[tokio::test]
     async fn registered_waiter_observes_notify_waiters_before_first_wait_poll() {

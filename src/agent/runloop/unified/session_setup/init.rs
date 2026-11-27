@@ -580,6 +580,7 @@ pub(crate) fn create_provider_client(
             anthropic: vt_cfg.map(|cfg| cfg.provider.anthropic.clone()),
             model_behaviour: vt_cfg.map(|cfg| cfg.model.clone()),
             workspace_root: Some(config.workspace.clone()),
+            request_admission_class: diapason_core::llm::factory::RequestAdmissionClass::Parent,
         },
     )
     .context("Failed to initialize provider client")

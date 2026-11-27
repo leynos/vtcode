@@ -349,7 +349,7 @@ fn register_acp_custom_providers(vt_cfg: &DiapasonConfig) {
 #[cfg(test)]
 mod tests {
     use diapason_config::core::CustomProviderConfig;
-    use diapason_core::llm::factory::{ProviderConfig, create_provider_with_config};
+    use diapason_core::llm::factory::{ProviderConfig, RequestAdmissionClass, create_provider_with_config};
 
     use super::*;
 
@@ -391,6 +391,7 @@ mod tests {
                 anthropic: None,
                 model_behaviour: None,
                 workspace_root: None,
+                request_admission_class: RequestAdmissionClass::Parent,
             },
         )
         .expect("ACP launch must register custom providers from runtime config");

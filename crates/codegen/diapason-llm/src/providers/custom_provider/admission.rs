@@ -1,11 +1,13 @@
 //! Shared concurrency admission and aggregate metrics for custom-provider requests.
+use crate::provider_config_types::RequestAdmissionClass;
 use diapason_commons::llm::LLMErrorMetadata;
 use diapason_config::core::CustomProviderConfig;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, Weak};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
+use tokio::time::Instant;
 
 use crate::provider::LLMError;
 
@@ -59,7 +61,79 @@ impl SharedProviderAdmission {
                 Err(observed) => current = observed,
             }
         }
-        self.child_notify.notify_one();
+        self.child_notify.notify_waiters();
+    }
+}
+
+#[derive(Debug)]
+struct ChildSlotReservation {
+    shared: Arc<SharedProviderAdmission>,
+}
+
+impl Drop for ChildSlotReservation {
+    fn drop(&mut self) {
+        self.shared.release_child_slot();
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum AdmissionWaitError {
+    TimedOut,
+    Closed,
+}
+
+fn admission_deadline(timeout: Duration) -> Option<Instant> {
+    // A duration outside Instant's range has no representable expiration. Treat
+    // it as unbounded rather than panicking or timing out earlier than asked.
+    Instant::now().checked_add(timeout)
+}
+
+fn deadline_expired(deadline: Option<Instant>) -> bool {
+    deadline.is_some_and(|deadline| Instant::now() >= deadline)
+}
+
+async fn acquire_provider_permit(
+    semaphore: Arc<Semaphore>,
+    deadline: Option<Instant>,
+) -> Result<OwnedSemaphorePermit, AdmissionWaitError> {
+    if deadline_expired(deadline) {
+        return Err(AdmissionWaitError::TimedOut);
+    }
+
+    let acquire = semaphore.acquire_owned();
+    match deadline {
+        Some(deadline) => tokio::time::timeout_at(deadline, acquire)
+            .await
+            .map_err(|_elapsed| AdmissionWaitError::TimedOut)?
+            .map_err(|_closed| AdmissionWaitError::Closed),
+        None => acquire.await.map_err(|_closed| AdmissionWaitError::Closed),
+    }
+}
+
+async fn reserve_child_slot(
+    shared: Arc<SharedProviderAdmission>,
+    deadline: Option<Instant>,
+) -> Result<ChildSlotReservation, AdmissionWaitError> {
+    loop {
+        if deadline_expired(deadline) {
+            return Err(AdmissionWaitError::TimedOut);
+        }
+
+        let mut child_released = Box::pin(shared.child_notify.notified());
+        // Register before checking the counter so a release between the check
+        // and the wait cannot be lost.
+        child_released.as_mut().enable();
+        if shared.try_acquire_child_slot() {
+            drop(child_released);
+            return Ok(ChildSlotReservation { shared });
+        }
+
+        match deadline {
+            Some(deadline) => tokio::time::timeout_at(deadline, child_released.as_mut())
+                .await
+                .map_err(|_elapsed| AdmissionWaitError::TimedOut)?,
+            None => child_released.as_mut().await,
+        }
     }
 }
 
@@ -173,11 +247,11 @@ impl Drop for AdmissionQueueWait {
 #[derive(Debug)]
 pub(super) struct CustomProviderAdmissionPermit {
     _permit: OwnedSemaphorePermit,
-    child_admission: Option<Arc<SharedProviderAdmission>>,
+    child_admission: Option<ChildSlotReservation>,
 }
 
 impl CustomProviderAdmissionPermit {
-    fn new(permit: OwnedSemaphorePermit, child_admission: Option<Arc<SharedProviderAdmission>>) -> Self {
+    fn new(permit: OwnedSemaphorePermit, child_admission: Option<ChildSlotReservation>) -> Self {
         saturating_add(&ADMISSION_METRICS.in_flight, 1);
         Self { _permit: permit, child_admission }
     }
@@ -186,9 +260,7 @@ impl CustomProviderAdmissionPermit {
 impl Drop for CustomProviderAdmissionPermit {
     fn drop(&mut self) {
         saturating_sub_one(&ADMISSION_METRICS.in_flight);
-        if let Some(child_admission) = self.child_admission.take() {
-            child_admission.release_child_slot();
-        }
+        drop(self.child_admission.take());
     }
 }
 
@@ -198,13 +270,16 @@ pub(super) struct CustomProviderAdmission {
     pub(super) semaphore: Option<Arc<Semaphore>>,
     pub(super) queue_timeout: Duration,
     pub(super) shared: Option<Arc<SharedProviderAdmission>>,
-    pub(super) is_subagent: bool,
+    pub(super) request_admission_class: RequestAdmissionClass,
 }
 
 impl CustomProviderAdmission {
-    pub(super) fn new(config: &CustomProviderConfig, effective_base_url: &str) -> Self {
+    pub(super) fn new(
+        config: &CustomProviderConfig,
+        effective_base_url: &str,
+        request_admission_class: RequestAdmissionClass,
+    ) -> Self {
         let provider_name: Arc<str> = Arc::from(config.name.as_str());
-        let is_subagent = super::is_subagent_request_context();
         let shared = config.request_policy.max_in_flight_requests.map(|limit| {
             let identity = serde_json::to_vec(&(config, effective_base_url)).ok();
             match identity {
@@ -237,7 +312,7 @@ impl CustomProviderAdmission {
             semaphore: shared.as_ref().map(|admission| Arc::clone(&admission.semaphore)),
             queue_timeout: Duration::from_secs(config.request_policy.queue_timeout_seconds),
             shared,
-            is_subagent,
+            request_admission_class,
         }
     }
 
@@ -246,8 +321,9 @@ impl CustomProviderAdmission {
             return Ok(None);
         };
         let mut queue_wait = AdmissionQueueWait::start(Arc::clone(&self.provider_name));
+        let deadline = admission_deadline(self.queue_timeout);
 
-        if self.is_subagent {
+        let child_admission = if self.request_admission_class == RequestAdmissionClass::Child {
             let Some(shared) = self.shared.as_ref().cloned() else {
                 return Err(LLMError::Provider {
                     message: format!("custom provider '{}' has invalid subagent admission state", self.provider_name),
@@ -262,54 +338,29 @@ impl CustomProviderAdmission {
                     )),
                 });
             };
-            let deadline = Instant::now() + self.queue_timeout;
-            loop {
-                let remaining = deadline.saturating_duration_since(Instant::now());
-                if remaining.is_zero() {
+            match reserve_child_slot(shared, deadline).await {
+                Ok(reservation) => Some(reservation),
+                Err(AdmissionWaitError::TimedOut) => {
                     queue_wait.timed_out = true;
                     return Err(self.timeout_error());
                 }
-
-                match tokio::time::timeout(remaining, Arc::clone(semaphore).acquire_owned()).await {
-                    Ok(Ok(permit)) => {
-                        let child_released = shared.child_notify.notified();
-                        if shared.try_acquire_child_slot() {
-                            drop(child_released);
-                            drop(queue_wait);
-                            return Ok(Some(CustomProviderAdmissionPermit::new(permit, Some(shared))));
-                        }
-                        drop(permit);
-
-                        let remaining = deadline.saturating_duration_since(Instant::now());
-                        if remaining.is_zero() {
-                            queue_wait.timed_out = true;
-                            return Err(self.timeout_error());
-                        }
-                        if tokio::time::timeout(remaining, child_released).await.is_err() {
-                            queue_wait.timed_out = true;
-                            return Err(self.timeout_error());
-                        }
-                    }
-                    Ok(Err(_closed)) => return Err(self.closed_error()),
-                    Err(_elapsed) => {
-                        queue_wait.timed_out = true;
-                        return Err(self.timeout_error());
-                    }
-                }
+                Err(AdmissionWaitError::Closed) => return Err(self.closed_error()),
             }
-        }
+        } else {
+            None
+        };
 
-        match tokio::time::timeout(self.queue_timeout, Arc::clone(semaphore).acquire_owned()).await {
-            Ok(Ok(permit)) => {
-                drop(queue_wait);
-                Ok(Some(CustomProviderAdmissionPermit::new(permit, None)))
-            }
-            Ok(Err(_closed)) => Err(self.closed_error()),
-            Err(_elapsed) => {
+        let permit = match acquire_provider_permit(Arc::clone(semaphore), deadline).await {
+            Ok(permit) => permit,
+            Err(AdmissionWaitError::Closed) => return Err(self.closed_error()),
+            Err(AdmissionWaitError::TimedOut) => {
                 queue_wait.timed_out = true;
-                Err(self.timeout_error())
+                return Err(self.timeout_error());
             }
-        }
+        };
+
+        drop(queue_wait);
+        Ok(Some(CustomProviderAdmissionPermit::new(permit, child_admission)))
     }
 
     fn closed_error(&self) -> LLMError {

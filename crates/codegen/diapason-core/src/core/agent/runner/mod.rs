@@ -30,6 +30,7 @@ use crate::llm::provider as uni_provider;
 use crate::primary_agent::ActivePrimaryAgent;
 use crate::prompts::PromptContext;
 use crate::tools::ToolRegistry;
+use diapason_llm::provider_config_types::RequestAdmissionClass;
 
 use anyhow::{Context, Result, anyhow};
 use diapason_config::auth::OpenAIChatGptAuthHandle;
@@ -84,6 +85,8 @@ pub struct AgentRunner {
     client: AnyClient,
     /// Unified provider client (OpenAI/Anthropic/Gemini) for tool-calling
     provider_client: Box<dyn uni_provider::LLMProvider>,
+    #[cfg(test)]
+    request_admission_class: RequestAdmissionClass,
     /// Tool registry with restricted access
     tool_registry: ToolRegistry,
     /// System prompt content
@@ -167,6 +170,7 @@ impl AgentRunner {
             ThreadBootstrap::new(None),
             None,
             None,
+            RequestAdmissionClass::Parent,
         ))
         .await
     }
@@ -188,6 +192,39 @@ impl AgentRunner {
         vt_cfg: Option<DiapasonConfig>,
         openai_chatgpt_auth: Option<OpenAIChatGptAuthHandle>,
     ) -> Result<Self> {
+        Self::new_with_bootstrap_and_request_admission_class(
+            agent_type,
+            model,
+            api_key,
+            workspace,
+            session_id,
+            settings,
+            steering_receiver,
+            bootstrap,
+            vt_cfg,
+            openai_chatgpt_auth,
+            RequestAdmissionClass::Parent,
+        )
+        .await
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Preserves the runner inputs while carrying provider admission policy."
+    )]
+    pub(crate) async fn new_with_bootstrap_and_request_admission_class(
+        agent_type: AgentType,
+        model: ModelId,
+        api_key: String,
+        workspace: PathBuf,
+        session_id: String,
+        settings: RunnerSettings,
+        steering_receiver: Option<tokio::sync::mpsc::UnboundedReceiver<SteeringMessage>>,
+        bootstrap: ThreadBootstrap,
+        vt_cfg: Option<DiapasonConfig>,
+        openai_chatgpt_auth: Option<OpenAIChatGptAuthHandle>,
+        request_admission_class: RequestAdmissionClass,
+    ) -> Result<Self> {
         Box::pin(Self::new_internal(
             agent_type,
             model,
@@ -199,6 +236,7 @@ impl AgentRunner {
             bootstrap,
             vt_cfg,
             openai_chatgpt_auth,
+            request_admission_class,
         ))
         .await
     }
@@ -218,6 +256,7 @@ impl AgentRunner {
         bootstrap: ThreadBootstrap,
         vt_cfg: Option<DiapasonConfig>,
         openai_chatgpt_auth: Option<OpenAIChatGptAuthHandle>,
+        request_admission_class: RequestAdmissionClass,
     ) -> Result<Self> {
         // Load configuration once to seed system prompt and runtime policies
         let session_config = if let Some(vt_cfg) = vt_cfg {
@@ -254,7 +293,10 @@ impl AgentRunner {
             anthropic: Some(session_config.effective().provider.anthropic.clone()),
             model_behaviour: Some(session_config.effective().model.clone()),
             workspace_root: Some(workspace.clone()),
+            request_admission_class,
         };
+        #[cfg(test)]
+        let request_admission_class = provider_config.request_admission_class;
 
         let client: AnyClient = Box::new(ProviderClientAdapter::new(
             create_provider_with_config(&provider_name, provider_config.clone())
@@ -359,6 +401,8 @@ impl AgentRunner {
             agent_type,
             client,
             provider_client,
+            #[cfg(test)]
+            request_admission_class,
             tool_registry,
             system_prompt,
             system_prompt_report,
@@ -392,6 +436,11 @@ impl AgentRunner {
     /// budgets and earlier navigation streak intervention.
     pub fn set_subagent_mode(&self, is_subagent: bool) {
         self.loop_detector.lock().set_subagent_mode(is_subagent);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn request_admission_class(&self) -> RequestAdmissionClass {
+        self.request_admission_class
     }
 
     /// Attach a subagent controller to this runner's tool registry so the

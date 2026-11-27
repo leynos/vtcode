@@ -1,8 +1,6 @@
 //! Tests endpoint-scoped request admission, capacity limits, and queue outcomes.
-use super::super::{
-    CustomProviderAdmission, CustomProviderBackendRouter, custom_provider_admission_metrics,
-    with_subagent_request_context,
-};
+use super::super::{CustomProviderAdmission, CustomProviderBackendRouter, custom_provider_admission_metrics};
+use crate::provider_config_types::RequestAdmissionClass;
 use diapason_config::core::{CustomProviderConfig, CustomProviderRequestPolicyConfig};
 use proptest::prelude::*;
 use rstest::rstest;
@@ -41,6 +39,18 @@ fn admission_router(base_url: &str) -> CustomProviderBackendRouter {
 }
 
 fn admission_for_capacity(provider_name: &str, capacity: usize) -> CustomProviderAdmission {
+    admission_for_capacity_with_class(provider_name, capacity, RequestAdmissionClass::Parent)
+}
+
+fn child_admission_for_capacity(provider_name: &str, capacity: usize) -> CustomProviderAdmission {
+    admission_for_capacity_with_class(provider_name, capacity, RequestAdmissionClass::Child)
+}
+
+fn admission_for_capacity_with_class(
+    provider_name: &str,
+    capacity: usize,
+    request_admission_class: RequestAdmissionClass,
+) -> CustomProviderAdmission {
     let config = CustomProviderConfig {
         name: provider_name.to_string(),
         request_policy: CustomProviderRequestPolicyConfig {
@@ -51,7 +61,7 @@ fn admission_for_capacity(provider_name: &str, capacity: usize) -> CustomProvide
         ..CustomProviderConfig::default()
     };
 
-    CustomProviderAdmission::new(&config, &format!("https://{provider_name}.example/v1"))
+    CustomProviderAdmission::new(&config, &format!("https://{provider_name}.example/v1"), request_admission_class)
 }
 
 struct AdmissionCapacityWave {
@@ -237,10 +247,8 @@ async fn shared_provider_child_budget_preserves_parent_capacity_across_sessions(
     let _admission_test_guard = ADMISSION_TEST_LOCK.lock().await;
     let parent_admission = admission_for_capacity("cross-session-parent-priority", 2);
     let sibling_parent_admission = admission_for_capacity("cross-session-parent-priority", 2);
-    let first_child_admission =
-        with_subagent_request_context(async { admission_for_capacity("cross-session-parent-priority", 2) }).await;
-    let second_child_admission =
-        with_subagent_request_context(async { admission_for_capacity("cross-session-parent-priority", 2) }).await;
+    let first_child_admission = child_admission_for_capacity("cross-session-parent-priority", 2);
+    let second_child_admission = child_admission_for_capacity("cross-session-parent-priority", 2);
 
     let first_parent_permit = parent_admission
         .acquire()
@@ -285,14 +293,8 @@ async fn shared_provider_child_budget_preserves_parent_capacity_across_sessions(
     drop(second_child_permit);
 
     let sibling_parent_admission = admission_for_capacity("cross-session-parent-priority-running-child", 2);
-    let first_child_admission = with_subagent_request_context(async {
-        admission_for_capacity("cross-session-parent-priority-running-child", 2)
-    })
-    .await;
-    let second_child_admission = with_subagent_request_context(async {
-        admission_for_capacity("cross-session-parent-priority-running-child", 2)
-    })
-    .await;
+    let first_child_admission = child_admission_for_capacity("cross-session-parent-priority-running-child", 2);
+    let second_child_admission = child_admission_for_capacity("cross-session-parent-priority-running-child", 2);
 
     let first_child_permit = first_child_admission
         .acquire()
@@ -326,6 +328,78 @@ async fn shared_provider_child_budget_preserves_parent_capacity_across_sessions(
 }
 
 #[tokio::test]
+async fn simultaneous_child_slot_releases_wake_all_registered_waiters() {
+    let _admission_test_guard = ADMISSION_TEST_LOCK.lock().await;
+    let first = child_admission_for_capacity("coalesced-child-wakeups", 3);
+    let second = child_admission_for_capacity("coalesced-child-wakeups", 3);
+    let third = child_admission_for_capacity("coalesced-child-wakeups", 3);
+    let fourth = child_admission_for_capacity("coalesced-child-wakeups", 3);
+
+    let first_permit = first
+        .acquire()
+        .await
+        .expect("first child admission")
+        .expect("first child permit");
+    let second_permit = second
+        .acquire()
+        .await
+        .expect("second child admission")
+        .expect("second child permit");
+    let mut third_waiter = tokio::spawn(async move { third.acquire().await });
+    let mut fourth_waiter = tokio::spawn(async move { fourth.acquire().await });
+    for _ in 0..4 {
+        tokio::task::yield_now().await;
+    }
+    assert!(!third_waiter.is_finished());
+    assert!(!fourth_waiter.is_finished());
+
+    drop((first_permit, second_permit));
+    let third_permit = tokio::time::timeout(Duration::from_secs(1), &mut third_waiter)
+        .await
+        .expect("first freed child slot should wake a waiter")
+        .expect("third child task")
+        .expect("third child admission")
+        .expect("third child permit");
+    let fourth_permit = tokio::time::timeout(Duration::from_secs(1), &mut fourth_waiter)
+        .await
+        .expect("second freed child slot should wake another waiter")
+        .expect("fourth child task")
+        .expect("fourth child admission")
+        .expect("fourth child permit");
+    drop((third_permit, fourth_permit));
+}
+
+#[tokio::test]
+async fn unrepresentable_queue_timeout_does_not_panic_or_expire_early() {
+    let _admission_test_guard = ADMISSION_TEST_LOCK.lock().await;
+    let parent = admission_for_capacity("unrepresentable-queue-timeout", 2);
+    let first_parent_permit = parent
+        .acquire()
+        .await
+        .expect("first parent admission")
+        .expect("first parent permit");
+    let second_parent_permit = parent
+        .acquire()
+        .await
+        .expect("second parent admission")
+        .expect("second parent permit");
+    let mut child = child_admission_for_capacity("unrepresentable-queue-timeout", 2);
+    child.queue_timeout = Duration::MAX;
+    let mut queued = tokio::spawn(async move { child.acquire().await });
+    tokio::task::yield_now().await;
+    assert!(!queued.is_finished(), "an unrepresentable deadline must not become an immediate timeout");
+
+    drop(first_parent_permit);
+    let permit = tokio::time::timeout(Duration::from_secs(1), &mut queued)
+        .await
+        .expect("released parent slot should admit the queued child")
+        .expect("queued child task")
+        .expect("queued child admission")
+        .expect("queued child permit");
+    drop((permit, second_parent_permit));
+}
+
+#[tokio::test]
 async fn request_admission_reports_queue_timeout_after_the_configured_wait() {
     let _admission_test_guard = ADMISSION_TEST_LOCK.lock().await;
     let metrics_before = custom_provider_admission_metrics();
@@ -334,7 +408,7 @@ async fn request_admission_reports_queue_timeout_after_the_configured_wait() {
         semaphore: Some(Arc::new(Semaphore::new(1))),
         queue_timeout: Duration::from_millis(5),
         shared: None,
-        is_subagent: false,
+        request_admission_class: RequestAdmissionClass::Parent,
     };
     let _held = admission.acquire().await.expect("first request permit");
 
@@ -368,7 +442,7 @@ async fn closed_request_admission_has_stable_error_metadata() {
         semaphore: Some(semaphore),
         queue_timeout: Duration::from_millis(5),
         shared: None,
-        is_subagent: false,
+        request_admission_class: RequestAdmissionClass::Parent,
     };
 
     let error = admission.acquire().await.expect_err("closed gate should reject admission");

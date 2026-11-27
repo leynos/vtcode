@@ -2,6 +2,7 @@
 use super::super::provider::create_prompt_provider;
 use super::*;
 use diapason_config::api_keys::resolve_credential_with_mode;
+use diapason_core::llm::factory::RequestAdmissionClass;
 use std::path::Path;
 
 pub(super) fn create_prompt_provider_context(input: &PromptInput) -> Result<PromptProviderContext, SdkError> {
@@ -55,6 +56,7 @@ pub(super) fn create_prompt_provider_context(input: &PromptInput) -> Result<Prom
         anthropic: None,
         model_behaviour: agent.config.model_behaviour.clone(),
         workspace_root: Some(workspace_root),
+        request_admission_class: RequestAdmissionClass::Parent,
     };
     let provider = create_prompt_provider(&provider_name, config)
         .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
