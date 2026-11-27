@@ -305,63 +305,64 @@ fn owner_migration_still_unresolved(outcome: &OptionalSetupOutcome, owner_migrat
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
-    /// Only a clean attach releases the deferred workspace restore.
+    /// Only a clean attach, or a build that never owed a migration, releases
+    /// the deferred workspace restore.
     ///
     /// The debt is held while any row this session launched is still ownerless.
     /// A build that reports the migration failure has left exactly that state,
     /// so it must keep holding; a clean attach has resolved it, so it must
-    /// release.
-    #[test]
-    fn only_a_clean_attach_resolves_an_outstanding_owner_migration() {
-        assert!(
-            !owner_migration_still_unresolved(&OptionalSetupOutcome::Attached, true),
-            "an attached controller resolved the migration, so the deferred restore is payable"
+    /// release. A build that never reached the migration — disabled by
+    /// configuration or policy, or a controller that failed to construct — has
+    /// resolved nothing, so it leaves an outstanding debt exactly as it found
+    /// it. A named case per outcome and previous migration state keeps the
+    /// expected decision beside its inputs, and keeps the migration failure
+    /// distinct from an unrelated degradation.
+    #[rstest]
+    #[case::attached_after_outstanding_migration(OptionalSetupOutcome::Attached, true, false)]
+    #[case::attached_without_outstanding_migration(OptionalSetupOutcome::Attached, false, false)]
+    #[case::degraded_by_owner_migration(
+        OptionalSetupOutcome::AttachedWithDegradation(vec![OptionalSetupFailure::BackgroundOwnerMigrationFailed]),
+        true,
+        true
+    )]
+    #[case::degraded_by_restore_failure(
+        OptionalSetupOutcome::AttachedWithDegradation(vec![OptionalSetupFailure::BackgroundSubagentRestoreFailed]),
+        true,
+        false
+    )]
+    #[case::disabled_by_configuration_with_outstanding_migration(
+        OptionalSetupOutcome::DisabledByConfiguration,
+        true,
+        true
+    )]
+    #[case::disabled_by_configuration_without_outstanding_migration(
+        OptionalSetupOutcome::DisabledByConfiguration,
+        false,
+        false
+    )]
+    #[case::disabled_by_policy_with_outstanding_migration(OptionalSetupOutcome::DisabledByPolicy, true, true)]
+    #[case::disabled_by_policy_without_outstanding_migration(OptionalSetupOutcome::DisabledByPolicy, false, false)]
+    #[case::controller_unavailable_with_outstanding_migration(
+        OptionalSetupOutcome::Failed(OptionalSetupFailure::SubagentControllerUnavailable),
+        true,
+        true
+    )]
+    #[case::controller_unavailable_without_outstanding_migration(
+        OptionalSetupOutcome::Failed(OptionalSetupFailure::SubagentControllerUnavailable),
+        false,
+        false
+    )]
+    fn owner_migration_resolution_matrix(
+        #[case] outcome: OptionalSetupOutcome,
+        #[case] owner_migration_failed: bool,
+        #[case] expected_unresolved: bool,
+    ) {
+        assert_eq!(
+            owner_migration_still_unresolved(&outcome, owner_migration_failed),
+            expected_unresolved,
+            "outcome {outcome:?} with an outstanding migration of {owner_migration_failed}"
         );
-        assert!(
-            !owner_migration_still_unresolved(&OptionalSetupOutcome::Attached, false),
-            "a fresh session never owes a migration"
-        );
-        assert!(
-            owner_migration_still_unresolved(
-                &OptionalSetupOutcome::AttachedWithDegradation(vec![
-                    OptionalSetupFailure::BackgroundOwnerMigrationFailed,
-                ]),
-                true,
-            ),
-            "a reported migration failure leaves ownerless rows the workspace must not restore"
-        );
-        assert!(
-            !owner_migration_still_unresolved(
-                &OptionalSetupOutcome::AttachedWithDegradation(vec![
-                    OptionalSetupFailure::BackgroundSubagentRestoreFailed,
-                ]),
-                true,
-            ),
-            "an unrelated degradation must not keep a resolved migration blocked"
-        );
-    }
-
-    /// A build that never reached the migration leaves the debt as it found it.
-    ///
-    /// Subagents disabled by configuration or policy, and a controller that
-    /// failed to construct, all skip the migration. With one outstanding it is
-    /// still unresolved; with none there is nothing left to hold.
-    #[test]
-    fn a_build_that_never_migrated_keeps_an_outstanding_debt() {
-        for outcome in [
-            OptionalSetupOutcome::DisabledByConfiguration,
-            OptionalSetupOutcome::DisabledByPolicy,
-            OptionalSetupOutcome::Failed(OptionalSetupFailure::SubagentControllerUnavailable),
-        ] {
-            assert!(
-                owner_migration_still_unresolved(&outcome, true),
-                "an outstanding migration stays unresolved when the build skipped it: {outcome:?}"
-            );
-            assert!(
-                !owner_migration_still_unresolved(&outcome, false),
-                "with no outstanding migration the deferred restore is payable: {outcome:?}"
-            );
-        }
     }
 }

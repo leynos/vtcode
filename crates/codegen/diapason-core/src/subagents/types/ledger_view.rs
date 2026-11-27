@@ -7,7 +7,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use super::super::controller_background_ops::error_without_close_fault;
 use super::foreground::StatusEntryBuilder;
 use super::status::{BackgroundSubprocessEntry, BackgroundSubprocessStatus};
 
@@ -35,7 +34,19 @@ pub struct BackgroundRecord {
     pub(crate) pid: Option<u32>,
     pub(crate) prompt: String,
     pub(crate) summary: Option<String>,
+    /// The outcome the run itself reported.
+    ///
+    /// A stop's cleanup fault is never merged into this text, so a confirmed
+    /// close cannot truncate a genuine failure and a failure that happens to
+    /// quote the close-fault wording is not mistaken for one.
     pub(crate) error: Option<String>,
+    /// The durable evidence that a stop's close is still owed.
+    ///
+    /// Kept apart from `error` so the two outcomes cannot overwrite each
+    /// other. It blocks a start until a later close confirms the process is
+    /// gone, and the status projection never serves it to a client.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) close_fault: Option<String>,
     pub(crate) archive_path: Option<PathBuf>,
     pub(crate) transcript_path: Option<PathBuf>,
     pub(crate) max_turns: Option<usize>,
@@ -73,7 +84,7 @@ impl StatusEntryBuilder for BackgroundRecord {
             // run outcome, so a client is not told about it: the status and the
             // pending-stop summary already carry that state, and the text names
             // an exec session and can quote the transport error behind it.
-            error: error_without_close_fault(self.error.clone()),
+            error: self.error.clone(),
             archive_path: self.archive_path.clone(),
             transcript_path: self.transcript_path.clone(),
         }

@@ -81,6 +81,7 @@ fn background_record(
         prompt: "Watch the workspace".to_string(),
         summary: Some("running".to_string()),
         error: None,
+        close_fault: None,
         archive_path: None,
         transcript_path: None,
         max_turns: None,

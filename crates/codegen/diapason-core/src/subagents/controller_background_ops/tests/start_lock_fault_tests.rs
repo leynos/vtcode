@@ -242,7 +242,8 @@ async fn a_failure_whose_close_is_unconfirmed_still_blocks_an_explicit_start() {
     let mut failed =
         persisted_row_with_status(WORKER, None, WORKER_AGENT, "exec-unclosed", false, PERSISTED_STOPPED_STATUS);
     failed.status = BackgroundSubprocessStatus::Error;
-    failed.error = Some("Failed to close the background subprocess's exec session: close transport fault".to_string());
+    failed.close_fault =
+        Some("Failed to close the background subprocess's exec session: close transport fault".to_string());
     persist_background_state(temp.path(), vec![failed])
         .await
         .expect("seed the unconfirmed close");

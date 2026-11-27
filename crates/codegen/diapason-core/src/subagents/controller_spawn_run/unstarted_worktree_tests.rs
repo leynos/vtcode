@@ -2,44 +2,16 @@
 //! isolation refusals that keep a resumed or restarted run out of the parent
 //! workspace.
 
-use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
 
 use tempfile::TempDir;
 
 use crate::config::DiapasonConfig;
-use crate::config::constants::models;
-use crate::config::types::ReasoningEffortLevel;
-use crate::tools::exec_session::ExecSessionManager;
-use crate::tools::registry::PtySessionManager;
 
 use super::super::controller_child_loop::launch_checkpoints;
-use super::tests::child_record;
+use super::tests::{child_record, test_config_with};
 use super::*;
-
-/// Builds the controller configuration the launch tests run against.
-fn test_config(workspace_root: PathBuf, vt_cfg: DiapasonConfig) -> SubagentControllerConfig {
-    let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
-    let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
-    SubagentControllerConfig {
-        workspace_root,
-        parent_session_id: "parent-session".to_string(),
-        parent_model: models::openai::GPT_5_6_SOL.to_string(),
-        parent_provider: "openai".to_string(),
-        parent_reasoning_effort: ReasoningEffortLevel::Medium,
-        api_key: "test-key".to_string(),
-        vt_cfg,
-        openai_chatgpt_auth: None,
-        depth: 0,
-        workspace_gated: false,
-        exec_sessions,
-        output_reader: None,
-        pty_manager: pty_sessions.manager().clone(),
-        managed_background_runtime: false,
-        lock_scope: None,
-    }
-}
 
 /// Initializes a throwaway git repository so a worktree can be created in it.
 ///
@@ -87,7 +59,7 @@ async fn a_launch_refused_after_insertion_reclaims_its_worktree() {
     let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.subagents.enabled = true;
     vt_cfg.subagents.auto_delegate_read_only = true;
-    let controller = SubagentController::new(test_config(workspace.path().to_path_buf(), vt_cfg))
+    let controller = SubagentController::new(test_config_with(workspace.path().to_path_buf(), vt_cfg))
         .await
         .expect("controller");
     {
@@ -170,9 +142,8 @@ async fn a_launch_refused_after_insertion_reclaims_its_worktree() {
 #[tokio::test]
 async fn a_refused_launch_keeps_a_checkout_the_resume_reopened() {
     let workspace = TempDir::new().expect("workspace");
-    let controller = SubagentController::new(test_config(workspace.path().to_path_buf(), DiapasonConfig::default()))
-        .await
-        .expect("controller");
+    let config = test_config_with(workspace.path().to_path_buf(), DiapasonConfig::default());
+    let controller = SubagentController::new(config).await.expect("controller");
     let checkout = workspace.path().join("agent-worker-checkout");
     std::fs::create_dir_all(&checkout).expect("checkout");
     let mut record = child_record("agent-worker", SubagentStatus::Closed);
@@ -208,9 +179,8 @@ async fn a_refused_launch_keeps_a_checkout_the_resume_reopened() {
 #[tokio::test]
 async fn a_refused_launch_keeps_a_checkout_a_settled_resume_already_used() {
     let workspace = TempDir::new().expect("workspace");
-    let controller = SubagentController::new(test_config(workspace.path().to_path_buf(), DiapasonConfig::default()))
-        .await
-        .expect("controller");
+    let config = test_config_with(workspace.path().to_path_buf(), DiapasonConfig::default());
+    let controller = SubagentController::new(config).await.expect("controller");
     let checkout = workspace.path().join("agent-worker-checkout");
     std::fs::create_dir_all(&checkout).expect("checkout");
     let mut record = child_record("agent-worker", SubagentStatus::Closed);
@@ -268,9 +238,8 @@ async fn a_refused_launch_keeps_a_checkout_a_settled_resume_already_used() {
 #[tokio::test]
 async fn resume_refuses_a_child_whose_isolation_worktree_is_gone() {
     let workspace = TempDir::new().expect("workspace");
-    let controller = SubagentController::new(test_config(workspace.path().to_path_buf(), DiapasonConfig::default()))
-        .await
-        .expect("controller");
+    let config = test_config_with(workspace.path().to_path_buf(), DiapasonConfig::default());
+    let controller = SubagentController::new(config).await.expect("controller");
     let mut record = child_record("agent-worker", SubagentStatus::Closed);
     record.spec.isolation = Some(diapason_config::IsolationMode::Worktree);
     record.worktree_path = None;
@@ -302,9 +271,8 @@ async fn resume_refuses_a_child_whose_isolation_worktree_is_gone() {
 #[tokio::test]
 async fn send_input_refuses_a_child_whose_isolation_worktree_is_gone() {
     let workspace = TempDir::new().expect("workspace");
-    let controller = SubagentController::new(test_config(workspace.path().to_path_buf(), DiapasonConfig::default()))
-        .await
-        .expect("controller");
+    let config = test_config_with(workspace.path().to_path_buf(), DiapasonConfig::default());
+    let controller = SubagentController::new(config).await.expect("controller");
     let mut record = child_record("agent-worker", SubagentStatus::Completed);
     record.spec.isolation = Some(diapason_config::IsolationMode::Worktree);
     record.worktree_path = None;
@@ -346,9 +314,8 @@ async fn send_input_refuses_a_child_whose_isolation_worktree_is_gone() {
 #[tokio::test]
 async fn reopen_allows_a_child_that_keeps_its_isolation_worktree() {
     let workspace = TempDir::new().expect("workspace");
-    let controller = SubagentController::new(test_config(workspace.path().to_path_buf(), DiapasonConfig::default()))
-        .await
-        .expect("controller");
+    let config = test_config_with(workspace.path().to_path_buf(), DiapasonConfig::default());
+    let controller = SubagentController::new(config).await.expect("controller");
     let checkout = workspace.path().join("checkout");
     std::fs::create_dir_all(&checkout).expect("checkout");
     let mut record = child_record("agent-worker", SubagentStatus::Closed);

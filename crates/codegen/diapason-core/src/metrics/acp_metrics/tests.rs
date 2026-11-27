@@ -22,8 +22,9 @@ fn acp_extension_prometheus_series_is_stable() {
         .export_prometheus()
         .lines()
         .filter(|line| {
-            // The guard measures real elapsed time, so the duration value
-            // is asserted separately rather than pinned in the snapshot.
+            // The guard measures real elapsed time, so the duration value is
+            // not pinned here; the accumulation test proves the renderer with
+            // four fixed 400 us observations.
             !line.starts_with("diapason_acp_management_duration_ms_total ")
                 && (line.starts_with("# HELP diapason_acp_")
                     || line.starts_with("# TYPE diapason_acp_")
@@ -145,5 +146,19 @@ fn acp_management_duration_sums_sub_millisecond_requests() {
         collector.get_acp_extension_metrics().management_total_duration_ms,
         1,
         "four 400 us requests total 1.6 ms, so truncation must happen once at snapshot time"
+    );
+
+    // Prove the renderer too, with a fixed non-zero total. The typed snapshot
+    // above would still pass for a renderer that always reported zero, and the
+    // guard-driven series test cannot distinguish that because both guards can
+    // finish in less than a millisecond.
+    let rendered = collector.export_prometheus();
+    let duration_line = rendered
+        .lines()
+        .find(|line| line.starts_with("diapason_acp_management_duration_ms_total "))
+        .expect("the ACP management duration series must be rendered");
+    assert_eq!(
+        duration_line, "diapason_acp_management_duration_ms_total 1",
+        "Prometheus must render the accumulated sub-millisecond total"
     );
 }

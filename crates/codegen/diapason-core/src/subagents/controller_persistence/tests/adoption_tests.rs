@@ -314,3 +314,66 @@ async fn adoption_ignores_rows_that_name_no_launch() {
         "the ownerless row keeps the owner the ledger gave it"
     );
 }
+
+/// Adoption leaves both launches addressable when the canonical id is taken.
+///
+/// This controller loaded an ownerless copy of one launch and already tracks a
+/// different owned launch under the canonical id, because the session persisted
+/// its replacement while the ownerless copy sat in memory. Rekeying the copy
+/// onto that id replaced one of the two records and dropped it from the
+/// controller's map, so the pass must leave the copy where it is.
+#[tokio::test]
+async fn adoption_leaves_both_launches_addressable_when_the_canonical_id_is_taken() {
+    let temp = TempDir::new().expect("temporary workspace");
+    let owner = "session-a";
+    let owned_id = background_record_id_for_owner("worker", Some(owner));
+    let mut replacement = legacy_row(owner);
+    replacement.owner_session_id = Some(owner.to_string());
+    replacement.exec_session_id = "exec-replacement".to_string();
+    replacement.canonicalize_id();
+    persist_background_state(temp.path(), vec![legacy_row(owner), replacement])
+        .await
+        .expect("seed the ownerless copy and the session's own launch");
+
+    let workspace_controller = SubagentController::new(ownership_controller_config(temp.path().to_path_buf()))
+        .await
+        .expect("workspace controller");
+    assert_eq!(
+        workspace_controller.background_status_entries(TaskOwner::Workspace).await.len(),
+        2,
+        "the controller loads both launches"
+    );
+
+    // The ledger attributes the ownerless copy's launch to the owner, which is
+    // what invites the adoption, while the canonical id stays held by the
+    // replacement this controller already tracks.
+    let mut migrated = legacy_row(owner);
+    migrated.owner_session_id = Some(owner.to_string());
+    migrated.canonicalize_id();
+    persist_background_state(temp.path(), vec![migrated])
+        .await
+        .expect("write the migrated row");
+
+    assert_eq!(
+        workspace_controller
+            .adopt_persisted_background_owner(owner)
+            .await
+            .expect("adoption attempt"),
+        0,
+        "an adoption that would displace an owned record is refused"
+    );
+    let entries = workspace_controller.background_status_entries(TaskOwner::Workspace).await;
+    assert_eq!(entries.len(), 2, "both launches stay addressable: {entries:?}");
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.exec_session_id == "exec-launch" && entry.owner_session_id.is_none()),
+        "the copy keeps the id and owner it was loaded with: {entries:?}"
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.exec_session_id == "exec-replacement" && entry.id == owned_id),
+        "the session's own launch keeps the canonical id: {entries:?}"
+    );
+}

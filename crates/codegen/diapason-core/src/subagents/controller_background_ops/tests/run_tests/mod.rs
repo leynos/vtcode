@@ -7,6 +7,8 @@ use tempfile::TempDir;
 use super::super::super::BackgroundLaunchOverrides;
 use super::super::BackgroundRunRequest;
 use super::super::controller_background_archive::attach_background_archive_paths;
+#[cfg(unix)]
+use super::super::controller_background_run::background_spawn_attempt_count;
 use super::super::controller_background_run::{background_exec_session_id, background_launch_session_id};
 #[cfg(unix)]
 use super::super::controller_background_run::{gate_next_background_commit, remove_spec_before_next_background_retry};

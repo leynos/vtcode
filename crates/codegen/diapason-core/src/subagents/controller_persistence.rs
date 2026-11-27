@@ -9,7 +9,8 @@ use tokio::sync::RwLock;
 mod launch;
 mod merge;
 
-pub(super) use self::launch::collect_by_canonical_id;
+use self::launch::is_ownerless_copy_of_owned_launch;
+pub(super) use self::launch::{collect_by_canonical_id, collect_by_canonical_id_with_evidence};
 use self::merge::{merge_background_records, merge_unscoped_background_records};
 use super::SubagentController;
 use super::background::load_background_state;
@@ -206,6 +207,13 @@ impl SubagentController {
     /// agent shares. Adoption therefore skips such a copy, and a ledger row
     /// without an exec session never counts as evidence for one.
     ///
+    /// A copy is also left unadopted when another record already holds the
+    /// canonical id it would be rekeyed onto: an entry at that key belongs to a
+    /// replacement launch the session persisted, and adopting over it would drop
+    /// one of the two launches from this controller's map. The copy stays
+    /// addressable under the id it arrived with, and the next save lets the
+    /// ordinary launch precedence decide the canonical id.
+    ///
     /// Returns the number of records adopted. A `managed_background_runtime`
     /// controller owns nothing and adopts nothing, and an empty owner names
     /// none.
@@ -233,32 +241,35 @@ impl SubagentController {
             return Ok(0);
         }
         let mut state = self.state.write().await;
+        let records = std::mem::take(&mut state.background_children);
+        // A record that keeps its own id owns the key it holds, whether or not
+        // adoption runs. Two records can share one canonical id when this
+        // controller loaded an ownerless copy of a launch and that launch's
+        // session later persisted a different launch under the owned id; the
+        // adopted copy must not replace that record, and the record must not
+        // replace the copy either.
+        let claimed_ids = records
+            .values()
+            .filter(|record| !is_ownerless_copy_of_owned_launch(record, owner_session_id, &owned_launches))
+            .map(|record| record.id.clone())
+            .collect::<BTreeSet<_>>();
         let mut rekeyed = BTreeMap::new();
         let mut adopted = 0;
-        for mut record in std::mem::take(&mut state.background_children).into_values() {
-            let launched_here = record.owner_session_id.is_none()
-                // A copy without a launch identity cannot be shown to be the
-                // launch the ledger attributes to this owner: the only key it
-                // could match on is `(id, "")`, which every other empty row of
-                // the agent shares. Ownership is only inferred from a launch
-                // the row actually names.
-                && !record.exec_session_id.is_empty()
-                && record.parent_session_id == owner_session_id
-                && owned_launches.contains(&(
-                    super::background::background_record_id_for_owner(
-                        record.agent_name.as_str(),
-                        Some(owner_session_id),
-                    ),
-                    record.exec_session_id.clone(),
-                ));
+        for mut record in records.into_values() {
+            let canonical_id =
+                super::background::background_record_id_for_owner(record.agent_name.as_str(), Some(owner_session_id));
+            // An adoption that would land on an id another record already holds
+            // is left where it is. Both launches then stay addressable instead
+            // of one silently replacing the other, and the next save resolves
+            // the canonical id by the ordinary launch precedence.
+            let launched_here = is_ownerless_copy_of_owned_launch(&record, owner_session_id, &owned_launches)
+                && !claimed_ids.contains(&canonical_id)
+                && !rekeyed.contains_key(&canonical_id);
             if launched_here {
                 adopted += 1;
                 let previous_id = record.id.clone();
                 record.owner_session_id = Some(owner_session_id.to_string());
-                record.id = super::background::background_record_id_for_owner(
-                    record.agent_name.as_str(),
-                    Some(owner_session_id),
-                );
+                record.id = canonical_id;
                 // A close this launch still owes was registered under the id it
                 // had before adoption. Move it with the launch, or the retry
                 // would miss it and discharge an obligation it never attempted.

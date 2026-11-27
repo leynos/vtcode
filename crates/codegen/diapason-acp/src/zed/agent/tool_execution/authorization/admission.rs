@@ -111,8 +111,11 @@ impl AdmissionArguments<'_> {
 /// This is the post-rewrite check. The caller runs it on the arguments a
 /// permission hook installed, so a rewrite cannot smuggle in a foreign target;
 /// [`session_subagent_controller_error`] is the early check that runs before a
-/// hook can replace the raw arguments.
+/// hook can replace the raw arguments. `invoking_session_id` is the ACP
+/// session the call runs in, which is the authority core's executor presents
+/// even when the selected controller serves a different configured id.
 pub(super) async fn session_subagent_admission_error(
+    invoking_session_id: &str,
     tool_name: &str,
     controller: Option<&Arc<diapason_core::subagents::SubagentController>>,
     arguments: AdmissionArguments<'_>,
@@ -124,7 +127,7 @@ pub(super) async fn session_subagent_admission_error(
         return session_subagent_controller_error(tool_name, None);
     };
     for target in arguments.targets(tool_name) {
-        if !session_owns_subagent(controller, target.as_str()).await {
+        if !session_owns_subagent(controller, invoking_session_id, target.as_str()).await {
             return Some(format!("Tool '{tool_name}' cannot operate on '{target}': it is not owned by this session"));
         }
     }
@@ -155,18 +158,29 @@ fn raw_call_targets(tool_name: &str, arguments: &str) -> Vec<String> {
 /// refused target inside a `wait` list would fail the whole call after it had
 /// been admitted. A direct child is addressable here; a grandchild is not.
 ///
+/// The authority is `invoking_session_id`, not [`SubagentController::served_session_id`].
+/// A session without its own workspace runtime executes through the launch
+/// controller, whose served id is the launcher's configured `diapason-acp`; the
+/// child an approved spawn records names the ACP session that invoked it, and
+/// core's executor presents that invoking session as its [`TaskOwner::Session`].
+/// Asking for the served id there would reject the child the very next `resume`
+/// is entitled to address.
+///
 /// A managed background record this session owns is also admitted. The record is
 /// not a child, so the child command reports its own domain error when it
 /// executes; admission only has to avoid claiming that a record of this
 /// session's is unowned. Reads are pure: `background_status_entries` never
 /// refreshes, respawns, persists or publishes.
-async fn session_owns_subagent(controller: &Arc<diapason_core::subagents::SubagentController>, target: &str) -> bool {
-    let session_id = controller.served_session_id().await;
-    if controller.owns_child(&session_id, target).await {
+async fn session_owns_subagent(
+    controller: &Arc<diapason_core::subagents::SubagentController>,
+    invoking_session_id: &str,
+    target: &str,
+) -> bool {
+    if controller.owns_child(invoking_session_id, target).await {
         return true;
     }
     controller
-        .background_status_entries(TaskOwner::Session(session_id.as_str()))
+        .background_status_entries(TaskOwner::Session(invoking_session_id))
         .await
         .iter()
         .any(|entry| entry.id == target)
@@ -189,7 +203,7 @@ mod tests {
                 early.contains("Subagent controller is not active in this session"),
                 "the early rejection must carry the established fail-closed reason: {early}"
             );
-            let rejection = session_subagent_admission_error(tool, None, AdmissionArguments::Raw("{}"))
+            let rejection = session_subagent_admission_error("session-a", tool, None, AdmissionArguments::Raw("{}"))
                 .await
                 .expect("a subagent tool must not run without a session controller");
             assert!(
@@ -240,11 +254,76 @@ mod tests {
             session_subagent_controller_error(tools::AGENT, Some(&controller)).is_none(),
             "the early check must not reject an unowned raw target"
         );
-        let rejection =
-            session_subagent_admission_error(tools::AGENT, Some(&controller), AdmissionArguments::Raw(unowned))
-                .await
-                .expect("the post-rewrite check must reject a target the session does not own");
+        let rejection = session_subagent_admission_error(
+            "session-a",
+            tools::AGENT,
+            Some(&controller),
+            AdmissionArguments::Raw(unowned),
+        )
+        .await
+        .expect("the post-rewrite check must reject a target the session does not own");
         assert!(rejection.contains("not-mine"), "the rejection must name the target: {rejection}");
+    }
+
+    /// A runtime-less session addresses its own children on the launch controller.
+    ///
+    /// A session without a workspace runtime executes through the workspace
+    /// launch controller, whose configured id is `diapason-acp`, while an
+    /// approved spawn records the invoking ACP session as the child's parent
+    /// thread. Core's executor presents the invoking session as its
+    /// `TaskOwner::Session`, so admission must judge the same authority: asking
+    /// for the controller's served id rejects the child the very next `resume`
+    /// is entitled to address, and would still accept nothing on this shared
+    /// controller. A child owned by a different session must stay refused.
+    #[tokio::test]
+    async fn runtime_less_session_admits_its_own_child_on_the_launch_controller() {
+        let temp = assert_fs::TempDir::new().expect("launch workspace");
+        let registry = diapason_core::tools::registry::ToolRegistry::new(temp.path().to_path_buf()).await;
+        let mut vt_cfg = diapason_core::config::DiapasonConfig::default();
+        vt_cfg.subagents.enabled = true;
+        vt_cfg.subagents.background.auto_restore = false;
+        let launch_controller = Arc::new(
+            diapason_core::subagents::SubagentController::new_with_background_owner(
+                fixture_controller_config(temp.path(), &vt_cfg, "diapason-acp", 0, false, &registry),
+                None,
+            )
+            .await
+            .expect("launch controller"),
+        );
+        launch_controller
+            .insert_test_child_record("own-child", "own-child-session", "acp-session", 1, "default")
+            .await
+            .expect("child spawned by the runtime-less session");
+        launch_controller
+            .insert_test_child_record("foreign-child", "foreign-session", "other-acp-session", 1, "default")
+            .await
+            .expect("child spawned by another session on the same controller");
+
+        assert_eq!(
+            launch_controller.served_session_id().await,
+            "diapason-acp",
+            "the fixture must keep the launcher's configured id, which is what the old check used"
+        );
+        assert!(
+            session_subagent_admission_error(
+                "acp-session",
+                tools::AGENT,
+                Some(&launch_controller),
+                AdmissionArguments::Raw(r#"{"action":"resume","id":"own-child"}"#),
+            )
+            .await
+            .is_none(),
+            "the invoking session must address the child its own spawn recorded"
+        );
+        let rejection = session_subagent_admission_error(
+            "acp-session",
+            tools::AGENT,
+            Some(&launch_controller),
+            AdmissionArguments::Raw(r#"{"action":"resume","id":"foreign-child"}"#),
+        )
+        .await
+        .expect("a child of another session must stay refused on the shared controller");
+        assert!(rejection.contains("foreign-child"), "the rejection must name the target: {rejection}");
     }
 
     /// Builds a controller config for a fixture tree that never launches a run.
@@ -350,6 +429,7 @@ mod tests {
         // A direct child is addressable by both layers.
         assert!(
             session_subagent_admission_error(
+                "session-a",
                 tools::AGENT,
                 Some(&root),
                 AdmissionArguments::Raw(r#"{"action":"send_input","id":"child-task"}"#),
@@ -365,6 +445,7 @@ mod tests {
 
         // Admission refuses a grandchild exactly as the command does.
         let rejection = session_subagent_admission_error(
+            "session-a",
             tools::AGENT,
             Some(&root),
             AdmissionArguments::Raw(r#"{"action":"send_input","id":"grandchild-task"}"#),
@@ -382,6 +463,7 @@ mod tests {
         // One unaddressable target refuses the whole list before execution,
         // rather than after the call was announced and failed whole.
         let mixed = session_subagent_admission_error(
+            "session-a",
             tools::AGENT,
             Some(&root),
             AdmissionArguments::Raw(r#"{"action":"wait","ids":["child-task","grandchild-task"]}"#),
@@ -396,7 +478,8 @@ mod tests {
 
     #[tokio::test]
     async fn ordinary_tools_do_not_need_a_session_controller() {
-        let rejection = session_subagent_admission_error("read_file", None, AdmissionArguments::Raw("{}")).await;
+        let rejection =
+            session_subagent_admission_error("session-a", "read_file", None, AdmissionArguments::Raw("{}")).await;
         assert!(rejection.is_none(), "a non-subagent tool must not be tied to a controller");
     }
 

@@ -405,3 +405,59 @@ async fn a_stop_persisted_after_load_is_not_resurrected_by_a_legacy_restore() {
 
     controller.signal_shutdown().await;
 }
+
+/// A ledger fault must not skip a close the controller already owes.
+///
+/// Refresh reconciles persisted cancellations before it retries closes, and the
+/// reconciliation read is the step a ledger fault fails. Returning there left a
+/// cancelled process running for as long as the ledger stayed unreadable, even
+/// though the close retry needs no ledger read of its own. The ledger fault must
+/// still reach the caller, so nothing is relaunched without the evidence that
+/// read supplies.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_ledger_fault_does_not_skip_a_pending_process_close() {
+    use crate::subagents::background::background_state_path_for_tests;
+
+    use super::super::controller_background_cancel::{
+        background_stop_close_is_pending, mark_background_stop_close_pending,
+    };
+
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), restoring_config()).await;
+    let exec_session_id = "exec-close-despite-ledger";
+    start_sleep_session(&controller, exec_session_id).await;
+    let record = background_record(
+        "background-worker",
+        None,
+        "worker",
+        exec_session_id,
+        BackgroundSubprocessStatus::Running,
+        false,
+    );
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(record.id.clone(), record);
+    }
+    mark_background_stop_close_pending(&controller.state, "background-worker", exec_session_id);
+
+    let ledger_path = background_state_path_for_tests(temp.path());
+    std::fs::create_dir_all(ledger_path.parent().expect("ledger parent")).expect("state dir");
+    std::fs::write(&ledger_path, "{ this is not a valid background ledger").expect("write corrupt ledger");
+
+    let error = controller
+        .refresh_background_processes()
+        .await
+        .expect_err("the ledger fault still reaches the caller");
+    assert!(format!("{error:#}").contains("Failed to parse"), "the caller sees the ledger fault: {error:#}");
+    assert!(
+        session_is_gone(&controller, exec_session_id).await,
+        "a pending close must be retried even when the ledger cannot be read"
+    );
+    assert!(
+        !background_stop_close_is_pending(&controller.state, "background-worker", exec_session_id),
+        "the successful close discharges its obligation"
+    );
+
+    controller.signal_shutdown().await;
+}

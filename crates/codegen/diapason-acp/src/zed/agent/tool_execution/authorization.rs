@@ -213,16 +213,13 @@ impl ZedAgent {
 
         authorization.cancel_after_permission = context.invocation.session.cancellation.is_cancelled();
         *input.audit_arguments = authorization.audit_arguments.clone();
-        // A PermissionRequest hook may rewrite the dispatched arguments, so the
-        // admission decision taken before the hook no longer describes the call
-        // that would run. Re-admit the final arguments before the call is
-        // marked approved or announced as in progress; a rewrite must not
-        // smuggle in a target this session cannot own. A call already refused
-        // or cancelled will not execute, so it needs no second decision.
+        // A rewrite may replace the dispatched arguments after admission ran, so
+        // re-admit the final target set before approval and the in-progress update.
         let re_admission_rejection =
             if authorization.permission_override.is_none() && !authorization.cancel_after_permission {
-                let final_arguments = dispatched_arguments(resolved, &authorization);
-                session_subagent_admission_error(resolved.tool_name, session_controller, final_arguments).await
+                let final_args = dispatched_arguments(resolved, &authorization);
+                let invoking = context.invocation.session_id.0.as_ref();
+                session_subagent_admission_error(invoking, resolved.tool_name, session_controller, final_args).await
             } else {
                 None
             };

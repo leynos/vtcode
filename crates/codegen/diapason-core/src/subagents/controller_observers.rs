@@ -139,6 +139,65 @@ impl Clone for ProgressObserverRoute {
     }
 }
 
+impl ProgressObserverRouteState {
+    /// Builds the state a handoff installs.
+    ///
+    /// The route state a handoff retires carries any test gate that was parking
+    /// a reservation against the retired clock. The gate field exists only in
+    /// test builds, so it is named only there.
+    pub(super) fn adopting(
+        registry: Arc<ProgressObserverRegistry>,
+        scope: Option<String>,
+        lifecycle_clock: Arc<AtomicU64>,
+    ) -> Self {
+        Self {
+            registry,
+            scope,
+            lifecycle_clock,
+            #[cfg(test)]
+            reserve_rendezvous: None,
+        }
+    }
+
+    /// The observer key a controller adopting this route publishes under.
+    ///
+    /// The route's own key wins: a controller that already joined a tree
+    /// publishes under that tree's session, and a caller's earlier resolution
+    /// may predate the join. Only a route with no inherited key falls back to
+    /// the caller's key, which is the one it just resolved.
+    fn scope_for(&self, fallback_scope: &str) -> Option<String> {
+        Some(match self.scope.clone() {
+            Some(scope) => scope,
+            None => fallback_scope.to_owned(),
+        })
+    }
+
+    /// Installs `adopted` under the caller's write guard and returns what it
+    /// retired.
+    ///
+    /// Every route of one joining subtree is replaced while all their guards
+    /// are held, so a publication on any of them is either fully before or
+    /// fully after the graft. Presenting the routes one at a time would leave
+    /// an interval in which a descendant still names a registry whose
+    /// registrations an earlier swap already moved, and a terminal update
+    /// published there would be dropped.
+    ///
+    /// The clock is carried forward, and the retired registry's live
+    /// registrations move into the adopted one, under the same guard. The
+    /// retired state owns the last reference to the previous registry, so it is
+    /// returned for release after every guard is dropped: dropping a carried
+    /// observer runs user code, and `reserve` takes the route's read guard.
+    fn replace(
+        &mut self,
+        adopted: ProgressObserverRouteState,
+    ) -> (ProgressObserverRouteState, Vec<RegisteredProgressObserver>) {
+        let own_revision = self.lifecycle_clock.load(Ordering::Relaxed);
+        adopted.lifecycle_clock.fetch_max(own_revision, Ordering::Relaxed);
+        let abandoned = ProgressObserverRoute::carry_registrations(&self.registry, &adopted.registry);
+        (std::mem::replace(self, adopted), abandoned)
+    }
+}
+
 impl ProgressObserverRoute {
     fn snapshot(&self) -> ProgressObserverRouteState {
         self.state.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
@@ -190,24 +249,13 @@ impl ProgressObserverRoute {
         scope: Option<String>,
         lifecycle_clock: Arc<AtomicU64>,
     ) {
-        // A handoff retires the route state, and with it any test gate that was
-        // parking a reservation against the retired clock. The gate field
-        // exists only in test builds, so it is named only there.
-        let adopted = ProgressObserverRouteState {
-            registry,
-            scope,
-            lifecycle_clock,
-            #[cfg(test)]
-            reserve_rendezvous: None,
-        };
+        let adopted = ProgressObserverRouteState::adopting(registry, scope, lifecycle_clock);
         let mut route = self.state.write().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let own_revision = route.lifecycle_clock.load(Ordering::Relaxed);
-        adopted.lifecycle_clock.fetch_max(own_revision, Ordering::Relaxed);
-        let abandoned = Self::carry_registrations(&route.registry, &adopted.registry);
-        let retired = std::mem::replace(&mut *route, adopted);
+        let retired = route.replace(adopted);
+        // Released only once the write guard is gone: dropping a carried
+        // observer runs user code, which must not find the route still locked.
         drop(route);
         drop(retired);
-        drop(abandoned);
     }
 
     /// Moves the live registrations of `retired` into `adopted`.
@@ -371,12 +419,62 @@ impl SubagentController {
     /// inherited key falls back, and taking the registry, the clock and the key
     /// from one snapshot keeps all three consistent.
     pub(super) fn adopt_progress_route(&self, route: &ProgressObserverRouteState, fallback_scope: &str) {
-        let scope = match route.scope.clone() {
-            Some(scope) => scope,
-            None => fallback_scope.to_owned(),
-        };
+        let scope = route.scope_for(fallback_scope);
         self.progress_route
-            .adopt(Arc::clone(&route.registry), Some(scope), Arc::clone(&route.lifecycle_clock));
+            .adopt(Arc::clone(&route.registry), scope, Arc::clone(&route.lifecycle_clock));
+    }
+
+    /// Rebinds every controller of one joining subtree to `route`'s registry.
+    ///
+    /// Every route's write guard is taken before the first swap and released
+    /// after the last, so no controller of the subtree publishes through a
+    /// registry whose registrations another controller's swap already moved.
+    /// Without that, a descendant's terminal update published inside the graft
+    /// would read the retired registry, which no longer holds its registration,
+    /// and be dropped while the record settled. The retired states are released
+    /// only after every guard, because dropping one can release observers.
+    ///
+    /// The controllers must already be part of one tree: a graft holds the
+    /// tree's attachment guard, which is what keeps the set fixed.
+    pub(super) fn adopt_progress_route_for_subtree(
+        joining: &[&SubagentController],
+        route: &ProgressObserverRouteState,
+        fallback_scope: &str,
+    ) {
+        // A controller and a clone of it share one route, and taking that
+        // route's write guard twice on one thread would deadlock.
+        let mut seen = std::collections::HashSet::new();
+        let mut guards = joining
+            .iter()
+            .filter(|controller| seen.insert(Arc::as_ptr(&controller.progress_route.state) as usize))
+            .map(|controller| {
+                controller
+                    .progress_route
+                    .state
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+            })
+            .collect::<Vec<_>>();
+        // A test parks the handoff here, with every guard held, so it can prove
+        // a publication on any controller of the subtree waits for the whole
+        // handoff instead of reading a registry that is being emptied.
+        #[cfg(test)]
+        {
+            use super::controller_tree::attachment_checkpoints::{AttachmentStage, pass_blocking};
+            if let Some(root) = joining.first() {
+                pass_blocking(&root.state, AttachmentStage::DuringRouteHandoff);
+            }
+        }
+        let mut retired = Vec::with_capacity(guards.len());
+        for guard in guards.iter_mut() {
+            retired.push(guard.replace(ProgressObserverRouteState::adopting(
+                Arc::clone(&route.registry),
+                route.scope_for(fallback_scope),
+                Arc::clone(&route.lifecycle_clock),
+            )));
+        }
+        drop(guards);
+        drop(retired);
     }
 
     /// Allocates the next lifecycle revision for this controller tree.

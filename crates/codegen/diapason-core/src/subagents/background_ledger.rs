@@ -49,6 +49,16 @@ pub struct PersistedBackgroundRecord {
     pub(crate) prompt: String,
     pub(crate) summary: Option<String>,
     pub(crate) error: Option<String>,
+    /// A stop's own cleanup fault, kept apart from the run's `error`.
+    ///
+    /// `error` is the outcome the run itself reported, and a confirmed close
+    /// must never rewrite it. This field is the durable evidence that a close
+    /// was attempted and did not confirm the process is gone, so it stays
+    /// until a later close clears it. Ledgers written before the fault moved
+    /// here carry it as a trailing clause of `error`; [`BackgroundRecord::from_persisted`]
+    /// splits it out on load.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) close_fault: Option<String>,
     pub(crate) archive_path: Option<PathBuf>,
     pub(crate) transcript_path: Option<PathBuf>,
     pub(crate) max_turns: Option<usize>,
@@ -305,6 +315,12 @@ impl PersistedBackgroundRecord {
             return false;
         }
         record.desired_enabled = false;
+        // A close another controller already attempted and recorded travels with
+        // the stop, so this controller does not mistake the launch for one that
+        // is confirmed gone.
+        if self.close_fault.is_some() {
+            record.close_fault = self.close_fault.clone();
+        }
         if record.exec_session_id.is_empty() {
             // Nothing can be running under the record, so the persisted
             // outcome is already final.
@@ -324,6 +340,24 @@ impl PersistedBackgroundRecord {
         record.updated_at = record.updated_at.max(self.updated_at);
         true
     }
+}
+
+/// Splits a close fault out of a legacy persisted run error.
+///
+/// Ledgers written before the fault had its own field appended it to `error`
+/// as a `; `-separated clause. Returning the cleaned run error and the fault
+/// separately keeps a genuine run failure intact while the durable block on
+/// restarting the record survives the upgrade.
+fn split_legacy_close_fault(error: Option<String>) -> (Option<String>, Option<String>) {
+    let Some(error) = error else {
+        return (None, None);
+    };
+    let Some(index) = error.find(super::controller_background_ops::BACKGROUND_CLOSE_FAULT_PREFIX) else {
+        return (Some(error), None);
+    };
+    let fault = error[index..].trim().to_owned();
+    let retained = error[..index].trim_end().trim_end_matches(';').trim_end();
+    ((!retained.is_empty()).then(|| retained.to_owned()), Some(fault))
 }
 
 impl BackgroundRecord {
@@ -349,6 +383,7 @@ impl BackgroundRecord {
             prompt: self.prompt,
             summary: self.summary,
             error: self.error,
+            close_fault: self.close_fault,
             archive_path: self.archive_path,
             transcript_path: self.transcript_path,
             max_turns: self.max_turns,
@@ -358,7 +393,12 @@ impl BackgroundRecord {
         }
     }
 
-    pub(crate) fn from_persisted(record: PersistedBackgroundRecord) -> Self {
+    pub(crate) fn from_persisted(mut record: PersistedBackgroundRecord) -> Self {
+        if record.close_fault.is_none() {
+            let (error, close_fault) = split_legacy_close_fault(record.error.take());
+            record.error = error;
+            record.close_fault = close_fault;
+        }
         Self {
             id: record.id,
             owner_session_id: record.owner_session_id,
@@ -380,6 +420,7 @@ impl BackgroundRecord {
             prompt: record.prompt,
             summary: record.summary,
             error: record.error,
+            close_fault: record.close_fault,
             archive_path: record.archive_path,
             transcript_path: record.transcript_path,
             max_turns: record.max_turns,
@@ -425,6 +466,7 @@ mod tests {
             prompt: "resume".to_string(),
             summary: None,
             error: None,
+            close_fault: None,
             archive_path: None,
             transcript_path: None,
             max_turns: None,
@@ -479,6 +521,36 @@ mod tests {
         assert!(
             started.launch_moment() >= claim.launch_moment(),
             "a launch that recorded its start must outrank an unstarted claim whose write time is later"
+        );
+    }
+
+    /// A legacy ledger's fault clause is split out of its run error on load.
+    ///
+    /// Ledgers written before the fault had its own field appended it to
+    /// `error`. The load must move it to the close-fault field and keep the
+    /// run's own failure, so an upgrade neither loses the block on restarting a
+    /// possibly live process nor truncates the failure a client reads.
+    #[test]
+    fn a_legacy_close_fault_is_split_out_of_the_persisted_run_error() {
+        use super::super::controller_background_ops::BACKGROUND_CLOSE_FAULT_PREFIX;
+
+        let now = DateTime::<Utc>::UNIX_EPOCH;
+        let mut record = persisted_launch(None, now);
+        let run_failure = "Background subprocess exited with code 3";
+        record.error = Some(format!("{run_failure}; {BACKGROUND_CLOSE_FAULT_PREFIX}: close transport fault"));
+        record.desired_enabled = false;
+        record.status = BackgroundSubprocessStatus::Running;
+
+        let restored = BackgroundRecord::from_persisted(record);
+
+        assert_eq!(restored.error.as_deref(), Some(run_failure), "the run's own failure survives the upgrade");
+        assert!(
+            restored
+                .close_fault
+                .as_deref()
+                .is_some_and(|fault| fault.contains("close transport fault")),
+            "the legacy fault becomes the durable close obligation: {:?}",
+            restored.close_fault
         );
     }
 

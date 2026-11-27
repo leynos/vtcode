@@ -312,8 +312,14 @@ impl SubagentController {
 
     /// Restarts background subagents that were previously enabled but are no longer running.
     pub async fn restore_background_subagents(&self) -> Result<Vec<BackgroundSubprocessEntry>> {
-        self.reconcile_persisted_background_cancellations().await?;
+        // The close retry needs no ledger read of its own, so it must run even
+        // when reconciliation cannot read the ledger: a persistent ledger fault
+        // would otherwise leave a cancelled process running forever. The
+        // reconciliation fault is re-raised afterwards, before anything is
+        // relaunched without the evidence that read was meant to supply.
+        let reconciled = self.reconcile_persisted_background_cancellations().await;
         self.retry_pending_background_stop_closes().await?;
+        reconciled?;
         let desired_records = {
             let state = self.state.read().await;
             state
@@ -379,8 +385,9 @@ impl SubagentController {
         // A stop another controller persisted after this one loaded its copy is
         // not in memory yet, and relaunching from the stale copy would
         // resurrect it. Reconcile first, as the whole-ledger restore does.
-        self.reconcile_persisted_background_cancellations().await?;
+        let reconciled = self.reconcile_persisted_background_cancellations().await;
         self.retry_pending_background_stop_closes().await?;
+        reconciled?;
         if !self.config.vt_cfg.subagents.background.auto_restore {
             return Ok(Vec::new());
         }
@@ -688,8 +695,13 @@ impl SubagentController {
 
     /// Refreshes the state of all background subprocesses and respawns as needed.
     pub async fn refresh_background_processes(&self) -> Result<Vec<BackgroundSubprocessEntry>> {
-        self.reconcile_persisted_background_cancellations().await?;
+        // The close retry is independent of the ledger read: a process a stop
+        // already owes must still be closed when reconciliation cannot read the
+        // ledger. The read fault is re-raised below, before any record is
+        // settled or respawned from evidence this pass could not verify.
+        let reconciled = self.reconcile_persisted_background_cancellations().await;
         self.retry_pending_background_stop_closes().await?;
+        reconciled?;
         // A previous refresh can have been dropped between scheduling a
         // restart and awaiting its pre-check, leaving the record `Starting`
         // with its allowance spent. Driving the obligation first gives the
@@ -851,6 +863,7 @@ mod cancellation_reconcile_tests {
             prompt: "work".to_string(),
             summary: None,
             error: None,
+            close_fault: None,
             archive_path: None,
             transcript_path: None,
             max_turns: None,

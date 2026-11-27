@@ -2,6 +2,7 @@
 
 use self::controller_background_liveness::{bounded_liveness_reason, exec_session_is_missing};
 
+use super::controller_background_cancel::background_stop_close_is_pending;
 use super::controller_background_lifecycle::background_launch_is_owed;
 use super::controller_background_settlement::restart_allowed;
 
@@ -259,6 +260,7 @@ impl SubagentController {
                             capture.restart_attempts,
                         ),
                         background_launch_is_owed(&self.state, &record_id, &exec_session_id),
+                        background_stop_close_is_pending(&self.state, &record_id, &exec_session_id),
                     )
                 })
             };
@@ -270,9 +272,15 @@ impl SubagentController {
             // list a launch that is not running and never will, which is the
             // opposite of what a liveness projection is for. Such a record is
             // left to the refresh path, and this read-only query projects the
-            // failure the settlement will write.
+            // failure the settlement will write, or the predicted replacement
+            // when automatic restore would still restart it.
+            //
+            // A stop whose close is still owed owns the outcome even though the
+            // exec session reads as missing: settlement defers to that close,
+            // so the list must keep the cached stopping state instead of
+            // reporting completion before the close path confirms it.
             let launch_owed = match current {
-                Some((mut current_entry, false, _)) => {
+                Some((mut current_entry, false, _, _)) => {
                     // The record's own outcome is authoritative, including the
                     // wire contract's terminal instant.
                     if !current_entry.status.is_active() {
@@ -284,22 +292,34 @@ impl SubagentController {
                 // The record no longer exists, so there is no current outcome to
                 // project. Keeping the captured entry invents nothing.
                 None => continue,
-                Some((_, true, launch_owed)) => launch_owed,
+                Some((current_entry, true, _, true)) => {
+                    capture.entry = current_entry;
+                    continue;
+                }
+                Some((_, true, launch_owed, false)) => launch_owed,
             };
             // An orphaned `Starting` claim is handled apart from a missing
             // `Running` record. A claim nothing owes a launch for has no driver:
             // its reservation was abandoned, and only a later refresh can
-            // schedule a replacement. This read starts nothing, so it must not
-            // report the claim as an active task merely because the restart
-            // budget would allow one. A missing `Running` record is different:
-            // its process is observed gone, and `restart_allowed` then predicts
-            // the replacement refresh will schedule.
+            // schedule a replacement. This read starts nothing, so a claim with
+            // no restart left is projected as the failure the settlement will
+            // write. A claim the settlement can still restart is projected as
+            // `Starting`, because refresh will schedule exactly that
+            // replacement; reporting it as a terminal failure would show a
+            // finished task that then resumes. A missing `Running` record is
+            // different: its process is observed gone, and `restart_allowed`
+            // then predicts the replacement refresh will schedule.
             let orphaned_starting_claim = capture.entry.status == BackgroundSubprocessStatus::Starting && !launch_owed;
             capture.entry.status = if orphaned_starting_claim {
-                if capture.desired_enabled {
+                if !capture.desired_enabled {
+                    BackgroundSubprocessStatus::Stopped
+                } else if !restart_allowed(
+                    self.config.vt_cfg.subagents.background.auto_restore,
+                    capture.restart_attempts,
+                ) {
                     BackgroundSubprocessStatus::Error
                 } else {
-                    BackgroundSubprocessStatus::Stopped
+                    BackgroundSubprocessStatus::Starting
                 }
             } else if capture.desired_enabled
                 && ((capture.entry.status == BackgroundSubprocessStatus::Starting && launch_owed)
@@ -656,6 +676,7 @@ mod foreign_liveness_tests {
             prompt: "work".to_string(),
             summary: None,
             error: None,
+            close_fault: None,
             archive_path: None,
             transcript_path: None,
             max_turns: None,

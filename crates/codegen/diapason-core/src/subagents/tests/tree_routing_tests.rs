@@ -41,6 +41,7 @@ fn settled_background_record(
         prompt: "Watch the workspace".to_string(),
         summary: Some("settled".to_string()),
         error: error.map(str::to_string),
+        close_fault: None,
         archive_path: None,
         transcript_path: None,
         max_turns: None,

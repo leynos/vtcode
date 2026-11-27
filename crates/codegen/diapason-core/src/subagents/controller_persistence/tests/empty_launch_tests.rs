@@ -83,11 +83,15 @@ fn two_legacy_copies_of_one_child_session_resolve_to_their_stop() {
 /// A single row with no launch identity still loads.
 ///
 /// Only a duplicate is ambiguous; one row is the record it says it is, and an
-/// older build may only ever have written one.
+/// older build may only ever have written one. The row names neither an exec
+/// session nor a child session, so this is the boundary the rule is about: a
+/// loader that discarded every unattributed row would return nothing here.
 #[test]
 fn a_single_empty_launch_row_still_loads() {
-    // Shape 0 is `worker` owned by `session-a`.
-    let record = merge_launch_record(0, 1, true, "", "only-row");
+    // Shape 0 is `worker` owned by `session-a`; both identities are cleared so
+    // the fixture is the unattributed row the test describes.
+    let mut record = merge_launch_record(0, 1, true, "", "only-row");
+    record.session_id = String::new();
 
     let merged = collect_by_canonical_id(vec![record]);
 

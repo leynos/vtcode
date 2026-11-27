@@ -82,18 +82,22 @@ pub(in crate::subagents) enum BackgroundRunReservation {
 /// it takes the claim over.
 const BACKGROUND_ABANDONED_CLAIM_ERROR: &str = "Background launch was abandoned before its process started";
 
-/// Settles a claim whose reservation never reached its launch.
+/// Settles a claim whose driver never reached its process.
 ///
 /// The reservation writes the claim and then awaits its durable write and its
-/// publication. The launch arms its own guard only once `Reserved` is returned,
-/// so a caller dropped inside either of those awaits would leave a `Starting`
-/// record with a non-retryable launch obligation: refresh drives only retryable
-/// obligations, so nothing would ever settle it and the record would report an
-/// active launch that never spawns. This guard therefore covers the
-/// reservation's own awaits. It is disarmed at the end of the reservation; the
-/// launch path arms its own guard in the same synchronous stretch, with no
-/// await between them, so the claim is guarded continuously from its write to
-/// its spawn.
+/// publication. The launch path arms its own guard only once `Reserved` is
+/// returned, so a caller dropped inside either of those awaits would leave a
+/// `Starting` record with a non-retryable launch obligation: refresh drives only
+/// retryable obligations, so nothing would ever settle it and the record would
+/// report an active launch that never spawns. This guard covers the
+/// reservation's own awaits; the launch path arms the same guard in the same
+/// synchronous stretch, with no await between them, so the claim is guarded
+/// continuously from its write to its spawn. The inline retry arms it too: the
+/// retry record has already spent its allowance, so a driver dropped while the
+/// replacement is prepared must not leave a claim nothing will settle.
+///
+/// The reservation and the launch path therefore share one abandonment
+/// implementation rather than two copies that can drift apart.
 pub(super) struct ReservedClaimGuard {
     state: Arc<RwLock<ControllerState>>,
     record_id: String,
@@ -225,38 +229,6 @@ pub(in crate::subagents) fn background_launch_conflicts(
     conflicts
 }
 
-/// Projects a prepared plan onto the record the plan now owns.
-pub(in crate::subagents) fn starting_background_record(plan: &BackgroundRunPlan) -> BackgroundRecord {
-    BackgroundRecord {
-        owner_session_id: plan.owner_session_id.clone(),
-        id: plan.record_id.clone(),
-        agent_name: plan.spec.name.clone(),
-        display_label: subagent_display_label(&plan.spec),
-        description: plan.spec.description.clone(),
-        source: plan.spec.source.label(),
-        colour: plan.spec.colour.clone(),
-        session_id: plan.session_id.clone(),
-        parent_session_id: plan.parent_session_id.clone(),
-        exec_session_id: plan.exec_session_id.clone(),
-        desired_enabled: true,
-        status: BackgroundSubprocessStatus::Starting,
-        created_at: plan.created_at,
-        updated_at: Utc::now(),
-        started_at: None,
-        ended_at: None,
-        pid: None,
-        prompt: plan.prompt.clone(),
-        summary: Some("Starting background subagent".to_string()),
-        error: None,
-        archive_path: None,
-        transcript_path: None,
-        max_turns: plan.max_turns,
-        model_override: plan.model_override.clone(),
-        reasoning_override: plan.reasoning_override.clone(),
-        restart_attempts: plan.restart_attempts,
-    }
-}
-
 /// What the shared ledger says about one record and the launch a caller observed.
 #[derive(Debug, Default)]
 pub(super) struct PersistedLaunchEvidence {
@@ -294,17 +266,24 @@ impl SubagentController {
             return Ok(PersistedLaunchEvidence::default());
         }
         let ledger = background_ledger::load_background_ledger(&self.config.workspace_root).await?;
-        let mut persisted = controller_persistence::collect_by_canonical_id(ledger.records);
-        // A row under another canonical id naming the observed launch means the
-        // launch was migrated to its owner. Its intent does not matter: a
-        // stopped migration is still not this controller's to replace.
-        let observed_launch_moved = persisted
-            .iter()
-            .any(|(id, record)| id != record_id && record.exec_session_id == observed_exec_session_id);
-        let observed_launch_superseded = ledger
-            .migrated_launches
-            .iter()
-            .any(|launch| launch.exec_session_id == observed_exec_session_id)
+        // The evidence is applied before selection, so an ownerless alias of a
+        // launch a session now owns cannot survive as a second row beside the
+        // owned replacement that holds it.
+        let mut persisted =
+            controller_persistence::collect_by_canonical_id_with_evidence(ledger.records, &ledger.migrated_launches);
+        // An empty exec session identifies no launch. The legacy restore passes
+        // the row's own blank id here, and matching it against another blank
+        // row would report a launch that moved - or was superseded - and
+        // silently decline a restart that never had an identity to compare.
+        let observed_launch_moved = !observed_exec_session_id.is_empty()
+            && persisted
+                .iter()
+                .any(|(id, record)| id != record_id && record.exec_session_id == observed_exec_session_id);
+        let observed_launch_superseded = !observed_exec_session_id.is_empty()
+            && ledger
+                .migrated_launches
+                .iter()
+                .any(|launch| launch.exec_session_id == observed_exec_session_id)
             && !persisted
                 .values()
                 .any(|record| record.exec_session_id == observed_exec_session_id);
@@ -325,9 +304,9 @@ impl SubagentController {
         if self.config.managed_background_runtime {
             return Ok(true);
         }
-        let persisted = controller_persistence::collect_by_canonical_id(
-            load_background_state(&self.config.workspace_root).await?.records,
-        );
+        let ledger = background_ledger::load_background_ledger(&self.config.workspace_root).await?;
+        let persisted =
+            controller_persistence::collect_by_canonical_id_with_evidence(ledger.records, &ledger.migrated_launches);
         Ok(persisted
             .values()
             .any(|row| row.exec_session_id == exec_session_id && persisted_background_row_is_desired(row)))

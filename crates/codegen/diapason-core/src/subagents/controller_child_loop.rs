@@ -97,13 +97,24 @@ impl SubagentController {
             if record.status.is_terminal() {
                 bail!("Subagent {child_id} is closed; refusing to launch it");
             }
-            record.status = SubagentStatus::Queued;
-            record.updated_at = Utc::now();
             // The live handle this launch found when it published the queued
             // state. A different one at publication is another launch's.
             // A finished handle is not a loop: a task that died without
             // settling the record must not block the recovery below.
-            live_handle_id(record)
+            let observed_handle = live_handle_id(record);
+            // A live loop that is running or waiting already owns the record.
+            // An interrupt that arrived before its launch published a handle
+            // leaves the prompt queued, and that loop can dequeue it before this
+            // launch takes the lock. Overwriting `Running` here would erase the
+            // evidence the guards below read, so this launch would abort the
+            // loop that is running the prompt and its replacement would find an
+            // empty queue. The live loop serves the prompt instead.
+            if observed_handle.is_some() && matches!(record.status, SubagentStatus::Running | SubagentStatus::Waiting) {
+                return Ok(());
+            }
+            record.status = SubagentStatus::Queued;
+            record.updated_at = Utc::now();
+            observed_handle
         };
         self.publish_child_status(child_id).await;
         // A test parks a launch here, after the queued status is published and

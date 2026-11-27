@@ -268,7 +268,10 @@ impl SubagentController {
                 // path and the save merge share `collect_by_canonical_id`, so
                 // the newest `updated_at` wins in both: file order is not a
                 // freshness signal, and letting it decide could load a
-                // cancelled copy over the cancellation.
+                // cancelled copy over the cancellation. The ledger's migration
+                // evidence is applied before that selection, so an ownerless
+                // alias of a launch a session now owns is not restored beside
+                // the owned replacement that holds it.
                 //
                 // Breaking id change: this rekeys every entry to its
                 // canonical owner-scoped id, so the map below is keyed by the
@@ -278,16 +281,14 @@ impl SubagentController {
                 // the query paths call `resolve_background_target`, which
                 // retries the legacy id, so retained ids still address the
                 // record they named.
-                controller_persistence::collect_by_canonical_id(
-                    load_background_state(&config.workspace_root)
-                        .await?
-                        .records
-                        .into_iter()
-                        .filter(|record| {
-                            background_owner_session_id
-                                .as_deref()
-                                .is_none_or(|owner| record.owner_session_id.as_deref() == Some(owner))
-                        }),
+                let ledger = background_ledger::load_background_ledger(&config.workspace_root).await?;
+                controller_persistence::collect_by_canonical_id_with_evidence(
+                    ledger.records.into_iter().filter(|record| {
+                        background_owner_session_id
+                            .as_deref()
+                            .is_none_or(|owner| record.owner_session_id.as_deref() == Some(owner))
+                    }),
+                    &ledger.migrated_launches,
                 )
                 .into_iter()
                 .map(|(id, record)| (id, BackgroundRecord::from_persisted(record)))

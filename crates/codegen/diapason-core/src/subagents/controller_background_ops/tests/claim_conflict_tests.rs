@@ -17,6 +17,7 @@ use crate::subagents::background::{load_background_state, persist_background_sta
 use crate::subagents::controller_persistence::ledger_write_checkpoints;
 use crate::subagents::with_subagent_invocation_context;
 
+use super::super::BackgroundRunRequest;
 use super::super::BackgroundRunReservation;
 use super::super::ExplicitStartAdmission;
 use super::super::controller_background_cancel::mark_background_stop_close_pending;
@@ -245,7 +246,7 @@ async fn a_bound_replacement_displaces_the_launch_that_recorded_its_start() {
 async fn a_reservation_dropped_during_its_claim_write_settles_the_claim_it_wrote() {
     let temp = TempDir::new().expect("tempdir");
     let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
-    let (entered, _release) = ledger_write_checkpoints::arm(temp.path());
+    let (entered, release) = ledger_write_checkpoints::arm(temp.path());
     {
         let claimed_plan = plan(worker_spec(), "exec-claimed", None);
         let reserve = controller.reserve_background_run(&claimed_plan);
@@ -298,6 +299,10 @@ async fn a_reservation_dropped_during_its_claim_write_settles_the_claim_it_wrote
         "the settlement owes the ledger the failure it recorded"
     );
 
+    // The claim write now runs in a task that owns the ledger lock, so the
+    // parked write must be released before the test ends instead of leaving a
+    // task holding the lock for the rest of the runtime.
+    release.notify_one();
     controller.signal_shutdown().await;
 }
 
@@ -359,16 +364,10 @@ async fn a_reuse_rebinds_a_parentless_record_onto_the_requesting_session() {
             "reuse moves a legacy record onto the session that asked for it"
         );
     }
-    assert!(
-        pending_background_ledger_write_generation(&controller.state).is_some(),
-        "the rebind must reach the ledger through the owed write"
-    );
-    assert!(
-        controller
-            .retry_owed_background_ledger_write()
-            .await
-            .expect("the rebind's owed write succeeds"),
-        "the rebind is what the owed write persists"
+    assert_eq!(
+        pending_background_ledger_write_generation(&controller.state),
+        None,
+        "the rebind is written before reuse answers, so no write is left owed"
     );
     let persisted = load_background_state(temp.path()).await.expect("reload the ledger");
     let stored = persisted
@@ -426,7 +425,101 @@ async fn a_parentless_reuse_rebinds_inside_a_tool_invocation() {
         "the reuse takes the parentless record onto the invoking session"
     );
     drop(state);
+    let persisted = load_background_state(temp.path()).await.expect("reload the ledger");
+    let stored = persisted
+        .records
+        .iter()
+        .find(|record| record.id == WORKER)
+        .expect("the rebind reaches the ledger before the reservation answers");
+    assert_eq!(
+        stored.parent_session_id, "parent-session",
+        "a tool caller's rebind must be durable before reuse reports success"
+    );
 
+    controller.signal_shutdown().await;
+}
+
+/// A parentless record is rebound through the public spawn entry point.
+///
+/// The reservation-level cases prove the rebind logic in isolation. This drives
+/// the path a tool actually uses: the pre-lock selector declines a parentless
+/// record so the reservation can rebind it, the reuse answers with the live
+/// launch, and the record now names the invoking session. The rebind is written
+/// before the caller is told the launch is reused.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_parentless_reuse_rebinds_through_spawn_background_subprocess() {
+    use crate::subagents::SpawnBackgroundSubprocessRequest;
+
+    use super::support::{write_background_demo_agent, write_sleeping_demo_script};
+
+    let temp = TempDir::new().expect("tempdir");
+    write_background_demo_agent(temp.path());
+    write_sleeping_demo_script(temp.path());
+    let mut vt_cfg = DiapasonConfig::default();
+    vt_cfg.subagents.background.enabled = true;
+    let controller = background_test_controller(temp.path(), vt_cfg).await;
+    let launched = controller
+        .ensure_background_record_running(BackgroundRunRequest {
+            agent_name: "background-demo".to_string(),
+            stable_id: Some("background-background-demo".to_string()),
+            restart_attempts: 0,
+            overrides: None,
+            expected_exec_session_id: None,
+        })
+        .await
+        .expect("the demo launch starts");
+    {
+        let mut state = controller.state.write().await;
+        state
+            .background_children
+            .get_mut("background-background-demo")
+            .expect("the launch is recorded")
+            .parent_session_id = String::new();
+    }
+
+    let context = SubagentInvocationContext::new("parent-session".to_string(), Vec::new(), String::new());
+    let reused = with_subagent_invocation_context(
+        context,
+        controller.spawn_background_subprocess(SpawnBackgroundSubprocessRequest {
+            agent_type: Some("background-demo".to_string()),
+            message: Some("Report readiness once.".to_string()),
+            items: Vec::new(),
+            model: None,
+            reasoning_effort: None,
+            max_turns: None,
+        }),
+    )
+    .await
+    .expect("the public entry point reuses the parentless launch");
+
+    assert_eq!(
+        reused.exec_session_id, launched.exec_session_id,
+        "the public path answers with the launch that is already running"
+    );
+    {
+        let state = controller.state.read().await;
+        let record = state
+            .background_children
+            .get("background-background-demo")
+            .expect("the reused record is stored");
+        assert_eq!(
+            record.parent_session_id, "parent-session",
+            "the reuse takes the parentless record onto the invoking session"
+        );
+    }
+    let persisted = load_background_state(temp.path()).await.expect("reload the ledger");
+    let stored = persisted
+        .records
+        .iter()
+        .find(|record| record.id == "background-background-demo")
+        .expect("the reused launch reaches the ledger");
+    assert_eq!(
+        stored.parent_session_id, "parent-session",
+        "the public reuse must not answer before its rebind is durable"
+    );
+
+    let _ = controller.config.exec_sessions.close_session(&launched.exec_session_id).await;
     controller.signal_shutdown().await;
 }
 
@@ -443,7 +536,7 @@ async fn a_parentless_reuse_rebinds_inside_a_tool_invocation() {
 async fn a_contended_claim_drop_leaves_the_record_for_refresh_to_settle() {
     let temp = TempDir::new().expect("tempdir");
     let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
-    let (entered, _release) = ledger_write_checkpoints::arm(temp.path());
+    let (entered, release) = ledger_write_checkpoints::arm(temp.path());
     {
         let claimed_plan = plan(worker_spec(), "exec-contended", None);
         let mut reserve = Box::pin(controller.reserve_background_run(&claimed_plan));
@@ -482,6 +575,10 @@ async fn a_contended_claim_drop_leaves_the_record_for_refresh_to_settle() {
         "the contended drop still clears the launch obligation"
     );
 
+    // The claim write runs in a task that owns the ledger lock, so releasing
+    // the parked write lets that task finish and the lock return before the
+    // next pass reads the ledger.
+    release.notify_one();
     controller
         .refresh_background_processes()
         .await

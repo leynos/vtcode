@@ -315,12 +315,24 @@ impl ProcessHandle {
 /// toolchains classify that number as `ErrorKind::Uncategorized` rather than
 /// `NotFound`, so the raw OS error is matched explicitly on Unix. A missing
 /// child is the terminal state termination asks for, not a fault.
+///
+/// `ErrorKind::NotFound` is deliberately not treated as absence. On Windows
+/// that kind is how `Command::status` reports that the `taskkill` executable
+/// itself could not be found, before anything signalled the child; reading it
+/// as "already gone" would consume the killer, abort the helper tasks and
+/// report a termination that never happened. Each backend that can prove the
+/// target absent reports that proof itself, as the Windows `kill_process`
+/// does after a failed `taskkill` and as the Unix `ESRCH` check does here.
 fn is_already_gone(error: &io::Error) -> bool {
     #[cfg(unix)]
-    if error.raw_os_error() == Some(libc::ESRCH) {
-        return true;
+    {
+        error.raw_os_error() == Some(libc::ESRCH)
     }
-    error.kind() == io::ErrorKind::NotFound
+    #[cfg(not(unix))]
+    {
+        let _ = error;
+        false
+    }
 }
 
 impl Drop for ProcessHandle {

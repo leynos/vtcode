@@ -143,3 +143,106 @@ async fn a_stale_stop_save_keeps_a_replacement_launch_in_the_ledger() {
     let persisted = serde_json::to_value(&ledger.records[0]).expect("render the persisted row");
     assert_eq!(persisted["desired_enabled"], serde_json::json!(true), "the replacement launch stays wanted");
 }
+
+/// A resume refuses before it reopens any record of its subtree.
+///
+/// Reopening the root, queueing its prompt and only then rejecting a descendant
+/// whose isolation worktree had been reclaimed left the root `Queued` with no
+/// loop behind it: the error exited before the queued runs started, and a retry
+/// skipped the root because reopening a `Queued` record is a no-op. The local
+/// subtree is validated as a whole before any record changes.
+#[tokio::test]
+async fn a_resume_that_rejects_a_descendant_leaves_the_root_unopened() {
+    let workspace = TempDir::new().expect("tempdir");
+    let controller = SubagentController::new(test_config(workspace.path().to_path_buf()))
+        .await
+        .expect("controller");
+    let mut root = child_record("root", SubagentStatus::Completed);
+    root.closed = true;
+    let mut isolated = child_record("isolated", SubagentStatus::Completed);
+    isolated.parent_thread_id = "root".to_string();
+    isolated.spec.isolation = Some(diapason_config::IsolationMode::Worktree);
+    isolated.worktree_path = None;
+    isolated.closed = true;
+    {
+        let mut state = controller.state.write().await;
+        state.children.insert("root".to_string(), root);
+        state.children.insert("isolated".to_string(), isolated);
+    }
+
+    let error = controller
+        .resume(TaskOwner::Workspace, "root")
+        .await
+        .expect_err("a subtree whose descendant lost its isolation checkout must not resume");
+    assert!(
+        format!("{error:#}").contains("isolation worktree is gone"),
+        "the refusal must name the missing isolation checkout: {error:#}"
+    );
+
+    let state = controller.state.read().await;
+    let root = state.children.get("root").expect("the root record survives the refusal");
+    assert_eq!(root.status, SubagentStatus::Completed, "the root must not be reopened");
+    assert!(root.queued_prompts.is_empty(), "a refused resume must not queue work nothing will run");
+    assert!(root.closed, "the root must keep the closure the refused resume would have released");
+}
+
+/// A test-only rendezvous inside the child-wait path.
+///
+/// `wait_for_child_change` creates its notification futures and rechecks the
+/// target statuses before it selects. A test that must prove the wakeup
+/// travelled through those futures parks the waiter after the recheck: a
+/// completion published from there can no longer be observed by the recheck, so
+/// only a notification can end the wait. Re-exported as
+/// `controller_spawn_run::wait_checkpoints` for the tests that arm it.
+pub(in crate::subagents) mod wait_checkpoints {
+    use std::sync::{Arc, Mutex, OnceLock, Weak};
+
+    use tokio::sync::{Notify, RwLock};
+
+    use crate::subagents::ControllerState;
+
+    struct WaitCheckpoint {
+        state: Weak<RwLock<ControllerState>>,
+        entered: Arc<Notify>,
+        release: Arc<Notify>,
+    }
+
+    fn checkpoints() -> &'static Mutex<Vec<WaitCheckpoint>> {
+        static CHECKPOINTS: OnceLock<Mutex<Vec<WaitCheckpoint>>> = OnceLock::new();
+        CHECKPOINTS.get_or_init(|| Mutex::new(Vec::new()))
+    }
+
+    /// Arms a checkpoint that holds the next wait over `state`'s children.
+    ///
+    /// Returns the signal that the waiter reached the checkpoint and the signal
+    /// that releases it.
+    pub(in crate::subagents) fn arm(state: &Arc<RwLock<ControllerState>>) -> (Arc<Notify>, Arc<Notify>) {
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let mut registry = checkpoints().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        registry.retain(|checkpoint| checkpoint.state.strong_count() > 0);
+        registry.push(WaitCheckpoint {
+            state: Arc::downgrade(state),
+            entered: Arc::clone(&entered),
+            release: Arc::clone(&release),
+        });
+        (entered, release)
+    }
+
+    /// Parks here when `state` has an armed wait checkpoint.
+    pub(in crate::subagents) async fn pass(state: &Arc<RwLock<ControllerState>>) {
+        let checkpoint = {
+            let mut registry = checkpoints().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            registry.retain(|checkpoint| checkpoint.state.strong_count() > 0);
+            registry
+                .iter()
+                .position(|checkpoint| std::ptr::eq(checkpoint.state.as_ptr(), Arc::as_ptr(state)))
+                .map(|index| registry.remove(index))
+        };
+        let Some(checkpoint) = checkpoint else {
+            return;
+        };
+        checkpoint.entered.notify_one();
+        checkpoint.release.notified().await;
+    }
+}

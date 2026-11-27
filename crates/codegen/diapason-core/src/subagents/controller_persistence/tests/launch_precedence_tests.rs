@@ -317,3 +317,34 @@ async fn migration_evidence_does_not_suppress_an_independent_ownerless_launch() 
         "an independent ownerless launch must not be suppressed by migration evidence: {ledger:?}"
     );
 }
+
+/// A load applies the ledger's migration evidence before selecting records.
+///
+/// A migrated ownerless alias is not a second launch: the session that owns the
+/// record replaced it, and the retained evidence is what still names the stale
+/// copy. The save path drops such a copy, so a load that kept it would restore a
+/// launch the next save discards, and the claim and stop lookups could match its
+/// exec session beside the owned replacement.
+#[tokio::test]
+async fn a_load_applies_migration_evidence_before_canonical_selection() {
+    let temp = TempDir::new().expect("temporary workspace");
+    let owner = "session-a";
+    let mut replacement = legacy_row(owner);
+    replacement.owner_session_id = Some(owner.to_string());
+    replacement.exec_session_id = "exec-replacement".to_string();
+    replacement.canonicalize_id();
+    write_ledger_with_existing_migration_evidence(
+        temp.path(),
+        vec![legacy_row(owner), replacement],
+        &[("background-worker", "exec-launch")],
+    )
+    .await;
+
+    let controller = SubagentController::new(ownership_controller_config(temp.path().to_path_buf()))
+        .await
+        .expect("workspace controller");
+    let entries = controller.background_status_entries(TaskOwner::Workspace).await;
+    assert_eq!(entries.len(), 1, "the stale ownerless alias must not load beside its replacement: {entries:?}");
+    assert_eq!(entries[0].exec_session_id, "exec-replacement", "the owned row is the launch that loads");
+    controller.signal_shutdown().await;
+}

@@ -6,6 +6,7 @@
 use super::*;
 use proptest::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 /// Resolves which slot indices a sequence of grafts joined.
@@ -136,6 +137,47 @@ fn disjoint_trees_can_issue_the_same_base_id() {
     assert_eq!(right_id, candidate, "a disjoint tree must not reserve an id another tree issued");
 }
 
+/// A slot bound to another adoption lock is never adopted.
+///
+/// The merge and redirect run under the tree's adoption lock, so a slot bound
+/// to a different lock could not be made exclusive against an allocation in the
+/// tree being joined. The attachment reports that mismatch itself, before it
+/// inspects the joining subtree; this pins the allocator's own check, which
+/// remains the last line of defence for a caller that reaches it directly.
+#[test]
+fn a_slot_bound_to_another_adoption_lock_is_not_adopted() {
+    let source = ChildIdScopeSlot::with_lock_scope(Arc::new(SubagentLockScope::new()));
+    let target = ChildIdScopeSlot::with_lock_scope(Arc::new(SubagentLockScope::new()));
+    let candidate = "agent-explorer-20261113T060819731Z";
+
+    assert_eq!(
+        source.with_scope(|scope| scope.allocate(|_| false, candidate)),
+        candidate,
+        "the source reserves the bare candidate"
+    );
+
+    let rejection = source
+        .adopt_into(&target)
+        .expect_err("a slot bound to another adoption lock must not join this tree");
+    assert!(
+        matches!(rejection, AdoptionRejection::LockScopeMismatch),
+        "the rejection must name the scope mismatch: {rejection}"
+    );
+
+    // The rejected merge leaves both allocators as they were: the target never
+    // gains the source's reservation, and the source still holds it.
+    assert_eq!(
+        target.with_scope(|scope| scope.allocate(|_| false, candidate)),
+        candidate,
+        "a rejected merge must not carry the source's reservation into the target"
+    );
+    assert_eq!(
+        source.with_scope(|scope| scope.allocate(|_| false, candidate)),
+        format!("{candidate}-2"),
+        "a rejected merge must leave the source's allocator intact"
+    );
+}
+
 /// Generated ids carry millisecond precision, so two spawns of the same
 /// kind in one millisecond propose the same id. The second must receive a
 /// distinct id: `BTreeMap::insert` on the shared key would replace the
@@ -262,4 +304,105 @@ async fn allocation_and_adoption_wait_for_the_tree_adoption_lock() {
     // the grafted tree now reads, so the tree can never issue it again.
     let repeated = target.with_scope(|scope| scope.allocate(|_| false, candidate));
     assert_ne!(repeated, candidate, "the tree must refuse an id recorded on either side of the graft");
+}
+
+/// A test-only rendezvous around the reservation window of [`ChildIdScopeSlot::with_scope`].
+///
+/// Production never installs one. A test that must prove the adoption lock
+/// covers a reservation parks the first allocation between resolving its
+/// terminal scope and recording its id, while the allocation still holds the
+/// adoption lock. The graft then signals that it has reached that lock and must
+/// block there. Releasing the gate lets the reservation be recorded first, so
+/// the graft's later merge is guaranteed to see the id.
+#[cfg(test)]
+#[derive(Default)]
+pub(in crate::subagents) struct AllocationRendezvous {
+    parked_once: AtomicBool,
+    entered: tokio::sync::Notify,
+    merge_attempted: tokio::sync::Notify,
+    adoption_lock_held: tokio::sync::Notify,
+    reserved: AtomicBool,
+    /// Set when the bounded park wait elapsed without a release.
+    ///
+    /// A test that reads this can tell its own gate timeout apart from lock
+    /// contention, which would otherwise be reported for a reservation that
+    /// never held the adoption lock.
+    expired: AtomicBool,
+    released: Mutex<bool>,
+    release: std::sync::Condvar,
+}
+
+#[cfg(test)]
+impl AllocationRendezvous {
+    /// Parks the first allocation that reaches the gate until [`Self::release`].
+    ///
+    /// Returns whether this call parked. Later allocations pass straight
+    /// through, so a tree's remaining fixtures are unaffected once the gated
+    /// reservation is complete.
+    pub(super) fn park_once(&self) -> bool {
+        if self.parked_once.swap(true, Ordering::SeqCst) {
+            return false;
+        }
+        self.entered.notify_one();
+        let released = self.released.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        // The wait is bounded so a failing test reports its assertion instead
+        // of hanging a parked worker when the release never arrives. An
+        // expired gate releases the allocation without the test choosing to,
+        // so the fact is recorded rather than left to be misread as contention.
+        let (released, outcome) = self
+            .release
+            .wait_timeout_while(released, Duration::from_secs(5), |released| !*released)
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if outcome.timed_out() && !*released {
+            self.expired.store(true, Ordering::SeqCst);
+        }
+        true
+    }
+
+    /// Reports whether a parked allocation resumed because its bounded wait
+    /// elapsed instead of because the test released it.
+    pub(in crate::subagents) fn expired(&self) -> bool {
+        self.expired.load(Ordering::SeqCst)
+    }
+
+    /// Waits until the gated allocation has parked in the reservation window.
+    pub(in crate::subagents) async fn wait_until_parked(&self) {
+        self.entered.notified().await;
+    }
+
+    /// Records that the gated allocation reserved its id.
+    pub(super) fn mark_reserved(&self) {
+        self.reserved.store(true, Ordering::SeqCst);
+    }
+
+    /// Returns whether the gated allocation reserved its id before the merge.
+    pub(in crate::subagents) fn reserved_before_merge(&self) -> bool {
+        self.reserved.load(Ordering::SeqCst)
+    }
+
+    /// Signals that a graft has reached the adoption lock it must acquire.
+    pub(super) fn signal_merge_attempt(&self) {
+        self.merge_attempted.notify_one();
+    }
+
+    /// Waits until a graft has reached the adoption lock.
+    pub(in crate::subagents) async fn wait_for_merge_attempt(&self) {
+        self.merge_attempted.notified().await;
+    }
+
+    /// Signals that a graft now holds the adoption lock.
+    pub(super) fn signal_adoption_lock_held(&self) {
+        self.adoption_lock_held.notify_one();
+    }
+
+    /// Waits until a graft has acquired the adoption lock.
+    pub(in crate::subagents) async fn wait_for_adoption_lock_held(&self) {
+        self.adoption_lock_held.notified().await;
+    }
+
+    /// Releases a parked allocation so it can record its id.
+    pub(in crate::subagents) fn release(&self) {
+        *self.released.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = true;
+        self.release.notify_all();
+    }
 }

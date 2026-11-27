@@ -763,10 +763,13 @@ pub struct ExecSessionManager {
     ///
     /// A close must not signal a backend record that a later create inserted
     /// under the same id, so both operations for one id hold this lock from the
-    /// check through the map update. Entries are retained for the process
-    /// lifetime: dropping one would let a waiter holding the old handle bypass a
-    /// create that installed a fresh handle.
-    operation_locks: Arc<std::sync::Mutex<HashMap<ExecSessionId, Arc<Mutex<()>>>>>,
+    /// check through the map update. The map holds weak references and expired
+    /// entries are pruned on every acquisition: a long-lived manager would
+    /// otherwise retain a key and a mutex for every historical session, including
+    /// failed creates. A strong reference held by an active operation or a
+    /// waiter keeps its entry alive, so operations for one id still share a
+    /// single lock.
+    operation_locks: Arc<std::sync::Mutex<HashMap<ExecSessionId, std::sync::Weak<Mutex<()>>>>>,
     /// A scripted fault for the liveness read path.
     ///
     /// The background liveness projection must distinguish a genuinely absent
@@ -791,9 +794,34 @@ impl ExecSessionManager {
     }
 
     /// Returns the per-session mutex that serializes create and close.
+    ///
+    /// Expired entries are pruned while the registry is locked, so a manager
+    /// that has served many short-lived sessions does not keep a key, a mutex
+    /// and their strings for every one of them. An entry is expired only once
+    /// no operation holds or awaits its lock, so the surviving handle is the one
+    /// every operation for that id shares.
     fn session_operation_lock(&self, session_id: &str) -> Arc<Mutex<()>> {
         let mut locks = self.operation_locks.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        Arc::clone(locks.entry(session_id.to_string().into()).or_default())
+        locks.retain(|_, lock| lock.strong_count() > 0);
+        let key: ExecSessionId = session_id.to_string().into();
+        if let Some(lock) = locks.get(&key).and_then(std::sync::Weak::upgrade) {
+            return lock;
+        }
+        let lock = Arc::new(Mutex::new(()));
+        locks.insert(key, Arc::downgrade(&lock));
+        lock
+    }
+
+    /// Returns how many operation locks the registry still holds.
+    ///
+    /// The registry is process-wide state, so a test asserting that it was
+    /// reclaimed must count only the ids it exercised.
+    #[cfg(test)]
+    fn operation_lock_count(&self) -> usize {
+        self.operation_locks
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .len()
     }
 
     /// Makes every subsequent snapshot read fail with `message`.
@@ -1227,6 +1255,8 @@ async fn pass_session_registration_gate(
 
 #[cfg(all(test, unix))]
 mod tests {
+    use std::sync::Arc;
+
     use hashbrown::HashMap;
     use tempfile::tempdir;
     use tokio::sync::watch;
@@ -1879,5 +1909,34 @@ mod tests {
 
         manager.close_session("recreated").await?;
         Ok(())
+    }
+    /// Operation locks are reclaimed once no operation can still hold them.
+    ///
+    /// Every create and close asks the registry for the same per-id lock. A
+    /// long-lived manager used to retain one entry, with its key and mutex, for
+    /// every session it had ever served, including failed creates. An expired
+    /// entry must be pruned, while a lock an operation still holds is shared by
+    /// every other operation for that id.
+    #[tokio::test]
+    async fn operation_locks_are_reclaimed_after_the_last_user_releases_them() {
+        let workspace = tempdir().expect("workspace");
+        let manager = ExecSessionManager::new(
+            workspace.path().to_path_buf(),
+            PtySessionManager::new(workspace.path().to_path_buf(), PtyConfig::default()),
+        );
+
+        let first = manager.session_operation_lock("exec-reclaimed");
+        let waiter = manager.session_operation_lock("exec-reclaimed");
+        assert!(Arc::ptr_eq(&first, &waiter), "one id must share one lock while either handle lives");
+        drop(first);
+        drop(waiter);
+
+        // A different id must not retain the expired entry beside its own.
+        let _other = manager.session_operation_lock("exec-other");
+        assert_eq!(
+            manager.operation_lock_count(),
+            1,
+            "an expired operation lock must be pruned instead of retained for the process lifetime"
+        );
     }
 }

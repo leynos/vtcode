@@ -23,9 +23,19 @@ use diapason_config::core::permissions::{AgentPermissionsConfig, PermissionDefau
 ///
 /// The fixture mirrors the one the subagent module's own tests use, kept local
 /// because this module's tests cannot reach the private helper there. It is
-/// shared with the sibling `regression_tests` module.
+/// shared with the sibling `regression_tests` and `unstarted_worktree_tests`
+/// modules, which supply their own `DiapasonConfig` through
+/// [`test_config_with`].
 pub(super) fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
-    let vt_cfg = DiapasonConfig::default();
+    test_config_with(workspace_root, DiapasonConfig::default())
+}
+
+/// Builds a controller configuration for a temporary workspace and config.
+///
+/// One fixture owns the manager construction and every controller field, so a
+/// change to the configuration contract is made once rather than in each test
+/// module that launches a controller.
+pub(super) fn test_config_with(workspace_root: PathBuf, vt_cfg: DiapasonConfig) -> SubagentControllerConfig {
     let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
     let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
     SubagentControllerConfig {

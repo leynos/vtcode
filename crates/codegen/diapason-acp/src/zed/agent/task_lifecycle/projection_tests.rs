@@ -239,8 +239,8 @@ proptest! {
 #[test]
 fn stale_initial_snapshot_is_rejected_after_a_terminal_transition() {
     let mut ordering = LifecycleOrdering::default();
-    // Revision 0 is the base the snapshot pass reserves before the observer is
-    // registered; live transitions start at 1 and increase.
+    // An initial snapshot captured before a later transition carries the older
+    // revision; the transition itself was stamped with a higher one.
     let snapshot_revision = 0_u64;
     let running = with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z");
     let completed = with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z");

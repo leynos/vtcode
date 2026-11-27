@@ -37,8 +37,24 @@ impl ChildTerminator for GoneTerminator {
         }
         #[cfg(not(unix))]
         {
-            Err(io::Error::from(io::ErrorKind::NotFound))
+            // There is no portable "already gone" error kind: a non-Unix
+            // backend proves absence by returning `Ok(())` from its own
+            // target check, and `NotFound` there means its utility was missing.
+            Ok(())
         }
+    }
+}
+
+/// Reports a missing termination utility, as `Command::status` does when the
+/// executable itself cannot be found.
+struct MissingUtilityTerminator {
+    attempts: Arc<AtomicUsize>,
+}
+
+impl ChildTerminator for MissingUtilityTerminator {
+    fn kill(&mut self) -> io::Result<()> {
+        self.attempts.fetch_add(1, Ordering::SeqCst);
+        Err(io::Error::from(io::ErrorKind::NotFound))
     }
 }
 
@@ -177,6 +193,28 @@ async fn try_terminate_treats_an_already_gone_child_as_success() {
         .try_terminate()
         .expect("a child that is already gone must count as terminated");
     assert_helper_tasks_aborted(&handle);
+}
+
+/// A backend that cannot start its termination utility has not signalled the
+/// child.
+///
+/// `Command::status` reports a missing executable as `ErrorKind::NotFound`.
+/// That error says nothing about the target, so it must propagate as a kill
+/// fault: the killer is restored and the helper tasks stay alive, and the
+/// caller can retry instead of being told about a termination that never
+/// happened.
+#[tokio::test]
+async fn try_terminate_propagates_a_missing_termination_utility() {
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let handle = test_handle(Box::new(MissingUtilityTerminator { attempts: Arc::clone(&attempts) }));
+
+    let error = handle
+        .try_terminate()
+        .expect_err("a missing termination utility must not read as a terminated child");
+    assert_eq!(error.kind(), io::ErrorKind::NotFound);
+    assert_eq!(attempts.load(Ordering::SeqCst), 1, "the missing utility is reported, not retried internally");
+    assert_helper_tasks_retained(&handle);
+    assert!(!handle.has_exited(), "a missing utility says nothing about the child's state");
 }
 
 #[tokio::test]

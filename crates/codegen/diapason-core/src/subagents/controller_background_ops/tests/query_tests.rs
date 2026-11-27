@@ -118,6 +118,69 @@ async fn a_snapshot_read_fault_never_reaches_the_ledger_writer() {
     controller.signal_shutdown().await;
 }
 
+/// A stop whose close is still owed stays active in the liveness list.
+///
+/// Settlement defers to a pending close, so the list must not report the stop
+/// complete while its process may still be live. Only a missing session with
+/// no close owed is the terminal projection.
+#[tokio::test]
+async fn a_stop_with_an_owed_close_is_not_reported_as_stopped() {
+    use super::super::controller_background_cancel::{
+        clear_background_stop_close_pending, mark_background_stop_close_pending,
+    };
+
+    let temp = TempDir::new().expect("tempdir");
+    let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf()))
+        .await
+        .expect("background controller");
+    let exec_session_id = "exec-pending-close";
+    let record = background_record(
+        "background-worker",
+        None,
+        "worker",
+        exec_session_id,
+        BackgroundSubprocessStatus::Running,
+        false,
+    );
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(record.id.clone(), record);
+    }
+    mark_background_stop_close_pending(&controller.state, "background-worker", exec_session_id);
+
+    let entries = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
+    let entry = entries
+        .iter()
+        .find(|entry| entry.entry.id == "background-worker")
+        .expect("the record is listed");
+    assert_eq!(
+        entry.entry.status,
+        BackgroundSubprocessStatus::Running,
+        "a stop whose close is owed must stay active while its process may be live"
+    );
+    assert!(
+        entry.entry.ended_at.is_none(),
+        "an active stop must not report an end instant: {:?}",
+        entry.entry.ended_at
+    );
+
+    // A confirmed close discharges the obligation, and the now-missing session
+    // is the completed stop the list must report.
+    clear_background_stop_close_pending(&controller.state, "background-worker", exec_session_id);
+    let entries = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
+    let entry = entries
+        .iter()
+        .find(|entry| entry.entry.id == "background-worker")
+        .expect("the record is listed");
+    assert_eq!(
+        entry.entry.status,
+        BackgroundSubprocessStatus::Stopped,
+        "a missing session with no close owed is a completed stop"
+    );
+
+    controller.signal_shutdown().await;
+}
+
 /// A restored terminal record still reports an end instant.
 ///
 /// The ACP contract allows a null end only while a task is active, but a

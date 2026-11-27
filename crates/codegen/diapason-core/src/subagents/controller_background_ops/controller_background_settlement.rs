@@ -181,6 +181,64 @@ pub(super) fn clear_background_ledger_write_pending(state: &Arc<RwLock<Controlle
     });
 }
 
+/// A test gate between taking a reservation's ledger lock and rechecking the
+/// owed-write marker.
+///
+/// A launch can commit `Running` after the reservation's first owed-write
+/// check and before the ledger lock is granted. That commit's save needs the
+/// same lock, so the row can still read `Starting`; only a gate in this window
+/// can land that commit deterministically and prove reuse does not answer from
+/// memory.
+#[cfg(test)]
+struct BackgroundClaimLockGate {
+    state: Weak<RwLock<ControllerState>>,
+    entered: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+#[cfg(test)]
+fn background_claim_lock_gates() -> &'static Mutex<Vec<BackgroundClaimLockGate>> {
+    static GATES: std::sync::OnceLock<Mutex<Vec<BackgroundClaimLockGate>>> = std::sync::OnceLock::new();
+    GATES.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Arms a gate that holds the next claim's ledger lock of `state`.
+#[cfg(test)]
+pub(super) fn gate_next_background_claim_lock(state: &Arc<RwLock<ControllerState>>) -> (Arc<Notify>, Arc<Notify>) {
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let mut gates = background_claim_lock_gates()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    gates.retain(|gate| gate.state.strong_count() > 0);
+    gates.push(BackgroundClaimLockGate {
+        state: Arc::downgrade(state),
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+    });
+    (entered, release)
+}
+
+/// Parks the reservation at the claim-lock gate when one is armed for `state`.
+#[cfg(test)]
+pub(super) async fn pass_background_claim_lock_gate(state: &Arc<RwLock<ControllerState>>) {
+    let gate = {
+        let mut gates = background_claim_lock_gates()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        gates.retain(|gate| gate.state.strong_count() > 0);
+        let index = gates
+            .iter()
+            .position(|gate| std::ptr::eq(gate.state.as_ptr(), Arc::as_ptr(state)));
+        index.map(|index| gates.remove(index))
+    };
+    let Some(gate) = gate else {
+        return;
+    };
+    gate.entered.notify_one();
+    gate.release.notified().await;
+}
+
 impl SubagentController {
     /// Retries a launch's failed ledger write, reporting whether one was owed.
     ///
@@ -502,6 +560,16 @@ impl SubagentController {
 
         match snapshot.lifecycle_state {
             Some(crate::tools::types::DiapasonSessionLifecycleState::Running) => {
+                // A launch can be dropped after its process registered but
+                // before its commit stored `Running`. Refresh is then the only
+                // writer that promotes the durable `Starting` claim, so the
+                // transition must owe the ledger a write under this same lock:
+                // otherwise the row keeps reporting `Starting` after every
+                // later refresh adopts the live session. An already-live record
+                // changes nothing and owes nothing.
+                if record.status != BackgroundSubprocessStatus::Running {
+                    mark_background_ledger_write_pending(&self.state);
+                }
                 record.status = BackgroundSubprocessStatus::Running;
                 record.ended_at = None;
                 record.error = None;
@@ -666,6 +734,7 @@ mod terminal_failure_write_tests {
             prompt: "work".to_string(),
             summary: None,
             error: None,
+            close_fault: None,
             archive_path: None,
             transcript_path: None,
             max_turns: None,

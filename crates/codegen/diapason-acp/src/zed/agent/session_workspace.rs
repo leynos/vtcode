@@ -487,6 +487,13 @@ impl ZedAgent {
         let Some(claim) = runtime.claim_owed_background_restore() else {
             return;
         };
+        // A session can record its blocker between the claim and the pass. The
+        // claim would then launch rows that session has not reconciled, so it is
+        // dropped here: the guard's drop reinstates the debt, blocked by the
+        // session that recorded itself.
+        if runtime.claimed_restore_has_late_blocker() {
+            return;
+        }
         let outcome = crate::zed::agent::optional_setup::restore_workspace_background_subagents(
             &controller,
             config,

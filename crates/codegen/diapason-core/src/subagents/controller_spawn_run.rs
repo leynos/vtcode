@@ -264,6 +264,12 @@ impl SubagentController {
                 bail!("Subagent controller is shutting down; cannot resume subagents");
             }
             let subtree_ids = self_owned.collect_spawn_subtree_ids(&target_owned).await?;
+            // Every record the local subtree would reopen is checked before any
+            // of them changes. A descendant whose isolation worktree has been
+            // reclaimed otherwise fails after the root is already `Queued`: the
+            // error leaves a prompt queued with no loop behind it, and a retry
+            // skips the root because reopening a `Queued` record is a no-op.
+            self_owned.ensure_subtree_worktrees(&subtree_ids).await?;
             let mut restart_ids = Vec::new();
             for node_id in subtree_ids.iter() {
                 if self_owned.reopen_single(node_id.as_str()).await? {
@@ -516,6 +522,25 @@ impl SubagentController {
                     .map(|controller| (controller, record.session_id.clone()))
             })
             .collect()
+    }
+
+    /// Refuses a resume that cannot start every record in its local subtree.
+    ///
+    /// The worktree check `reopen_single` applies to the record it is about to
+    /// reopen is repeated here for the whole subtree, under one state lock and
+    /// before any record changes. A resume is a single request: validating one
+    /// record at a time would let an earlier record be reopened and queued
+    /// before a later one is rejected, leaving work nothing is running.
+    async fn ensure_subtree_worktrees(&self, subtree_ids: &[String]) -> Result<()> {
+        let state = self.state.write().await;
+        for node_id in subtree_ids {
+            let record = state
+                .children
+                .get(node_id)
+                .ok_or_else(|| anyhow!("Unknown subagent id {node_id}"))?;
+            ensure_resume_worktree(record, node_id)?;
+        }
+        Ok(())
     }
 
     pub(super) async fn reopen_single(&self, target: &str) -> Result<bool> {
@@ -1272,66 +1297,7 @@ fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync:
 }
 
 #[cfg(test)]
-pub(super) mod wait_checkpoints {
-    //! A test-only rendezvous inside the child-wait path.
-    //!
-    //! `wait_for_child_change` creates its notification futures and rechecks
-    //! the target statuses before it selects. A test that must prove the wakeup
-    //! travelled through those futures parks the waiter after the recheck: a
-    //! completion published from there can no longer be observed by the
-    //! recheck, so only a notification can end the wait. Declared by
-    //! `mod wait_checkpoints;` in this file's parent module.
-    use std::sync::{Mutex, OnceLock, Weak};
-
-    use tokio::sync::Notify;
-
-    use super::*;
-
-    struct WaitCheckpoint {
-        state: Weak<RwLock<ControllerState>>,
-        entered: Arc<Notify>,
-        release: Arc<Notify>,
-    }
-
-    fn checkpoints() -> &'static Mutex<Vec<WaitCheckpoint>> {
-        static CHECKPOINTS: OnceLock<Mutex<Vec<WaitCheckpoint>>> = OnceLock::new();
-        CHECKPOINTS.get_or_init(|| Mutex::new(Vec::new()))
-    }
-
-    /// Arms a checkpoint that holds the next wait over `state`'s children.
-    ///
-    /// Returns the signal that the waiter reached the checkpoint and the signal
-    /// that releases it.
-    pub(in crate::subagents) fn arm(state: &Arc<RwLock<ControllerState>>) -> (Arc<Notify>, Arc<Notify>) {
-        let entered = Arc::new(Notify::new());
-        let release = Arc::new(Notify::new());
-        let mut registry = checkpoints().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        registry.retain(|checkpoint| checkpoint.state.strong_count() > 0);
-        registry.push(WaitCheckpoint {
-            state: Arc::downgrade(state),
-            entered: Arc::clone(&entered),
-            release: Arc::clone(&release),
-        });
-        (entered, release)
-    }
-
-    /// Parks here when `state` has an armed wait checkpoint.
-    pub(super) async fn pass(state: &Arc<RwLock<ControllerState>>) {
-        let checkpoint = {
-            let mut registry = checkpoints().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            registry.retain(|checkpoint| checkpoint.state.strong_count() > 0);
-            registry
-                .iter()
-                .position(|checkpoint| std::ptr::eq(checkpoint.state.as_ptr(), Arc::as_ptr(state)))
-                .map(|index| registry.remove(index))
-        };
-        let Some(checkpoint) = checkpoint else {
-            return;
-        };
-        checkpoint.entered.notify_one();
-        checkpoint.release.notified().await;
-    }
-}
+pub(super) use self::regression_tests::wait_checkpoints;
 
 #[cfg(test)]
 mod regression_tests;

@@ -129,8 +129,18 @@ impl SubagentController {
         // holds. Check that row for a claim another process wrote before the
         // reservation can overwrite it.
         self.refuse_explicit_start_over_competing_claim(&plan).await?;
+        // Holds the failed launch's obligation while its single retry prepares
+        // and reserves the replacement. The reservation that takes the record
+        // gives it a new claim, so the obligation is discharged once the
+        // reservation answers; until then a dropped driver leaves the guard to
+        // settle the record instead of leaving a claim nothing will drive.
+        let mut retry_guard: Option<ReservedClaimGuard> = None;
         loop {
-            let reservation = match self.reserve_background_run(&plan).await {
+            let reservation_result = self.reserve_background_run(&plan).await;
+            if let Some(guard) = retry_guard.take() {
+                guard.disarm();
+            }
+            let reservation = match reservation_result {
                 Ok(reservation) => reservation,
                 Err(error) => {
                     // A bound plan is an automatic replacement whose allowance
@@ -160,7 +170,7 @@ impl SubagentController {
             // path to settle the claim, so the guard settles it synchronously
             // when it is dropped.
             let spawn_result = {
-                let claim_guard = BackgroundLaunchClaimGuard::arm(&self.state, &plan.record_id, &plan.exec_session_id);
+                let claim_guard = ReservedClaimGuard::arm(&self.state, &plan.record_id, &plan.exec_session_id);
                 #[cfg(test)]
                 pass_background_spawn_gate(&self.state).await;
                 let spawned = self.spawn_background_exec_session(&plan).await;
@@ -171,15 +181,7 @@ impl SubagentController {
                 spawned
             };
             let metadata = match spawn_result {
-                Ok(metadata) => {
-                    // The commit runs after the spawn returns, without the
-                    // state lock, so a cancellation or replacement can land in
-                    // that window. It is otherwise only reachable by racing a
-                    // real process, so a test can hold it here.
-                    #[cfg(test)]
-                    pass_background_commit_gate(&self.state).await;
-                    metadata
-                }
+                Ok(metadata) => metadata,
                 Err(error) => {
                     self.settle_failed_background_run(&plan, &error).await;
                     // A spawn failure is the only thing that spends the
@@ -199,6 +201,12 @@ impl SubagentController {
                         error = %error,
                         "Background launch failed; retrying once"
                     );
+                    // The replacement is owed from the moment its allowance is
+                    // spent. The guard settles the record if this driver is
+                    // dropped while the replacement is prepared; once the retry
+                    // reserves, its claim records its own obligation and the
+                    // reservation clears the one recorded for the failed launch.
+                    retry_guard = Some(ReservedClaimGuard::arm(&self.state, &plan.record_id, &plan.exec_session_id));
                     plan = match self.prepare_background_run(retry).await {
                         Ok(prepared) => prepared,
                         Err(prepare_error) => {
@@ -221,6 +229,14 @@ impl SubagentController {
                 // session to reconciliation rather than settling a failure for
                 // a process that may still be running.
                 let spawned_guard = SpawnedLaunchGuard::arm(&self.state, &plan.record_id, &plan.exec_session_id);
+                // The commit runs after the spawn returns, without the state
+                // lock, so a cancellation or replacement can land in that
+                // window. It is otherwise only reachable by racing a real
+                // process, so a test can hold it here. The gate is inside the
+                // guard's lifetime so a drop at it exercises the production
+                // guard, not a guard the test built and dropped itself.
+                #[cfg(test)]
+                pass_background_commit_gate(&self.state).await;
                 let started = self.record_background_run_started(&plan, metadata).await;
                 spawned_guard.disarm();
                 started
@@ -335,6 +351,16 @@ impl SubagentController {
     /// record: once `settle_failed_background_run` has settled it, or a
     /// cancellation has cleared `desired_enabled`, the failure is terminal and
     /// a retry would undo that outcome.
+    ///
+    /// The replacement is recorded as owed under that same lock, before the
+    /// retry's first await. The session the retry replaces has just been
+    /// observed missing, and its allowance is now spent, so a refresh that runs
+    /// while this call prepares the replacement would otherwise find nothing
+    /// driving the record and publish a terminal `Error` for a launch that is
+    /// still on its way. The obligation is recorded for the failed launch while
+    /// the replacement is prepared; the replacement's own claim takes it over
+    /// when the reservation runs, and a preparation failure or a dropped driver
+    /// discharges it.
     async fn background_launch_retry_request(&self, plan: &BackgroundRunPlan) -> Option<BackgroundRunRequest> {
         if !self.config.vt_cfg.subagents.background.auto_restore {
             return None;
@@ -343,7 +369,7 @@ impl SubagentController {
         // concurrent refresh may have recorded the replacement's obligation
         // from the unchanged record. That obligation belongs to the pass that
         // will drive it, so this retry must not clear it.
-        let next_restart_attempt = {
+        let (agent_name, next_restart_attempt) = {
             let mut state = self.state.write().await;
             let record = state.background_children.get_mut(&plan.record_id)?;
             if !failed_launch_still_owns_record(record, plan.exec_session_id.as_str()) || record.restart_attempts >= 1 {
@@ -351,10 +377,27 @@ impl SubagentController {
             }
             record.restart_attempts = record.restart_attempts.saturating_add(1);
             record.updated_at = Utc::now();
-            record.restart_attempts
+            let agent_name = record.agent_name.clone();
+            let next_restart_attempt = record.restart_attempts;
+            // Recorded under the lock that spends the allowance, before the
+            // replacement is prepared. A refresh that observes the failed
+            // session while this call prepares the replacement then finds a
+            // launch owed and leaves the record `Starting`, instead of
+            // publishing a terminal failure with the allowance already spent.
+            // The launch path clears this obligation when it reserves the
+            // replacement, which records its own under the new session.
+            mark_background_launch_owed(
+                &self.state,
+                plan.record_id.as_str(),
+                agent_name.as_str(),
+                next_restart_attempt,
+                plan.exec_session_id.as_str(),
+                false,
+            );
+            (agent_name, next_restart_attempt)
         };
         Some(BackgroundRunRequest {
-            agent_name: plan.spec.name.as_str().to_string(),
+            agent_name,
             stable_id: Some(plan.record_id.clone()),
             restart_attempts: next_restart_attempt,
             overrides: None,
@@ -517,6 +560,8 @@ impl SubagentController {
         &self,
         plan: &BackgroundRunPlan,
     ) -> Result<crate::tools::types::DiapasonExecSession> {
+        #[cfg(all(test, unix))]
+        note_background_spawn_attempt(&self.state);
         let launch = build_background_launch_spec(
             &self.config.workspace_root,
             plan.spec.name.as_str(),
@@ -593,87 +638,6 @@ impl SubagentController {
             metadata.started_at,
         )
         .await
-    }
-}
-
-/// The bounded message an abandoned launch claim settles with.
-///
-/// The text is what a management list shows for a record whose caller vanished
-/// before its process started; it names no path, session or secret.
-const BACKGROUND_LAUNCH_ABANDONED_ERROR: &str = "Background launch was abandoned before its process started";
-
-/// Settles a fresh launch claim whose caller disappears before it spawns.
-///
-/// A fresh claim is recorded as non-retryable precisely because the call that
-/// reserved it is about to spawn the process. If that call is dropped in the
-/// window — a cancelled tool invocation, a `select!` that takes another branch —
-/// nothing else drives the record: refresh exempts a `Starting` record that owes
-/// a launch and never retries a fresh claim, so the record would report an
-/// active launch forever.
-///
-/// The drop handler cannot await, so it settles the unstarted claim
-/// synchronously: it takes the state lock without blocking, marks the record
-/// `Error` with a bounded message, and clears the claim obligation. It performs
-/// no asynchronous work and schedules no retry. If another task holds the state
-/// lock, the status is left as it was and the cleared obligation makes the next
-/// refresh settle the orphaned claim. Dropping the guard after the spawn returns
-/// is a disarm: the process owns the launch from then on, and the ordinary
-/// commit, decline and close paths settle it.
-struct BackgroundLaunchClaimGuard {
-    state: Arc<RwLock<ControllerState>>,
-    record_id: String,
-    exec_session_id: String,
-    armed: bool,
-}
-
-impl BackgroundLaunchClaimGuard {
-    /// Arms the guard for one fresh claim.
-    fn arm(state: &Arc<RwLock<ControllerState>>, record_id: &str, exec_session_id: &str) -> Self {
-        Self {
-            state: Arc::clone(state),
-            record_id: record_id.to_owned(),
-            exec_session_id: exec_session_id.to_owned(),
-            armed: true,
-        }
-    }
-
-    /// Reports that the launch reached its process, so its drop owes nothing.
-    fn disarm(mut self) {
-        self.armed = false;
-    }
-}
-
-impl Drop for BackgroundLaunchClaimGuard {
-    fn drop(&mut self) {
-        if !self.armed {
-            return;
-        }
-        // The handler runs on the dropping thread, so it must never park the
-        // runtime by awaiting. If another task holds the state lock, the record
-        // keeps its `Starting` status; the obligation below is still cleared, so
-        // the next refresh can settle the orphaned claim instead of exempting it
-        // forever.
-        if let Ok(mut state) = self.state.try_write() {
-            let now = Utc::now();
-            if let Some(record) = state.background_children.get_mut(&self.record_id)
-                && record.exec_session_id == self.exec_session_id
-                && record.desired_enabled
-                && record.status == BackgroundSubprocessStatus::Starting
-            {
-                record.status = BackgroundSubprocessStatus::Error;
-                record.error = Some(BACKGROUND_LAUNCH_ABANDONED_ERROR.to_string());
-                record.summary = Some("Background subagent failed to start".to_string());
-                record.updated_at = now;
-                record.ended_at.get_or_insert(now);
-                // The settlement exists only in memory, so the ledger is owed
-                // the write before the lock is released.
-                mark_background_ledger_write_pending(&self.state);
-            }
-        }
-        // The driver is gone, so no launch may keep exempting the record: a
-        // launch that took it recorded its own obligation under the exec session
-        // it minted, and a later refresh drives whatever this claim became.
-        clear_background_launch_owed(&self.state, &self.record_id, &self.exec_session_id);
     }
 }
 
@@ -781,6 +745,41 @@ async fn pass_background_commit_gate(state: &Arc<RwLock<ControllerState>>) {
     gate.release.notified().await;
 }
 
+/// Counts the spawn attempts one controller tree has made.
+///
+/// A launch that fails and retries is only distinguishable from one whose
+/// failure settled immediately by the number of spawn attempts, because both
+/// attempts fail with the same scripted error. The count is test-only and kept
+/// per state allocation, so parallel tests cannot observe each other.
+#[cfg(all(test, unix))]
+fn background_spawn_attempts() -> &'static Mutex<Vec<Weak<RwLock<ControllerState>>>> {
+    static ATTEMPTS: std::sync::OnceLock<Mutex<Vec<Weak<RwLock<ControllerState>>>>> = std::sync::OnceLock::new();
+    ATTEMPTS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Records one spawn attempt for `state`.
+#[cfg(all(test, unix))]
+fn note_background_spawn_attempt(state: &Arc<RwLock<ControllerState>>) {
+    let mut attempts = background_spawn_attempts()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    attempts.retain(|entry| entry.strong_count() > 0);
+    attempts.push(Arc::downgrade(state));
+}
+
+/// Returns how many spawn attempts `state` has made.
+#[cfg(all(test, unix))]
+pub(super) fn background_spawn_attempt_count(state: &Arc<RwLock<ControllerState>>) -> usize {
+    let mut attempts = background_spawn_attempts()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    attempts.retain(|entry| entry.strong_count() > 0);
+    attempts
+        .iter()
+        .filter(|entry| std::ptr::eq(entry.as_ptr(), Arc::as_ptr(state)))
+        .count()
+}
+
 /// A test gate between a fresh reservation and its spawn.
 ///
 /// No await separates the reservation from the spawn in production, so the only
@@ -881,12 +880,13 @@ mod reservation_error_tests {
 
     use tempfile::TempDir;
 
+    use crate::config::DiapasonConfig;
     use crate::subagents::background::{lock_background_state, persist_background_state};
 
     use super::super::BackgroundRunRequest;
     use super::super::controller_background_lifecycle::background_launch_is_owed;
     use super::super::controller_background_settlement::pending_background_ledger_write_generation;
-    use super::super::tests::support::test_controller_config;
+    use super::super::tests::support::{test_controller_config, test_controller_config_with};
     use super::*;
 
     const WORKER: &str = "background-worker";
@@ -915,6 +915,7 @@ mod reservation_error_tests {
             prompt: "work".to_string(),
             summary: None,
             error: None,
+            close_fault: None,
             archive_path: None,
             transcript_path: None,
             max_turns: None,
@@ -1018,6 +1019,100 @@ mod reservation_error_tests {
             "the entry a management transport projects carries the same category"
         );
         drop(state);
+
+        controller.signal_shutdown().await;
+    }
+
+    /// Spending the single restart allowance records the replacement as owed.
+    ///
+    /// The first spawn failed and its settlement cleared the launch obligation.
+    /// If the inline retry then spent the allowance without recording a
+    /// replacement obligation, a refresh that observed the failed session while
+    /// the replacement was prepared would find nothing owed and publish a
+    /// terminal `Error` for a launch that was still on its way.
+    ///
+    /// The retry exists only under automatic restore: without it the first
+    /// failure settles `Error` immediately, so no allowance is spent and no
+    /// replacement is owed. The mode is enabled here because the obligation
+    /// this case pins is only reachable through that policy.
+    #[tokio::test]
+    async fn spending_the_retry_allowance_records_the_replacement_as_owed() {
+        let temp = TempDir::new().expect("tempdir");
+        let mut vt_cfg = DiapasonConfig::default();
+        vt_cfg.subagents.background.auto_restore = true;
+        let controller = SubagentController::new(test_controller_config_with(temp.path().to_path_buf(), vt_cfg))
+            .await
+            .expect("controller");
+        let plan = controller
+            .prepare_background_run(BackgroundRunRequest {
+                agent_name: WORKER_AGENT.to_string(),
+                stable_id: Some(WORKER.to_string()),
+                restart_attempts: 0,
+                overrides: None,
+                expected_exec_session_id: None,
+            })
+            .await
+            .expect("the retry target prepares");
+        let mut record = background_record();
+        record.exec_session_id = plan.exec_session_id.clone();
+        record.restart_attempts = 0;
+        record.status = BackgroundSubprocessStatus::Starting;
+        record.desired_enabled = true;
+        {
+            let mut state = controller.state.write().await;
+            state.background_children.insert(WORKER.to_string(), record);
+        }
+
+        let retry = controller
+            .background_launch_retry_request(&plan)
+            .await
+            .expect("the remaining allowance grants one retry");
+        assert_eq!(retry.restart_attempts, 1, "the retry request carries the spent allowance");
+        assert!(
+            background_launch_is_owed(&controller.state, WORKER, &plan.exec_session_id),
+            "the replacement must be owed from the moment the allowance is spent"
+        );
+
+        // A refresh that observes the failed session now must leave the record
+        // to the driver still preparing the replacement.
+        let respawn = controller
+            .update_background_record_state_observed(
+                WORKER,
+                Some(plan.exec_session_id.as_str()),
+                Some(BackgroundSubprocessStatus::Starting),
+                None,
+            )
+            .await
+            .expect("the observation is answered");
+        assert!(respawn.is_none(), "the owed replacement must not be settled as a missing launch");
+        {
+            let state = controller.state.read().await;
+            let record = state.background_children.get(WORKER).expect("record");
+            assert_eq!(
+                record.status,
+                BackgroundSubprocessStatus::Starting,
+                "a refresh must not publish a failure while the replacement is being prepared"
+            );
+        }
+
+        // A retry that cannot be prepared settles the record and discharges the
+        // obligation it recorded.
+        controller
+            .settle_failed_background_run(&plan, &anyhow::anyhow!("replacement preparation fault"))
+            .await;
+        {
+            let state = controller.state.read().await;
+            let record = state.background_children.get(WORKER).expect("record");
+            assert_eq!(
+                record.status,
+                BackgroundSubprocessStatus::Error,
+                "a replacement that cannot be prepared settles the record"
+            );
+        }
+        assert!(
+            !background_launch_is_owed(&controller.state, WORKER, &plan.exec_session_id),
+            "the settled failure discharges the obligation it recorded"
+        );
 
         controller.signal_shutdown().await;
     }

@@ -41,6 +41,7 @@ fn running_record() -> BackgroundRecord {
         prompt: "work".to_string(),
         summary: None,
         error: None,
+        close_fault: None,
         archive_path: None,
         transcript_path: None,
         max_turns: None,

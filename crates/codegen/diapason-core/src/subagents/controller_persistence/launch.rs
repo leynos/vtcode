@@ -9,11 +9,13 @@ use super::super::background_ledger::{MigratedBackgroundLaunch, PersistedBackgro
 
 mod eligibility;
 
-/// Re-exported for [`super::merge`], which drops a migrated ownerless alias
-/// before it can compete for its canonical id.
-pub(in crate::subagents::controller_persistence) use self::eligibility::is_migrated_alias;
 use self::eligibility::{
     ambiguous_empty_launch_ids, canonical_copies, has_ambiguous_launch_identity, launch_is_eligible, owned_launch_keys,
+};
+/// Re-exported for [`super::merge`], which drops a migrated ownerless alias
+/// before it can compete for its canonical id.
+pub(in crate::subagents::controller_persistence) use self::eligibility::{
+    is_migrated_alias, is_ownerless_copy_of_owned_launch,
 };
 
 /// Names the launches this snapshot started rather than merely refreshed.
@@ -32,6 +34,12 @@ use self::eligibility::{
 /// the ordinary moment comparison decides it. A settled copy without a start
 /// instant describes a launch that never ran; letting a later `updated_at`
 /// carry it over another controller's replacement would erase a live launch.
+///
+/// The claim rule also runs the other way. A persisted `Starting` claim has not
+/// recorded its start yet, so a snapshot copy naming a different launch is the
+/// launch the reservation just replaced and never supersedes the claim. The
+/// claim clears the rule itself once its own start recording reaches the
+/// ledger.
 fn launched_by_snapshot(
     persisted: &[PersistedBackgroundRecord],
     snapshot: &[PersistedBackgroundRecord],
@@ -55,6 +63,10 @@ fn launched_by_snapshot(
             Some(persisted) => {
                 !record.shares_launch_identity_with(persisted)
                     && names_a_launch_of_its_own(&record)
+                    // A claim that has not recorded its start yet is displaced
+                    // only by its own start recording, never by a copy of the
+                    // launch it replaced.
+                    && !start_is_unrecorded(persisted)
                     && record.launch_moment() >= persisted.launch_moment()
                     && start_evidence_outranks_persisted(&record, persisted)
             }
@@ -84,6 +96,21 @@ fn start_evidence_outranks_persisted(
     record.started_at.is_some() || persisted.started_at.is_none()
 }
 
+/// Whether this copy is a claim whose launch has not recorded its start yet.
+///
+/// The reservation writes a `Starting` claim under the ledger lock, confirms
+/// the ledger kept it, and only then spawns the process that records
+/// `started_at`. Until that start is recorded the claim is the newest write of
+/// its canonical id: a snapshot copy naming a different launch is the launch it
+/// replaced, and committing that copy would leave the ledger naming only the
+/// replaced launch while the replacement runs. Once the start is recorded the
+/// row is a launch of its own and the ordinary rules decide it again.
+fn start_is_unrecorded(record: &PersistedBackgroundRecord) -> bool {
+    record.started_at.is_none()
+        && record.desired_enabled
+        && record.status == crate::subagents::BackgroundSubprocessStatus::Starting
+}
+
 /// Whether `record` carries evidence of a launch of its own.
 ///
 /// A copy that started has a `started_at`. A copy that is still wanted and
@@ -107,10 +134,31 @@ fn names_a_launch_of_its_own(record: &PersistedBackgroundRecord) -> bool {
 /// rebuild its map in. The ownership precedence applies here too, so a ledger
 /// that holds both an ownerless and an owned copy of one launch loads only the
 /// owned copy, which is the one that may be restored.
+///
+/// A caller that has the ledger's migration evidence must use
+/// [`collect_by_canonical_id_with_evidence`]. Without it, an ownerless alias of
+/// a migrated launch survives selection under its own canonical key, beside the
+/// owned replacement that now holds the launch, even though a save would drop
+/// it.
 pub(crate) fn collect_by_canonical_id(
     records: impl IntoIterator<Item = PersistedBackgroundRecord>,
 ) -> BTreeMap<String, PersistedBackgroundRecord> {
-    join_by_canonical_id(records, std::iter::empty(), &BTreeMap::new(), &[])
+    collect_by_canonical_id_with_evidence(records, &[])
+}
+
+/// Collects persisted records with the ledger's migration evidence applied.
+///
+/// The evidence names a launch by its ownerless id and exec session, so a copy
+/// cached before a migration is recognized after an owned replacement superseded
+/// the migrated row. Excluding it here, before any copy competes for a canonical
+/// id, is what keeps a load from restoring a launch the save path would drop.
+/// An ownerless launch that names a different exec session is a launch of its own
+/// and still survives.
+pub(crate) fn collect_by_canonical_id_with_evidence(
+    records: impl IntoIterator<Item = PersistedBackgroundRecord>,
+    migrated_launches: &[MigratedBackgroundLaunch],
+) -> BTreeMap<String, PersistedBackgroundRecord> {
+    join_by_canonical_id(records, std::iter::empty(), &BTreeMap::new(), migrated_launches)
 }
 
 /// One copy of a canonical record together with the merge side it came from.
@@ -339,7 +387,14 @@ pub(super) fn join_by_canonical_id(
             !record.desired_enabled
                 && launch_identity(record)
                     .is_some_and(|identity| refreshed_launches.contains(&(record.id.clone(), identity)))
-                && !reduced.iter().any(|kept| kept.shares_launch_identity_with(record))
+                // Only this record's own survivor can have replaced its launch.
+                // A different canonical id may name the same exec session, and
+                // matching on that identity alone discarded the stop whenever
+                // another record held a copy of it, letting a refresh resurrect
+                // the cancelled launch.
+                && !reduced
+                    .iter()
+                    .any(|kept| kept.id == record.id && kept.shares_launch_identity_with(record))
         })
         .cloned()
         .collect::<Vec<_>>();

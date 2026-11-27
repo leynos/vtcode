@@ -3,6 +3,7 @@
 use tempfile::TempDir;
 
 use crate::config::DiapasonConfig;
+use crate::subagents::BackgroundSubprocessStatus;
 use crate::subagents::SubagentInvocationContext;
 use crate::subagents::background::{load_background_state, persist_background_state};
 use crate::subagents::background_ledger::{MigratedBackgroundLaunch, persist_background_ledger};
@@ -247,6 +248,54 @@ async fn a_restart_of_a_superseded_migration_is_declined() {
             .iter()
             .any(|launch| launch.exec_session_id == OBSERVED_EXEC),
         "a later restart reads the migration evidence, so it must survive the decline"
+    );
+
+    controller.signal_shutdown().await;
+}
+
+/// An empty observed exec session matches no other ledger row.
+///
+/// The legacy restore passes the row's own blank exec session to the restart.
+/// Treating that blank value as an identity made the reservation read another
+/// blank row as the launch having moved, decline the restart without an error,
+/// and leave the worker unlaunched. A blank id identifies no launch, so it must
+/// not match anything while non-empty ids keep their matching.
+#[tokio::test]
+async fn an_empty_observed_exec_session_does_not_match_another_row() {
+    let temp = TempDir::new().expect("tempdir");
+    persist_background_state(
+        temp.path(),
+        vec![
+            persisted_row(WORKER, None, WORKER_AGENT, "", true),
+            persisted_row("background-other", None, "other", "", true),
+        ],
+    )
+    .await
+    .expect("seed two legacy rows with no exec session");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+    // The legacy record restore would examine: it names no session either.
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(
+            WORKER.to_string(),
+            super::support::background_record(
+                WORKER,
+                None,
+                WORKER_AGENT,
+                "",
+                BackgroundSubprocessStatus::Running,
+                true,
+            ),
+        );
+    }
+
+    let reservation = controller
+        .reserve_background_run(&plan(worker_spec(), "exec-restarted", Some("")))
+        .await
+        .expect("a blank observation is not a moved launch");
+    assert!(
+        matches!(reservation, BackgroundRunReservation::Reserved),
+        "a legacy restart with no exec session must still be claimed: {reservation:?}"
     );
 
     controller.signal_shutdown().await;

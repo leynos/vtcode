@@ -60,13 +60,20 @@ pub(super) fn bounded_session_correlation(session_id: &acp::SessionId) -> String
 /// `updated_at` and timestamps are not an ordering key. The controller
 /// allocates the revision under the state lock that captured the snapshot and
 /// delivers it with the entry, which is what keeps a stale capture delivered
-/// late from overwriting a newer state. The snapshot pass reserves its base
-/// revision from the same controller clock before the observer is registered,
-/// so every live capture outranks the initial snapshots. The forwarder orders
+/// late from overwriting a newer state. The initial snapshot pass stamps each
+/// entry from the same clock between two reads that must agree, so its revision
+/// also follows the order in which those states were read. The forwarder orders
 /// by that revision and keeps `updated_at` only for the wire contract.
 struct QueuedLifecycleUpdate {
     update: LifecycleUpdate,
     revision: u64,
+}
+
+impl QueuedLifecycleUpdate {
+    /// The Lody task this update addresses, as the forwarder keys it.
+    fn task_id(&self) -> &str {
+        lody_task_id(&self.update)
+    }
 }
 
 struct TaskLifecycleForwarderSpan {
@@ -142,9 +149,9 @@ impl LifecycleRevision {
     /// Whether this revision may supersede `latest` on the wire.
     ///
     /// Revisions are assigned strictly increasing per session, so the newer
-    /// revision always wins. The initial snapshot shares one base revision
-    /// across every task it publishes, which is safe because revisions are
-    /// compared per task id and the pass emits at most one snapshot per task.
+    /// revision always wins. A snapshot batch shares one revision across every
+    /// task it publishes, which is safe because revisions are compared per task
+    /// id and the pass emits at most one snapshot per task.
     fn supersedes(self, latest: Option<Self>) -> bool {
         latest.is_none_or(|latest| self.0 > latest.0)
     }
@@ -226,13 +233,6 @@ impl ZedAgent {
         // substitute a counting double, so the collector Arc is coerced here.
         let queue_metrics = Arc::clone(&metrics) as Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>;
         let queue = Arc::new(LifecycleQueueTracker::new(queue_metrics));
-        // Reserve the snapshot pass's revision before the observer exists, so
-        // every live transition registered from here takes a strictly newer
-        // revision than the snapshots. A snapshot captured from the same state
-        // a transition reports must not overwrite the transition. The base
-        // comes from the controller's clock, so it is comparable with the
-        // revisions the controller stamps on live snapshots.
-        let snapshot_revision = controller.reserve_lifecycle_revision();
         let observer = Arc::new(AcpTaskLifecycleObserver {
             sender: sender.clone(),
             queue: Arc::clone(&queue),
@@ -248,8 +248,7 @@ impl ZedAgent {
         // aborting only the forwarder would leave it enqueueing into a queue
         // nothing drains. It is stopped with the forwarder in every path.
         let initial_snapshot_task = tokio::spawn(async move {
-            publish_initial_task_snapshots(&controller, &session_id, &sender, &queue, &metrics, snapshot_revision)
-                .await;
+            publish_initial_task_snapshots(&controller, &session_id, &sender, &queue, &metrics).await;
         });
         if let Some(previous_publisher) = data.task_lifecycle_snapshot_publisher.replace(initial_snapshot_task) {
             previous_publisher.abort();
@@ -308,8 +307,9 @@ impl AcpTaskLifecycleObserver {
     /// later state change must keep the lower revision even when it reaches
     /// the queue second, or the delayed stale entry would overwrite the newer
     /// state. A full queue refuses the transition and parks the newest refusal
-    /// on the tracker, so a terminal state refused here is delivered once the
-    /// forwarder drains a slot rather than being lost.
+    /// for its task, so a terminal state refused here is delivered once the
+    /// forwarder drains a slot rather than being lost — and a refusal for
+    /// another task cannot evict it.
     fn try_send(&self, update: LifecycleUpdate, revision: u64) {
         let queued = QueuedLifecycleUpdate { update, revision };
         if let Err(kind) = self.queue.try_send(&self.sender, queued) {

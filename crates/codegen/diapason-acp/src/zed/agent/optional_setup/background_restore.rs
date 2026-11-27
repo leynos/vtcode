@@ -182,12 +182,24 @@ fn launch_snapshot(entries: Vec<BackgroundSubprocessEntry>) -> HashMap<String, S
 /// rolled back: an unverifiable ledger must not authorize destroying a launch
 /// that may be durable, while the in-memory controller still tracks the live
 /// process.
+///
+/// A rollback is bound to the launch it selected, not only to the record id.
+/// The record can move on between the post-restore view and the cancellation:
+/// the launch this pass made can exit and a concurrent refresh can restart the
+/// record under a new exec session. Cancellation resolves the record when it
+/// takes the write lock and closes whichever session is current then, so each
+/// record is re-read immediately before it is stopped and the stop is skipped
+/// unless it still names the observed launch. The re-read is not atomic with
+/// the cancellation — that needs the expected session on core's cancel API —
+/// so it narrows the window rather than closing it; it never acts on a record
+/// whose observed launch is known to have been replaced.
 async fn rollback_unpersisted_launches(
     controller: &SubagentController,
     workspace_root: &Path,
     before: &HashMap<String, String>,
 ) {
-    let after = controller.background_status_entries(TaskOwner::Workspace).await;
+    // Verify the ledger before taking the post-restore view: the view and the
+    // cancellation should be separated by as little work as possible.
     let persisted = persisted_launches(workspace_root).await;
     if matches!(persisted, PersistedLaunches::Unknown) {
         tracing::warn!(
@@ -197,20 +209,42 @@ async fn rollback_unpersisted_launches(
         );
         return;
     }
+    let after = controller.background_status_entries(TaskOwner::Workspace).await;
     // The cancellation presents the record's own owner, so a session controller
     // may stop only a launch it owns while a workspace controller stops the
     // ownerless rows it restored. Nothing here can reach a foreign session's
     // record.
-    let owners = after
+    let observed = after
         .iter()
-        .map(|entry| (entry.id.as_str(), entry.owner_session_id.as_deref()))
+        .map(|entry| (entry.id.as_str(), (entry.owner_session_id.as_deref(), entry.exec_session_id.as_str())))
         .collect::<HashMap<_, _>>();
     for record_id in unpersisted_launches(before, &after, &persisted) {
-        let owner = owners
-            .get(record_id.as_str())
-            .copied()
-            .flatten()
-            .map_or(TaskOwner::Workspace, TaskOwner::Session);
+        let Some((owner_session_id, observed_exec_session_id)) = observed.get(record_id.as_str()).copied() else {
+            continue;
+        };
+        let owner = owner_session_id.map_or(TaskOwner::Workspace, TaskOwner::Session);
+        match controller.background_status_entry(owner, &record_id).await {
+            Ok(current) if current.exec_session_id == observed_exec_session_id => {}
+            Ok(_) => {
+                tracing::warn!(
+                    record_id = record_id.as_str(),
+                    operation = "background_restore_rollback",
+                    error_category = "background_launch_moved_on",
+                    "Skipped rolling back a launch that was replaced before its record could be stopped"
+                );
+                continue;
+            }
+            Err(error) => {
+                tracing::warn!(
+                    record_id = record_id.as_str(),
+                    operation = "background_restore_rollback",
+                    error_category = "background_launch_unreadable",
+                    error_chain_depth = error.chain().count(),
+                    "Skipped rolling back a launch whose record could not be re-read"
+                );
+                continue;
+            }
+        }
         match controller.force_cancel_background(owner, &record_id).await {
             Ok(outcome) if outcome.is_close_pending() => {
                 // The record is already terminal and saved, so a retried attach

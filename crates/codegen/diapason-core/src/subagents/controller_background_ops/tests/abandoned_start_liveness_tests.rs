@@ -1,11 +1,11 @@
-//! Pins that the liveness list does not report an abandoned claim as active.
+//! Pins how the liveness list projects a background record's launch obligation.
 //!
 //! Declared by `tests.rs`. `background_status_entries_with_liveness` is a pure
 //! read: it never settles a record or starts a launch. A `Starting` record whose
-//! launch obligation is gone therefore has nothing that will ever drive it, and
-//! projecting it as active reports a task that is not running and never will be.
-//! The orphan is left for the refresh path to settle; the list must not claim it
-//! is alive in the meantime.
+//! launch obligation is gone therefore has nothing in this process driving it,
+//! and the orphan is left for the refresh path. The list reports what that
+//! refresh would do with it: the failure a spent or disabled budget settles it
+//! as, or the `Starting` replacement automatic restore will still schedule.
 
 use rstest::rstest;
 use tempfile::TempDir;
@@ -14,7 +14,9 @@ use crate::config::DiapasonConfig;
 use crate::subagents::{BackgroundSubprocessStatus, TaskOwner};
 
 use super::super::controller_background_lifecycle::mark_background_launch_owed;
-use super::super::controller_background_settlement::mark_background_ledger_write_pending;
+use super::super::controller_background_settlement::{
+    mark_background_ledger_write_pending, pending_background_ledger_write_generation,
+};
 use super::support::{background_record, background_test_controller};
 
 const WORKER: &str = "background-worker";
@@ -32,10 +34,12 @@ const EXEC: &str = "exec-abandoned";
 /// with a pending write must still project as settled.
 ///
 /// The cases are the pairs that must stay distinguishable. A claim with its
-/// launch in flight is active whichever budget spent it; a claim nothing drives
-/// is not, even when automatic restore would permit one, because this read
-/// starts nothing; and a missing `Running` record predicts the replacement
-/// refresh will schedule.
+/// launch in flight is active whichever budget spent it; an abandoned claim with
+/// no restart left is the failure the settlement will write; an abandoned claim
+/// that automatic restore would still restart is projected as the replacement
+/// refresh will schedule, because reporting it as a terminal failure would show
+/// a finished task that then resumes; and a missing `Running` record predicts
+/// the replacement refresh will schedule.
 #[rstest]
 #[case::an_abandoned_claim_is_not_active(
     BackgroundSubprocessStatus::Starting,
@@ -69,13 +73,13 @@ const EXEC: &str = "exec-abandoned";
     false,
     BackgroundSubprocessStatus::Error
 )]
-#[case::an_orphan_is_inactive_while_restore_is_allowed(
+#[case::an_orphan_restart_is_pending_while_restore_is_allowed(
     BackgroundSubprocessStatus::Starting,
     0,
     true,
     None,
     false,
-    BackgroundSubprocessStatus::Error
+    BackgroundSubprocessStatus::Starting
 )]
 #[case::a_missing_running_record_predicts_its_restart(
     BackgroundSubprocessStatus::Running,
@@ -126,6 +130,22 @@ async fn a_backgrounds_liveness_projection_follows_the_launch_it_owes(
     if !expected.is_active() {
         assert!(entry.entry.ended_at.is_some(), "a terminal projection carries an end instant");
     }
+    // The projection is a pure read: whatever it reports, the stored record and
+    // its obligation must be exactly as the fixture left them. Without this a
+    // projection that settled the record and queued a write would pass on the
+    // returned status alone.
+    {
+        let state = controller.state.read().await;
+        let stored = state.background_children.get(WORKER).expect("the record is still stored");
+        assert_eq!(stored.status, status, "the read-only projection must not settle the stored record");
+        assert_eq!(stored.restart_attempts, restart_attempts, "the projection must not spend the allowance");
+        assert!(stored.ended_at.is_none(), "the projection must not write an end instant");
+    }
+    assert_eq!(
+        pending_background_ledger_write_generation(&controller.state).is_some(),
+        ledger_write_debt,
+        "the projection must not queue a ledger write of its own"
+    );
 
     controller.signal_shutdown().await;
 }

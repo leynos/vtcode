@@ -86,6 +86,7 @@ pub(super) fn background_record(
         prompt: "work".to_string(),
         summary: None,
         error: None,
+        close_fault: None,
         archive_path: None,
         transcript_path: None,
         max_turns: None,

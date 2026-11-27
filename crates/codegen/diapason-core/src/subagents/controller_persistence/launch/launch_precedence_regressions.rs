@@ -81,6 +81,74 @@ fn a_refreshed_copy_of_a_stopped_session_does_not_replace_the_persisted_launch()
     assert!(record.desired_enabled, "the surviving launch is still desired");
 }
 
+/// A retained stop is matched by record, not by any row naming its session.
+///
+/// The stop is retained so it can outrank a refresh of the launch it stopped.
+/// Two records can name one exec session, though, and matching on that identity
+/// alone discarded the stop whenever another record held a copy of it: the
+/// refreshed snapshot copy then won and enabled the cancelled launch.
+#[test]
+fn a_retained_stop_is_not_discarded_by_another_records_session() {
+    let persisted = vec![
+        launch_copy("worker", Some("session-a"), "exec-x", false, "2026-08-28T00:00:01Z"),
+        launch_copy("worker", Some("session-a"), "exec-y", true, "2026-08-28T00:00:02Z"),
+        launch_copy("worker", Some("session-b"), "exec-x", true, "2026-08-28T00:00:01Z"),
+    ];
+    let snapshot = vec![launch_copy(
+        "worker",
+        Some("session-a"),
+        "exec-x",
+        true,
+        "2026-08-28T00:00:03Z",
+    )];
+
+    let merged = join_by_canonical_id(persisted, snapshot, &BTreeMap::new(), &[]);
+
+    assert!(
+        !merged.values().any(|record| record.exec_session_id == "exec-x"
+            && record.desired_enabled
+            && record.owner_session_id.as_deref() == Some("session-a")),
+        "a refresh of exec-x must not resurrect the launch session-a stopped: {merged:?}"
+    );
+    assert!(
+        merged.values().any(|record| record.exec_session_id == "exec-y"
+            && record.owner_session_id.as_deref() == Some("session-a")),
+        "the launch session-a kept stays the record's launch: {merged:?}"
+    );
+}
+
+/// A stale started copy must not erase an unstarted claim.
+///
+/// The reservation writes a `Starting` claim under the ledger lock and records
+/// the start only after the process exists. Another controller can save in that
+/// window, and its copy of the launch the reservation replaced records a start.
+/// Committing that copy leaves the ledger naming only the replaced launch while
+/// the replacement runs, so a stop or a load in the window acts on the wrong
+/// launch.
+#[test]
+fn a_stale_started_copy_does_not_erase_an_unstarted_claim() {
+    let mut claim = launch_copy("worker", Some("session-a"), "exec-replacement", true, "2026-08-28T00:00:04Z");
+    claim.status = crate::subagents::BackgroundSubprocessStatus::Starting;
+    let mut stale = launch_copy("worker", Some("session-a"), "exec-replaced", true, "2026-08-28T00:00:05Z");
+    stale.started_at = Some("2026-08-28T00:00:01Z".parse().expect("the replaced launch instant"));
+
+    let merged = super::super::merge::merge_background_records(
+        vec![claim],
+        vec![stale],
+        Some("session-a"),
+        &BTreeSet::new(),
+        &BTreeMap::new(),
+        &[],
+    );
+
+    assert_eq!(merged.len(), 1, "the canonical id keeps one launch");
+    assert_eq!(
+        merged[0].exec_session_id, "exec-replacement",
+        "the unstarted claim survives a stale copy of the launch it replaced"
+    );
+    assert_eq!(merged[0].status, crate::subagents::BackgroundSubprocessStatus::Starting);
+}
+
 /// A restart with a new exec session still supersedes the stopped launch.
 ///
 /// Retaining the persisted stop of a refreshed session must not block a

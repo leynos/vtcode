@@ -294,3 +294,56 @@ async fn a_second_non_interrupt_input_does_not_restart_a_live_child_run() {
 
     controller.signal_shutdown().await;
 }
+
+/// A launch must not abort a live loop that already took its prompt.
+///
+/// An interrupt that arrives before its launch publishes a handle leaves the
+/// new prompt in the queue, and a loop that is already running can dequeue it
+/// before the restart takes its first state lock. That loop then sets
+/// `Running`. Overwriting `Running` with `Queued` and then publishing the
+/// replacement aborted the loop that was running the prompt; the replacement
+/// found an empty queue and exited, so the request returned success while the
+/// record stayed `Queued` with nothing running it. The live loop owns the
+/// prompt and must be left alone.
+#[tokio::test]
+async fn a_launch_does_not_abort_a_live_loop_that_already_took_the_prompt() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = Arc::new(
+        SubagentController::new(test_controller_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller"),
+    );
+    let spec = explorer_spec();
+    let mut record = child_record("child", "parent-session", &spec, SubagentStatus::Running, 1);
+    let (alive_tx, mut alive_rx) = tokio::sync::oneshot::channel::<()>();
+    record.handle = Some(tokio::spawn(async move {
+        let _alive = alive_tx;
+        std::future::pending::<()>().await;
+    }));
+    let loop_id = record.handle.as_ref().map(tokio::task::JoinHandle::id);
+    controller.state.write().await.children.insert("child".to_string(), record);
+
+    controller
+        .launch_child("child")
+        .await
+        .expect("a launch that finds a live loop declines without an error");
+
+    let state = controller.state.read().await;
+    let record = state.children.get("child").expect("the record");
+    assert_eq!(
+        record.status,
+        SubagentStatus::Running,
+        "the launcher must not overwrite the status of the loop that owns the prompt"
+    );
+    assert_eq!(
+        record.handle.as_ref().map(tokio::task::JoinHandle::id),
+        loop_id,
+        "the launcher must leave the live loop's handle published"
+    );
+    drop(state);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), &mut alive_rx).await.is_err(),
+        "the launcher must not abort the loop that already took the prompt"
+    );
+    controller.signal_shutdown().await;
+}

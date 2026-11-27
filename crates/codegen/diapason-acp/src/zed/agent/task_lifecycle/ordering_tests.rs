@@ -4,27 +4,58 @@ use super::*;
 
 /// The initial snapshot pass and live observation race on the queue, and both
 /// snapshots come from one controller clock. Two transitions recorded in one
-/// tick therefore share `updated_at`, so the timestamp cannot order them. The
-/// adapter reserves one base revision for the snapshot pass and every live
-/// transition takes a higher revision; the forwarder orders by revision, and a
-/// stale snapshot must not be admitted.
+/// tick therefore share `updated_at`, so the timestamp cannot order them. Both
+/// paths are stamped from the same clock, the forwarder orders by revision, and
+/// a snapshot that read an earlier state must not be admitted.
 #[test]
 fn an_initial_snapshot_does_not_undo_live_progress_at_the_same_timestamp() {
     let mut ordering = LifecycleOrdering::default();
-    let snapshot_revision = 0_u64;
     let live_running = QueuedLifecycleUpdate {
         update: with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z"),
         revision: 1,
     };
     let queued_snapshot = QueuedLifecycleUpdate {
         update: with_updated_at(subagent_event("queued"), "2026-08-14T12:01:00Z"),
-        revision: snapshot_revision,
+        revision: 0,
     };
 
     assert!(ordering.admit(&live_running), "the live transition must be forwarded");
     assert!(
         !ordering.admit(&queued_snapshot),
-        "an initial snapshot with the base revision must not undo live progress"
+        "an initial snapshot with an older revision must not undo live progress"
+    );
+}
+
+/// A capture that read an earlier state must lose to a snapshot read later.
+///
+/// This is the read-order rule the initial pass relies on: the pass reserves its
+/// revision between the two reads that confirm a batch, so a capture that read
+/// `Queued` before those reads is stamped below the snapshot's `Running`, while
+/// a capture that read after them is stamped above it. Whichever order the two
+/// are delivered in, the client ends on the later state.
+#[test]
+fn a_snapshot_read_after_a_capture_supersedes_that_capture() {
+    let queued_capture = QueuedLifecycleUpdate {
+        update: with_updated_at(subagent_event("queued"), "2026-08-14T12:01:00Z"),
+        revision: 4,
+    };
+    let running_snapshot = QueuedLifecycleUpdate {
+        update: with_updated_at(subagent_event("running"), "2026-08-14T12:02:00Z"),
+        revision: 5,
+    };
+
+    // Delivered in read order.
+    let mut ordering = LifecycleOrdering::default();
+    assert!(ordering.admit(&queued_capture));
+    assert!(ordering.admit(&running_snapshot), "the later read must win");
+    assert!(!ordering.admit(&queued_capture), "the delayed earlier capture must not roll the task back");
+
+    // Delivered snapshot first, with the earlier capture arriving late.
+    let mut reordered = LifecycleOrdering::default();
+    assert!(reordered.admit(&running_snapshot));
+    assert!(
+        !reordered.admit(&queued_capture),
+        "a capture stamped before the snapshot must not overwrite the newer state"
     );
 }
 

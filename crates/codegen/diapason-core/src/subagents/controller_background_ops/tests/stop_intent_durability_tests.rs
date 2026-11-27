@@ -14,8 +14,7 @@ use crate::subagents::{BackgroundSubprocessStatus, TaskOwner};
 use crate::utils::session_archive::override_sessions_dir_for_tests;
 
 use super::super::controller_background_cancel::{
-    background_stop_close_is_pending, fail_after_gated_background_close, gate_next_background_cancellation_save,
-    gate_next_background_close,
+    background_stop_close_is_pending, gate_next_background_cancellation_save, mark_background_stop_close_pending,
 };
 use super::super::controller_background_settlement::{
     pending_background_ledger_write_generation, retry_attempt_available,
@@ -264,66 +263,6 @@ async fn a_stop_reports_the_archive_paths_attached_after_its_close() {
     controller.signal_shutdown().await;
 }
 
-/// A failure that began before a confirmation still yields to it.
-///
-/// This is the ordering the token comparison missed: the attempt that will fail
-/// starts first and holds the lower token, the confirming attempt runs while it
-/// is stalled, and only then does the first fail. Any confirmed close must make
-/// a later failure stale whatever tokens the attempts took, or the late fault
-/// rewinds `Stopped` to `Running` and re-arms a discharged obligation.
-#[tokio::test]
-async fn a_failure_started_before_a_confirmation_still_yields_to_it() {
-    let temp = TempDir::new().expect("tempdir");
-    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
-    let exec_session_id = "exec-late-failure";
-    let record = background_record(WORKER, None, "worker", exec_session_id, BackgroundSubprocessStatus::Running, false);
-    {
-        let mut state = controller.state.write().await;
-        state.background_children.insert(record.id.clone(), record);
-    }
-
-    // The attempt that will fail starts first and stalls inside its close.
-    let (failing_entered, failing_release) =
-        fail_after_gated_background_close(&controller.state, exec_session_id, "late failure fault");
-    let failing = controller.attempt_background_stop_close(WORKER, exec_session_id);
-    tokio::pin!(failing);
-    tokio::select! {
-        settled = &mut failing => panic!("the gated failure settled before the confirming attempt ran: {settled}"),
-        () = failing_entered.notified() => {}
-    }
-
-    // The confirming attempt completes while the first is stalled. Its session
-    // is unknown to this controller, which counts as closed.
-    assert!(
-        controller.attempt_background_stop_close(WORKER, exec_session_id).await,
-        "the overlapping attempt confirms the session is closed"
-    );
-    {
-        let state = controller.state.read().await;
-        let record = state.background_children.get(WORKER).expect("record");
-        assert_eq!(record.status, BackgroundSubprocessStatus::Stopped, "the confirmed close settles the stop");
-    }
-
-    failing_release.notify_one();
-    assert!(failing.await, "a failure that began before the confirmation still reports the session closed");
-
-    let state = controller.state.read().await;
-    let record = state.background_children.get(WORKER).expect("record");
-    assert_eq!(
-        record.status,
-        BackgroundSubprocessStatus::Stopped,
-        "a failure started before the confirmation must not rewind the stop"
-    );
-    assert!(record.error.is_none(), "the confirmed stop carries no close fault: {:?}", record.error);
-    drop(state);
-    assert!(
-        !background_stop_close_is_pending(&controller.state, WORKER, exec_session_id),
-        "the stale failure must not re-arm the discharged obligation"
-    );
-
-    controller.signal_shutdown().await;
-}
-
 /// The retry allowance is what decides a stop's ordinary failure path.
 ///
 /// The archive case above must not weaken the rule it sits beside: a close
@@ -335,62 +274,41 @@ fn the_stop_retry_allowance_is_shared_with_restart_settlement() {
     assert!(!retry_attempt_available(1), "a spent allowance settles instead");
 }
 
-/// A failure that starts after a confirmation still yields to it.
+/// A retry cannot re-arm a close another attempt already confirmed.
 ///
-/// Both attempts are started before either close completes; the attempt that
-/// started first takes the lower token and confirms the close, and the attempt
-/// that started second takes the higher token and fails only afterwards. A
-/// check that compared the failure's token with the confirmed one would treat
-/// that failure as newer than the confirmation and rewind the record. The
-/// confirmation alone decides, so the record stays stopped and the discharged
-/// close obligation is not re-armed.
+/// The retry wakes from a snapshot taken without the state lock. A concurrent
+/// attempt can confirm the same close in between, and the record still names the
+/// same exec session and still does not want it, so the old check passed on the
+/// stale snapshot and registered an obligation for a close that had already
+/// succeeded. That refused starts until another reconcile happened to clear it.
+/// The ownership check now reads the obligation under the same lock the
+/// confirmation clears it with.
 #[tokio::test]
-async fn a_failure_that_started_after_a_confirmation_still_yields_to_it() {
+async fn a_retry_does_not_rearm_a_close_another_attempt_confirmed() {
     let temp = TempDir::new().expect("tempdir");
     let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
-    let exec_session_id = "exec-confirmed-first";
+    let exec_session_id = "exec-confirmed-before-retry";
     let record = background_record(WORKER, None, "worker", exec_session_id, BackgroundSubprocessStatus::Running, false);
     {
         let mut state = controller.state.write().await;
         state.background_children.insert(record.id.clone(), record);
     }
+    mark_background_stop_close_pending(&controller.state, WORKER, exec_session_id);
 
-    // The confirming attempt starts first and is parked inside its close. The
-    // failing attempt starts while it is parked, so it takes the higher token,
-    // and is released only after the confirmation.
-    let (first_entered, first_release) = gate_next_background_close(&controller.state, exec_session_id);
-    let (second_entered, second_release) =
-        fail_after_gated_background_close(&controller.state, exec_session_id, "late failure fault");
-    let first = controller.attempt_background_stop_close(WORKER, exec_session_id);
-    tokio::pin!(first);
-    tokio::select! {
-        settled = &mut first => panic!("the gated confirmation settled before the second attempt started: {settled}"),
-        () = first_entered.notified() => {}
-    }
-    let second = controller.attempt_background_stop_close(WORKER, exec_session_id);
-    tokio::pin!(second);
-    tokio::select! {
-        settled = &mut second => panic!("the gated failure settled before the confirmation: {settled}"),
-        () = second_entered.notified() => {}
-    }
-
-    first_release.notify_one();
-    assert!(first.await, "the first attempt confirms the close");
-    second_release.notify_one();
-    assert!(second.await, "a failure that started after the confirmation still reports the session closed");
-
-    let state = controller.state.read().await;
-    let record = state.background_children.get(WORKER).expect("record");
-    assert_eq!(
-        record.status,
-        BackgroundSubprocessStatus::Stopped,
-        "a failure started after the confirmation must not rewind the stop"
+    // An overlapping attempt confirms the close and discharges the obligation.
+    assert!(
+        controller.attempt_background_stop_close(WORKER, exec_session_id).await,
+        "a session this controller no longer holds is already closed"
     );
-    assert!(record.error.is_none(), "the confirmed stop carries no close fault: {:?}", record.error);
-    drop(state);
+    assert!(!background_stop_close_is_pending(&controller.state, WORKER, exec_session_id));
+
+    assert!(
+        !controller.retry_background_stop_close(WORKER, exec_session_id).await,
+        "a retry from a stale snapshot must not attempt a confirmed close again"
+    );
     assert!(
         !background_stop_close_is_pending(&controller.state, WORKER, exec_session_id),
-        "the late failure must not re-arm the discharged obligation"
+        "the retry must not re-register an obligation the confirmation discharged"
     );
 
     controller.signal_shutdown().await;

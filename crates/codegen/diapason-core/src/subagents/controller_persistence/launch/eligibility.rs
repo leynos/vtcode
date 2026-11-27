@@ -136,3 +136,27 @@ pub(super) fn launch_is_eligible(
     record.owner_session_id.is_some()
         || (!owned_launches.contains(&ownerless_launch(record)) && !is_migrated_alias(record, migrated_launches))
 }
+
+/// Whether `record` is the ownerless copy of a launch the ledger attributes to
+/// `owner_session_id`.
+///
+/// Both sides must name a launch. An empty exec session identifies nothing, so
+/// the only key it could match is `(canonical id, "")`, which every other empty
+/// row of the same agent shares. Ownership is only inferred from a launch the
+/// row actually names.
+pub(in crate::subagents::controller_persistence) fn is_ownerless_copy_of_owned_launch(
+    record: &crate::subagents::BackgroundRecord,
+    owner_session_id: &str,
+    owned_launches: &BTreeSet<(String, String)>,
+) -> bool {
+    record.owner_session_id.is_none()
+        && !record.exec_session_id.is_empty()
+        && record.parent_session_id == owner_session_id
+        && owned_launches.contains(&(
+            crate::subagents::background::background_record_id_for_owner(
+                record.agent_name.as_str(),
+                Some(owner_session_id),
+            ),
+            record.exec_session_id.clone(),
+        ))
+}

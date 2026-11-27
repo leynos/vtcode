@@ -95,9 +95,11 @@ impl SubagentController {
     /// graft holds that scope's adoption lock to exclude concurrent
     /// allocation, so a controller bound to a different scope cannot be
     /// grafted safely and is rejected with the same fail-closed guarantee.
-    /// Every controller created by this tree inherits the scope, so this only
-    /// refuses an independently constructed controller with an injected
-    /// scope.
+    /// That check runs before the joining subtree is inspected, so the
+    /// structural mismatch is the reported reason rather than a routing
+    /// conflict that could not be acted on anyway. Every controller created by
+    /// this tree inherits the scope, so this only refuses an independently
+    /// constructed controller with an injected scope.
     ///
     /// The attachment is also refused before anything changes when it would
     /// close a cycle: attaching this controller, one of its ancestors, or one
@@ -120,9 +122,9 @@ impl SubagentController {
     /// attachments in opposite directions could each pass its check before
     /// either published their link, which creates an `Arc` cycle that leaks the
     /// subtree and never terminates a traversal. A controller bound to a
-    /// different lock scope can never be published (the child-id adoption
-    /// rejects it), so this tree's guard serializes every attachment that can
-    /// succeed.
+    /// different lock scope can never be published (the attachment rejects it
+    /// before it takes this guard), so this tree's guard serializes every
+    /// attachment that can succeed.
     ///
     /// A controller that another record already lists belongs to that record's
     /// tree, and a second one is refused: the disjointness checks only walk
@@ -145,6 +147,17 @@ impl SubagentController {
             && !Arc::ptr_eq(attached, &controller.state)
         {
             bail!("Subagent {child_id} is already attached to another controller");
+        }
+        // A controller bound to another adoption lock can never be published:
+        // the allocator merge and every route swap run under this tree's
+        // adoption lock, which would not exclude an allocation in the joining
+        // subtree. Refusing here, before the joining subtree is inspected,
+        // makes that structural mismatch the reported reason instead of a
+        // routing conflict that would not matter if the controller could join.
+        // The allocator adoption keeps its own check as the last line of
+        // defence.
+        if !Arc::ptr_eq(controller.lock_scope(), self.lock_scope()) {
+            bail!("Subagent {child_id} cannot be attached: the controller is bound to a different lock scope");
         }
         // The fallback observer key is resolved before the attachment guard,
         // because it may await the parent controller's session lock. The guard
@@ -214,14 +227,64 @@ impl SubagentController {
         // subtree whose records belong to a different session would then deliver
         // those older snapshots to this tree's observers, with no way to re-key
         // them afterwards. The conflict is resolved here, before the state lock,
-        // so no second controller state lock is held under this tree's. A
-        // controller with no inherited key resolves its key per publication and
-        // claims no session, so the common case — a freshly created child
-        // controller, whose key is already this tree's — is unaffected.
+        // so no second controller state lock is held under this tree's.
+        //
+        // An inherited key is not the only way a controller claims a session. A
+        // controller built independently resolves its key per publication, so it
+        // holds no key while its foreground links and background records already
+        // name the sessions their snapshots belong to. Those records are what a
+        // rebind would silently re-route, so they are checked as well. The
+        // common case — a freshly created child controller, whose key is already
+        // this tree's and whose records name this tree's session — is
+        // unaffected.
         let incoming_observer_conflict = {
             let inherited = controller.inherited_observer_key();
-            let holds_records = !controller.state.read().await.children.is_empty();
-            inherited.filter(|key| holds_records && key.as_str() != adopted_observer_scope.as_str())
+            // The session this controller was built for, read from the
+            // configuration rather than the runtime session lock: another
+            // attachment may hold that lock, and this check must not wait on it.
+            // Its records are the subtree the tree is adopting — they descend
+            // from this controller and are re-keyed with it — so a record naming
+            // this session is not a foreign claim.
+            let own_session_id = controller.config.parent_session_id.as_str();
+            let (foreground_sessions, background_sessions) = {
+                let state = controller.state.read().await;
+                (
+                    state
+                        .children
+                        .values()
+                        .map(|record| record.parent_thread_id.clone())
+                        .collect::<std::collections::BTreeSet<_>>(),
+                    state
+                        .background_children
+                        .values()
+                        .map(|record| record.parent_session_id.clone())
+                        .collect::<std::collections::BTreeSet<_>>(),
+                )
+            };
+            // Background records route by their own parent session, so a
+            // controller that owns only launches still holds records whose
+            // snapshots a rebind would move.
+            let holds_records = !foreground_sessions.is_empty() || !background_sessions.is_empty();
+            let inherited_conflict = inherited
+                .clone()
+                .filter(|key| holds_records && key.as_str() != adopted_observer_scope.as_str());
+            // A controller that inherited no key resolves its key per
+            // publication, so nothing but its own records says which session
+            // would lose their snapshots. A record naming a session that is
+            // neither this controller's own nor the destination is a task it
+            // merely serves for someone else: adopting the destination key
+            // would deliver those snapshots to the wrong observers, and neither
+            // side can re-key them afterwards.
+            let record_conflict = if inherited.is_none() {
+                foreground_sessions
+                    .into_iter()
+                    .filter(|session| !session.is_empty())
+                    .filter(|session| session.as_str() != own_session_id)
+                    .find(|session| session.as_str() != adopted_observer_scope.as_str())
+            } else {
+                None
+            };
+            inherited_conflict.or(record_conflict)
         };
         // The record is re-checked once more and the incoming allocator adopted
         // while the state write lock is held. The adoption takes only the
@@ -264,10 +327,19 @@ impl SubagentController {
         // observers registered here would never see its later transitions. The
         // one snapshot taken under the guard serves the whole subtree, so every
         // controller in it publishes through the same registry, clock and key.
-        controller.adopt_progress_route(&parent_route, adopted_observer_scope.as_str());
-        for descendant in joining_subtree {
-            descendant.adopt_progress_route(&parent_route, adopted_observer_scope.as_str());
-        }
+        //
+        // The whole subtree's routes change as one step. A publication reads the
+        // route of the controller that owns its record, so rebinding them one at
+        // a time would leave an interval in which a descendant still names the
+        // retired registry after the root's adoption already moved that
+        // registry's registrations: a terminal update published then would find
+        // no registration and be dropped. Taking every route's write guard
+        // before the first swap, and keeping them until the last, makes dispatch
+        // on any of them either fully before or fully after the graft.
+        let mut joining = Vec::with_capacity(joining_subtree.len().saturating_add(1));
+        joining.push(controller.as_ref());
+        joining.extend(joining_subtree.iter().map(|descendant| descendant.as_ref()));
+        Self::adopt_progress_route_for_subtree(&joining, &parent_route, adopted_observer_scope.as_str());
         // A test parks the attachment here, with the state lock held and every
         // await behind it, to prove the guard is still held at the point the
         // link is published.

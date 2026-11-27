@@ -9,28 +9,31 @@ use rstest::rstest;
 
 /// The liveness overlay follows the record's restart budget.
 ///
-/// A record that has already spent its one restart is reported as the error a
-/// refresh would settle it as, not as a restart that will never happen. A
-/// record that has not yet spent its allowance is about to be restarted, so an
-/// exited process is also projected as `Starting`.
+/// A record that has already spent its one restart, or whose owner disabled
+/// automatic restore, is reported as the error a refresh would settle it as,
+/// not as a restart that will never happen. A record whose allowance is
+/// unspent is about to be restarted, so an exited process is also projected as
+/// `Starting`.
 ///
 /// A cached `Starting` status keeps its task active only while this controller
 /// still owes that launch. These fixtures restore a `Starting` row from the
 /// ledger, so nothing in this process owes it: the claim that would have driven
-/// it belonged to a process that is gone, and this read starts nothing. The
-/// overlay therefore reports the `Error` a spent or disabled budget settles it
-/// as, and it reports the same for an unspent budget too: an allowance is not a
-/// driver, and only a later refresh can schedule the replacement. A `Running`
-/// row whose process exited is different — nothing was ever claimed for it, so
-/// an unspent allowance does predict the restart refresh will schedule. A
-/// `Starting` row that is still owed — a claim this controller wrote, or a
-/// restart a previous refresh scheduled — stays `Starting` in every case, which
-/// `abandoned_start_liveness_tests` pins.
+/// it belonged to a process that is gone, and this read starts nothing. That
+/// makes the row an orphaned claim, and the overlay reports what the next
+/// refresh will do with it. A spent or disabled budget is the `Error` the
+/// settlement will write; an unspent allowance is the `Starting` the refresh
+/// will schedule, because reporting an orphan that will be restarted as a
+/// terminal failure would show a finished task that then resumes. A `Running`
+/// row whose process exited follows the same budget: nothing was ever claimed
+/// for it, and an unspent allowance predicts the restart the refresh will
+/// schedule. A `Starting` row that is still owed — a claim this controller
+/// wrote, or a restart a previous refresh scheduled — stays `Starting` in
+/// every case, which `abandoned_start_liveness_tests` pins.
 #[rstest]
 #[case::exhausted_budget("running", 1, true, BackgroundSubprocessStatus::Error)]
 #[case::abandoned_start_with_spent_budget("starting", 1, true, BackgroundSubprocessStatus::Error)]
 #[case::available_budget("running", 0, true, BackgroundSubprocessStatus::Starting)]
-#[case::orphaned_start_with_available_budget("starting", 0, true, BackgroundSubprocessStatus::Error)]
+#[case::orphaned_start_restarts_with_available_budget("starting", 0, true, BackgroundSubprocessStatus::Starting)]
 #[case::abandoned_start_without_auto_restore("starting", 0, false, BackgroundSubprocessStatus::Error)]
 #[tokio::test]
 async fn liveness_projection_follows_the_restart_budget(

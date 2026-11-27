@@ -287,6 +287,10 @@ fn tasklist_reports_running(query_succeeded: bool, listing: &[u8], pid: u32) -> 
 /// path therefore confirms the process is absent before it reports success,
 /// and any kill that leaves the process running stays an error so the signal is
 /// retried.
+///
+/// A failure to *start* `taskkill` is not classified here or by the caller's
+/// already-gone filter: the utility never reached the child, so it propagates
+/// as a kill fault and the handle keeps its killer for a retry.
 #[cfg(windows)]
 pub fn kill_process(pid: u32) -> io::Result<()> {
     let status = std::process::Command::new("taskkill")

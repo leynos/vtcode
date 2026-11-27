@@ -1,5 +1,6 @@
 //! Exercises the outcome a stop reports and the ordering of its close attempts.
 
+use rstest::rstest;
 use tempfile::TempDir;
 
 use crate::config::DiapasonConfig;
@@ -20,13 +21,17 @@ use super::support::{session_is_gone, write_background_demo_agent, write_sleepin
 
 /// A failed close must not undo a close another attempt already confirmed.
 ///
-/// Two attempts for one record overlap: the first is stalled inside its close,
-/// the second runs and confirms its close, and only then does the first fail.
-/// Applying that late failure rewound the record from `Stopped` to `Running`,
-/// re-armed an obligation the confirmed close had discharged, and reported a
-/// stopped task as live again.
+/// Two attempts for one record overlap: one is stalled inside its close, the
+/// other runs and confirms the close, and only then does the stalled attempt
+/// fail. Applying that late failure rewound the record from `Stopped` to
+/// `Running`, re-armed an obligation the confirmed close had discharged, and
+/// reported a stopped task as live again. The same fixture runs both start
+/// orders, so the outcome cannot depend on which attempt took the lower token.
+#[rstest]
+#[case::faulting_attempt_started_first(false)]
+#[case::confirming_attempt_started_first(true)]
 #[tokio::test]
-async fn a_late_close_fault_does_not_undo_a_confirmed_close() {
+async fn a_late_close_fault_does_not_undo_a_confirmed_close(#[case] confirming_attempt_started_first: bool) {
     let temp = TempDir::new().expect("tempdir");
     let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
     let exec_session_id = "exec-overlapping-close";
@@ -43,8 +48,14 @@ async fn a_late_close_fault_does_not_undo_a_confirmed_close() {
         state.background_children.insert(record.id.clone(), record);
     }
 
-    let (first_entered, first_release) =
-        fail_after_gated_background_close(&controller.state, exec_session_id, "late close fault");
+    // The first attempt is armed according to the case, started, and held until
+    // it is inside its close. The second is armed only then, so the scripted
+    // closes are consumed in the order the attempts start.
+    let (first_entered, first_release) = if confirming_attempt_started_first {
+        gate_next_background_close(&controller.state, exec_session_id)
+    } else {
+        fail_after_gated_background_close(&controller.state, exec_session_id, "late close fault")
+    };
     let first = controller.attempt_background_stop_close("background-worker", exec_session_id);
     tokio::pin!(first);
     tokio::select! {
@@ -53,10 +64,11 @@ async fn a_late_close_fault_does_not_undo_a_confirmed_close() {
         }
         () = first_entered.notified() => {}
     }
-
-    // The second attempt stalls in its own close while the first is still
-    // inside the failed one, so both attempts really overlap.
-    let (second_entered, second_release) = gate_next_background_close(&controller.state, exec_session_id);
+    let (second_entered, second_release) = if confirming_attempt_started_first {
+        fail_after_gated_background_close(&controller.state, exec_session_id, "late close fault")
+    } else {
+        gate_next_background_close(&controller.state, exec_session_id)
+    };
     let second = controller.attempt_background_stop_close("background-worker", exec_session_id);
     tokio::pin!(second);
     tokio::select! {
@@ -66,11 +78,17 @@ async fn a_late_close_fault_does_not_undo_a_confirmed_close() {
         () = second_entered.notified() => {}
     }
 
-    second_release.notify_one();
-    assert!(second.await, "the overlapping attempt confirms the session is closed");
-
-    first_release.notify_one();
-    assert!(first.await, "a failure the confirmed close overtook still reports the session closed");
+    // Release the confirming attempt first, so the fault always lands after the
+    // close it must yield to.
+    let (confirming, confirming_release, failing, failing_release) = if confirming_attempt_started_first {
+        (first, first_release, second, second_release)
+    } else {
+        (second, second_release, first, first_release)
+    };
+    confirming_release.notify_one();
+    assert!(confirming.await, "the overlapping attempt confirms the session is closed");
+    failing_release.notify_one();
+    assert!(failing.await, "a failure the confirmed close overtook still reports the session closed");
 
     let state = controller.state.read().await;
     let record = state.background_children.get("background-worker").expect("record");
@@ -79,7 +97,8 @@ async fn a_late_close_fault_does_not_undo_a_confirmed_close() {
         BackgroundSubprocessStatus::Stopped,
         "the late fault must not rewind the confirmed stop"
     );
-    assert!(record.error.is_none(), "the confirmed stop carries no close fault: {:?}", record.error);
+    assert!(record.error.is_none(), "the confirmed stop carries no run error: {:?}", record.error);
+    assert!(record.close_fault.is_none(), "the confirmed stop carries no close fault: {:?}", record.close_fault);
     drop(state);
     assert!(
         !background_stop_close_is_pending(&controller.state, "background-worker", exec_session_id),
@@ -140,15 +159,15 @@ async fn a_spent_close_retry_reports_a_pending_stop() {
         state
             .background_children
             .get("background-worker")
-            .and_then(|record| record.error.clone())
+            .and_then(|record| record.close_fault.clone())
     };
     assert!(
-        durable.is_some_and(|error| error.contains("close transport fault")),
+        durable.is_some_and(|fault| fault.contains("close transport fault")),
         "the outcome's record must still carry the fault a spent retry recorded"
     );
     assert!(
-        !background_stop_close_is_pending(&controller.state, "background-worker", exec_session_id),
-        "a spent allowance discharges the obligation"
+        background_stop_close_is_pending(&controller.state, "background-worker", exec_session_id),
+        "a spent allowance must not discharge a stop that is still owed"
     );
 
     controller.signal_shutdown().await;
@@ -204,8 +223,8 @@ async fn a_spent_close_retry_owes_the_ledger_the_fault_it_records() {
         assert!(record.ended_at.is_some(), "a settled failure has ended");
     }
     assert!(
-        !background_stop_close_is_pending(&controller.state, "background-worker", exec_session_id),
-        "a spent allowance discharges the close obligation"
+        background_stop_close_is_pending(&controller.state, "background-worker", exec_session_id),
+        "a spent allowance keeps the close obligation for the next reconcile"
     );
     assert!(
         pending_background_ledger_write_generation(&controller.state).is_some(),

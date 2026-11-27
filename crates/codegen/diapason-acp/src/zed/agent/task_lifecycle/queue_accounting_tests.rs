@@ -1,5 +1,5 @@
 //! Queue-accounting invariants for lifecycle notification publication.
-use super::projection_tests::{background_event, live, subagent_event};
+use super::projection_tests::{background_event, live, live_at, subagent_event, with_task_id, with_updated_at};
 use super::queue_accounting::LifecycleQueueDropKind;
 use super::*;
 use diapason_core::metrics::TaskLifecycleNotificationQueueDrop;
@@ -154,6 +154,137 @@ async fn a_refused_update_is_held_until_the_forwarder_drains_the_channel() {
     let older = queue.next_update(&mut receiver).await.expect("the queued initial snapshot");
     assert_eq!(older.revision, snapshot_revision);
     assert!(!ordering.admit(&older), "the active snapshot the terminal state superseded must not overwrite it");
+    assert_eq!(queue.depth(), 0);
+}
+
+/// One task's refusal must not evict another task's parked terminal state.
+///
+/// Two tasks finish while the queue is full. A single parked slot would keep
+/// only the later refusal: the forwarder compares revisions per task, so task
+/// B's completion cannot stand in for task A's, and the client would receive A's
+/// queued active snapshot with no terminal update left to correct it. Parking
+/// per task recovers both, and a repeated refusal of the same task still keeps
+/// only its newest revision.
+#[tokio::test]
+async fn two_task_saturation_recovers_both_terminal_states() {
+    let metrics = Arc::new(RecordingQueueMetrics::default());
+    let observer = metrics.clone() as Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>;
+    let queue = LifecycleQueueTracker::new(observer);
+    // Two slots, so both tasks' active snapshots can be in flight when the
+    // queue refuses their completions.
+    let (sender, mut receiver) = mpsc::channel(2);
+    let task_a = || with_task_id(subagent_event("running"), "task-a".to_string());
+    let task_b = || with_task_id(subagent_event("running"), "task-b".to_string());
+    let snapshot_revision = 7_u64;
+    queue
+        .send(&sender, live_at(snapshot_revision, task_a()))
+        .await
+        .expect("task A's active snapshot fills the first slot");
+    queue
+        .send(&sender, live_at(snapshot_revision, task_b()))
+        .await
+        .expect("task B's active snapshot fills the second slot");
+
+    let a_completed = live_at(
+        8,
+        with_task_id(with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z"), "task-a".to_string()),
+    );
+    let b_completed = live_at(
+        9,
+        with_task_id(with_updated_at(subagent_event("completed"), "2026-08-14T12:06:00Z"), "task-b".to_string()),
+    );
+    for completion in [&a_completed, &b_completed] {
+        assert_eq!(
+            queue
+                .try_send(
+                    &sender,
+                    QueuedLifecycleUpdate {
+                        update: completion.update.clone(),
+                        revision: completion.revision
+                    }
+                )
+                .expect_err("the full queue refuses each completion"),
+            LifecycleQueueDropKind::Full
+        );
+    }
+    assert_eq!(queue.depth(), 2, "refused updates were never queued, so they are not counted");
+
+    let mut ordering = LifecycleOrdering::default();
+    let mut delivered = Vec::new();
+    for _ in 0..4 {
+        let queued = queue
+            .next_update(&mut receiver)
+            .await
+            .expect("every queued and parked update is deliverable");
+        if ordering.admit(&queued) {
+            delivered.push(queued);
+        }
+    }
+
+    let completed_tasks = delivered
+        .iter()
+        .filter(|queued| queued.update.is_terminal())
+        .map(|queued| queued.task_id().to_owned())
+        .collect::<Vec<_>>();
+    assert!(
+        completed_tasks.contains(&"task-a".to_string()) && completed_tasks.contains(&"task-b".to_string()),
+        "both terminal states must survive the saturation, got {completed_tasks:?}"
+    );
+    assert_eq!(delivered.len(), 2, "each task's terminal state supersedes its own queued active snapshot");
+    assert_eq!(queue.depth(), 0, "the channel drained completely");
+}
+
+/// Repeated refusals of one task keep only that task's newest revision.
+///
+/// Per-task parking must not turn into one slot per revision: a task that
+/// changes twice while the queue is full has one state worth delivering, and a
+/// later revision supersedes the earlier one exactly as it would on the wire.
+#[tokio::test]
+async fn repeated_refusals_of_one_task_keep_only_its_newest_revision() {
+    let metrics = Arc::new(RecordingQueueMetrics::default());
+    let observer = metrics.clone() as Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>;
+    let queue = LifecycleQueueTracker::new(observer);
+    let (sender, mut receiver) = mpsc::channel(1);
+    let active = with_task_id(subagent_event("running"), "task-a".to_string());
+    queue
+        .send(&sender, live_at(3, active))
+        .await
+        .expect("the active snapshot fills the only slot");
+
+    let completed = live_at(
+        4,
+        with_task_id(with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z"), "task-a".to_string()),
+    );
+    let failed = live_at(
+        5,
+        with_task_id(with_updated_at(subagent_event("failed"), "2026-08-14T12:06:00Z"), "task-a".to_string()),
+    );
+    for refusal in [&completed, &failed] {
+        assert_eq!(
+            queue
+                .try_send(
+                    &sender,
+                    QueuedLifecycleUpdate {
+                        update: refusal.update.clone(),
+                        revision: refusal.revision
+                    }
+                )
+                .expect_err("the full queue refuses both transitions"),
+            LifecycleQueueDropKind::Full
+        );
+    }
+
+    let parked = queue
+        .next_update(&mut receiver)
+        .await
+        .expect("the newest refusal is still deliverable");
+    assert_eq!(parked.revision, 5, "the later revision must replace the earlier refusal of the same task");
+    assert!(parked.update.is_terminal());
+    let queued_active = queue
+        .next_update(&mut receiver)
+        .await
+        .expect("the active snapshot is still queued");
+    assert_eq!(queued_active.revision, 3);
     assert_eq!(queue.depth(), 0);
 }
 
