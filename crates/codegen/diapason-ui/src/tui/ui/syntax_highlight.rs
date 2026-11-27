@@ -469,6 +469,89 @@ mod tests {
         assert_eq!(theme1.name, theme2.name);
     }
 
+    /// A decoded grammar must assign the scopes the theme expects.
+    ///
+    /// Reconstructing the input text only proves a grammar did not drop
+    /// characters. This pins the actual colours base16-ocean.dark assigns to a
+    /// Rust keyword, a numeric literal, and a comment, so a dump that decoded
+    /// into a degenerate or wrong grammar — which would style everything alike
+    /// — fails here. Regenerating the bundled assets with different scopes is
+    /// what this test is designed to catch.
+    #[test]
+    fn bundled_rust_grammar_assigns_expected_colours() {
+        let segments = highlight_code_to_segments("let value = 1; // sample\n", Some("rust"), DEFAULT_THEME_NAME);
+        let colour_of = |needle: &str| {
+            segments
+                .iter()
+                .find(|(_, text)| text.trim() == needle)
+                .map(|(style, _)| (style.foreground.r, style.foreground.g, style.foreground.b))
+                .unwrap_or_else(|| panic!("no segment for {needle:?}"))
+        };
+
+        let keyword = colour_of("let");
+        let number = colour_of("1");
+        let plain = colour_of("value");
+        let comment = colour_of("//");
+
+        assert_ne!(keyword, plain, "keyword should not reuse the plain foreground");
+        assert_ne!(number, plain, "numeric literal should not reuse the plain foreground");
+        assert_ne!(comment, plain, "comment should not reuse the plain foreground");
+        assert_ne!(keyword, comment, "keyword and comment should be distinguishable");
+        assert_eq!(keyword, (180, 142, 173), "keyword colour");
+        assert_eq!(number, (208, 135, 112), "numeric literal colour");
+        assert_eq!(comment, (101, 115, 126), "comment colour");
+    }
+
+    /// Every bundled grammar must decode, including its lazily loaded contexts.
+    ///
+    /// Lazy contexts live in a nested, individually compressed dump that
+    /// syntect decodes on first use. A codec incompatibility there would not
+    /// fail at load time, only when a grammar is first exercised. This walks
+    /// the whole bundled syntax set, highlights one line through every grammar,
+    /// and reconstructs the source text from the returned segments.
+    #[test]
+    fn every_bundled_syntax_highlights_a_sample() {
+        let sample = "let value = 1; // sample\n";
+        let bundled = syntax_set();
+        assert!(bundled.syntaxes().len() > 50, "expected the full bundled grammar set");
+        let theme = load_theme(DEFAULT_THEME_NAME, true);
+
+        for syntax in bundled.syntaxes() {
+            let mut highlighter = syntect::easy::HighlightLines::new(syntax, &theme);
+            let ranges = highlighter
+                .highlight_line(sample, bundled)
+                .unwrap_or_else(|error| panic!("{} did not highlight: {error}", syntax.name));
+            let rebuilt: String = ranges.into_iter().map(|(_, text)| text).collect();
+            assert_eq!(rebuilt, sample, "{} did not reproduce its input", syntax.name);
+        }
+    }
+
+    /// Every bundled theme must decode into usable scope rules.
+    ///
+    /// `load_theme` silently falls back to an arbitrary theme when a name is
+    /// unknown, so a theme name alone proves nothing. This asserts each name is
+    /// present in the decoded dump *and* that its theme carries scope selectors,
+    /// which only exist if the dump's rule list decoded.
+    #[test]
+    fn every_bundled_theme_loads_by_name() {
+        let expected = [
+            "base16-ocean.dark",
+            "base16-eighties.dark",
+            "base16-mocha.dark",
+            "base16-ocean.light",
+            "InspiredGitHub",
+            "Solarized (dark)",
+            "Solarized (light)",
+        ];
+        let available = available_themes();
+        for name in expected {
+            assert!(available.iter().any(|candidate| candidate == name), "missing theme {name}");
+            let theme = SHARED_THEME_SET.themes.get(name).unwrap_or_else(|| panic!("{name} absent"));
+            assert!(!theme.scopes.is_empty(), "{name} decoded no scope rules");
+        }
+        assert_eq!(available.len(), expected.len(), "bundled theme count changed");
+    }
+
     #[test]
     fn convert_syntect_style_uses_named_ansi_for_low_palette_indexes() {
         let style = convert_syntect_style(syntect::highlighting::Style {

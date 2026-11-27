@@ -70,6 +70,26 @@ the TOML table key `[behavior]`, so existing files do not need a migration.
 - Depends on `diapason-commons` for `anstyle_utils` (gated behind `tui` feature)
 - `crossterm` dependency enables `event-stream` and `osc52` features
 
+### Syntax-highlighting dependency
+
+Syntax highlighting uses `syntect` with the bundled dumps and the fancy-regex
+engine only: `default-features = false` plus `default-syntaxes`,
+`default-themes`, and `regex-fancy`. The YAML, plist, and HTML loaders are not
+enabled, because nothing in Diapason loads grammars or themes from files at
+runtime.
+
+The workspace redirects `syntect` to `patches/syntect/` through the root
+`[patch.crates-io]` table. That vendored tree is syntect 5.3.0 with one change:
+its dump codec is `bincode-next` in legacy format rather than the unmaintained
+`bincode 1.3.3`. The bundled `.packdump` and `.themedump` assets are unchanged
+and decode byte-identically. See `patches/syntect/PROVENANCE.txt` and
+[the issue #120 ExecPlan](../execplans/issue-120-syntect-advisories.md).
+
+A `[patch.crates-io]` entry applies to this workspace only. If `diapason-ui`
+were ever published and consumed elsewhere, that consumer would resolve
+upstream syntect again and reintroduce the advisory; the patch would have to
+become a released dependency instead.
+
 ## See Also
 
 - [Architecture Guide](../ARCHITECTURE.md) — TUI architecture section

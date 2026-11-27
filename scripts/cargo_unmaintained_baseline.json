@@ -7,11 +7,10 @@
       "version": "0.6.4",
       "repo_status": { "Age": 367 },
       "outdated_deps": [
-        { "name": "equator", "req": "^0.4.1", "version_used": "0.4.2", "version_latest": "0.6.0" },
-        { "name": "bincode", "req": "^1", "version_used": "1.3.3", "version_latest": "3.0.0" }
+        { "name": "equator", "req": "^0.4.1", "version_used": "0.4.2", "version_latest": "0.6.0" }
       ],
       "classification": "transitive-stale-dependency-requirement",
-      "rationale": "Transitive dependency of the image crate's AVIF encoder stack with stale equator and bincode requirements; tracked for dependency-owner review in #108.",
+      "rationale": "Transitive dependency of the image crate's AVIF encoder stack with a stale equator requirement; the bincode row was removed after #120 took bincode out of the graph. Tracked for dependency-owner review in #108.",
       "issue": 108
     },
     {
@@ -25,16 +24,7 @@
       "rationale": "Direct Diapason dependency with a stale console requirement; tracked for focused review in #108.",
       "issue": 108
     },
-    {
-      "name": "bincode",
-      "version": "1.3.3",
-      "repo_status": "Unassociated",
-      "outdated_deps": [],
-      "classification": "repository-layout-migration",
-      "rationale": "The scanner cannot find the package in its historic repository layout; tracked in #108.",
-      "issue": 108
-    },
-    {
+        {
       "name": "bit-set",
       "version": "0.8.0",
       "repo_status": "Unassociated",
