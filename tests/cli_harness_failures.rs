@@ -3,15 +3,30 @@
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
 use anyhow::{Context, Result};
-use assert_cmd::prelude::*;
+use assert_cmd::Command;
 use predicates::prelude::*;
-use std::process::Command;
+use rstest::fixture;
 
 #[path = "../crates/codegen/diapason-core/tests/support/mod.rs"]
 mod support;
 
 use support::TestHarness;
 
+/// Workspace marked as initialized, used by regressions that expect startup to
+/// reach the prompt or provider checks rather than the initialization gate.
+#[fixture]
+fn initialized_harness() -> Result<TestHarness> {
+    let harness = TestHarness::new().context("initialize harness workspace")?;
+    let _marker = harness
+        .write_file(".diapason/.keep", "")
+        .context("mark workspace initialized")?;
+    Ok(harness)
+}
+
+/// Build the isolated command used by every CLI failure regression.
+///
+/// Returns `assert_cmd::Command` rather than `std::process::Command` so a test
+/// can supply stdin, which print mode reads when no inline prompt is given.
 fn base_command(harness: &TestHarness) -> Result<Command> {
     let _workspace_config = harness
         .write_file(
@@ -51,7 +66,7 @@ api_key_env = "OPENROUTER_API_KEY"
     let state = harness.workspace().join(".test-state");
     let cache = harness.workspace().join(".test-cache");
     let runtime = harness.workspace().join(".test-runtime");
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("diapason"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_diapason"));
     let _configured_command = cmd
         .env_clear()
         .env("HOME", home)
@@ -67,14 +82,24 @@ api_key_env = "OPENROUTER_API_KEY"
     Ok(cmd)
 }
 
-#[test]
-fn print_mode_requires_prompt_or_stdin() -> Result<()> {
-    let harness = TestHarness::new().context("initialize harness workspace")?;
-    let _marker = harness
-        .write_file(".diapason/.keep", "")
-        .context("mark workspace initialized")?;
+#[rstest::rstest]
+#[case::no_input_at_all(None, None)]
+#[case::whitespace_inline_prompt(Some("   "), None)]
+#[case::whitespace_stdin(None, Some(" \n\t\n"))]
+fn print_mode_requires_prompt_or_stdin(
+    initialized_harness: Result<TestHarness>,
+    #[case] inline_prompt: Option<&str>,
+    #[case] stdin: Option<&str>,
+) -> Result<()> {
+    let harness = initialized_harness.context("prepare initialized harness")?;
     let mut cmd = base_command(&harness)?;
     let _argument = cmd.env_remove("OPENROUTER_API_KEY").arg("--print");
+    if let Some(prompt) = inline_prompt {
+        let _argument = cmd.arg(prompt);
+    }
+    if let Some(input) = stdin {
+        let _argument = cmd.write_stdin(input);
+    }
 
     let _assertion = cmd.assert().failure().stderr(
         predicate::str::contains("No prompt provided")
@@ -84,18 +109,48 @@ fn print_mode_requires_prompt_or_stdin() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn print_mode_with_prompt_requires_provider_authentication() -> Result<()> {
-    let harness = TestHarness::new().context("initialize harness workspace")?;
-    let _marker = harness
-        .write_file(".diapason/.keep", "")
-        .context("mark workspace initialized")?;
+#[rstest::rstest]
+#[case::inline_prompt(None)]
+#[case::stdin_prompt(Some("hello\n"))]
+fn print_mode_with_prompt_requires_provider_authentication(
+    initialized_harness: Result<TestHarness>,
+    #[case] stdin: Option<&str>,
+) -> Result<()> {
+    let harness = initialized_harness.context("prepare initialized harness")?;
     let mut cmd = base_command(&harness)?;
-    let _argument = cmd.env_remove("OPENROUTER_API_KEY").arg("--print").arg("hello");
+    let _argument = cmd.env_remove("OPENROUTER_API_KEY").arg("--print");
+    match stdin {
+        Some(input) => {
+            let _argument = cmd.write_stdin(input);
+        }
+        None => {
+            let _argument = cmd.arg("hello");
+        }
+    }
 
     let _assertion = cmd.assert().failure().stderr(
         predicate::str::contains("API key not found for provider 'openrouter'")
             .and(predicate::str::contains("No prompt provided").not()),
+    );
+
+    Ok(())
+}
+
+#[rstest::rstest]
+fn print_mode_missing_prompt_precedes_config_failure(initialized_harness: Result<TestHarness>) -> Result<()> {
+    let harness = initialized_harness.context("prepare initialized harness")?;
+    let missing_config = harness.workspace().join("missing-config.toml");
+    let mut cmd = base_command(&harness)?;
+    let _argument = cmd
+        .env_remove("OPENROUTER_API_KEY")
+        .arg("--config")
+        .arg(&missing_config)
+        .arg("--print");
+
+    let _assertion = cmd.assert().failure().stderr(
+        predicate::str::contains("No prompt provided")
+            .and(predicate::str::contains("API key not found for provider 'openrouter'").not())
+            .and(predicate::str::contains(missing_config.to_string_lossy()).not()),
     );
 
     Ok(())
@@ -124,13 +179,11 @@ fn config_override_failure_is_reported() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn unknown_positional_token_fails_without_forwarding_prompt_to_llm() -> Result<()> {
-    let harness = TestHarness::new().context("initialize harness workspace")?;
-    let _marker = harness
-        .write_file(".diapason/.keep", "")
-        .context("mark workspace initialized")?;
-
+#[rstest::rstest]
+fn unknown_positional_token_fails_without_forwarding_prompt_to_llm(
+    initialized_harness: Result<TestHarness>,
+) -> Result<()> {
+    let harness = initialized_harness.context("prepare initialized harness")?;
     let mut cmd = base_command(&harness)?;
     let _argument = cmd.arg("hellp");
 

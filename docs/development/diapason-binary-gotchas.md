@@ -31,6 +31,11 @@ allocator, or request assembly.
   mimalloc. On Linux containers it can reclaim memory. Measure with
   `diapason bench-allocator` before changing the default.
 - `load_dotenv()` must run before config load so `.env` API keys are available.
+- Print mode must consume stdin and validate the prompt before the provider
+  starts. `build_print_prompt` runs in `bootstrap_main` ahead of
+  `resolve_startup_context`, so a missing prompt reports `No prompt provided`
+  instead of a provider-authentication error. See the `print_mode_` regressions
+  in `tests/cli_harness_failures.rs`.
 - Provider noise (for example `]<]minimax[>[`) is stripped centrally in
   `turn::provider_noise`; stream-level harmony and MiniMax sanitization lives in
   `stream_sanitization::StreamSanitizer`. Do not re-implement it inline.
