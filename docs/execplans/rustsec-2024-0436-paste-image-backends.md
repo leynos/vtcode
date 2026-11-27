@@ -1,0 +1,324 @@
+# Remove the unmaintained `paste` path behind `image` codecs
+
+Status: implemented under issue
+[#119](https://github.com/leynos/vtcode/issues/119). This record covers the
+RustSec remediation only; the `cargo-unmaintained` scanner baseline is owned
+separately by [#108](https://github.com/leynos/vtcode/issues/108) and
+[`issue-108-unmaintained-baseline.md`](issue-108-unmaintained-baseline.md).
+
+## Purpose and constraints
+
+`cargo audit --file Cargo.lock` reported `paste 1.0.15` as unmaintained under
+the RustSec advisory `RUSTSEC-2024-0436`. Removing the advisory without
+suppressing it, without an allow-list entry, and without an unrelated
+dependency upgrade required finding the activator rather than the crate.
+
+The direct workspace declaration is already minimal:
+
+```toml
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
+```
+
+`diapason-ui` consumes it for clipboard image decoding. The resolved advisory
+paths were:
+
+```text
+image 0.25.10 -> ravif  -> rav1e 0.8.1 -> paste 1.0.15
+image 0.25.10 -> exr    -> pulp  0.22.3 -> paste 1.0.15
+```
+
+Neither path comes from a codec the workspace declares. The resolver reached
+them through `image`'s default feature set, which carries `default-formats`,
+which in turn enables every bundled format including `avif` (through `ravif` and
+`rav1e`) and `exr` (through `exr` and `pulp`).
+
+## Evidence chain
+
+`cargo tree --locked -e features -i image` before the change showed:
+
+```text
+image feature "avif"
+└── image feature "default-formats"
+    └── image feature "default"
+        └── openai-harmony v0.0.8
+            └── openai-harmony feature "default"
+                └── diapason-llm v0.156.1
+```
+
+The activator is `openai-harmony 0.0.8`, reached through `diapason-llm`. Its
+manifest declares:
+
+```toml
+[dependencies.image]
+version = "0.25.6"
+```
+
+No file under `src/`, `tests/` or `demo/` in that crate references `image`. The
+dependency is declared and never used.
+
+## Why the direct declaration cannot suppress it
+
+Cargo features are additive. A dependency's feature set is the union of every
+request that reaches it, regardless of which package asked. The workspace
+declaration in the root `Cargo.toml` uses `default-features = false`, which
+removes only the defaults *this* declaration would otherwise request. It cannot
+subtract the defaults requested by `openai-harmony`, which uses the plain
+`[dependencies.image]` form and therefore enables `image`'s `default` feature.
+
+`cargo tree` confirms the effect: `avif` and `exr` were active even though
+`diapason-ui` never selected them. A `--no-default-features` build of the
+workspace is not an option because the activator is a transitive registry
+crate, not a workspace member.
+
+## Selected remediation
+
+Vendor `openai-harmony 0.0.8` under `patches/openai-harmony` and remove only
+the unused `image` declaration, then apply it through the existing
+`[patch.crates-io]` mechanism that already carries `simdutf`.
+
+- Source archive:
+  `https://static.crates.io/crates/openai-harmony/openai-harmony-0.0.8.crate`.
+- Archive SHA-256, verified against the `openai-harmony` checksum in the
+  pre-change `Cargo.lock`:
+  `e77e82af451fc95deeb728a40b84db8ee82d341e136c268de415123a560b9b72`.
+- Local delta: the `[dependencies.image]` block removed from `Cargo.toml`, the
+  `image = "0.25.6"` line removed from `Cargo.toml.orig`, and the vendored
+  `Cargo.lock` deleted rather than pruned. The lockfile has no effect on a path
+  dependency; deleting it keeps the vendored tree free of a stale `image`-only
+  resolution instead of hand-editing 311 packages.
+- Only the crate payload was vendored. Upstream's `demo/`, `javascript/`,
+  `python/`, Python test `tests/test_harmony.py`, `.github/`, `AGENTS.md`,
+  `pyproject.toml` and shell scripts were not copied. None is referenced by the
+  Rust build, and the Python test cannot run without the excluded Python
+  wrapper. `docs/` **is** vendored, because `README.md` links to
+  `docs/python.md` and `docs/rust.md`.
+- `README.md` and the three `docs/*.md` files were reflowed by `mdtablefix` so
+  the workspace `check-fmt` gate accepts the vendored tree; prose, fences and
+  links are unchanged. Those four documents and the two manifests carry a
+  "MODIFIED by Diapason" notice, as Apache-2.0 section 4(b) requires.
+- Everything the build uses is unchanged: `version = "0.0.8"`, `LICENSE`,
+  `src/`, `test-data/` and `docs/header.png`.
+- Upstream fix: [openai/harmony#115](https://github.com/openai/harmony/pull/115)
+  (commit `fc7e8837a348c8248087cef6b956695b8f0782c5`) makes the same removal.
+  It was still open and unmerged when this record was written, and
+  `openai-harmony` remained at `0.0.8` on crates.io, so no released version
+  carries the fix.
+- Provenance detail lives in `patches/openai-harmony/VTCODE-PATCH.md`.
+
+The lockfile change is a pure prune. `Cargo.lock` loses the `image` default
+format stack and gains nothing: `aligned`, `aligned-vec`, `arbitrary`,
+`arg_enum_proc_macro`, `av-scenechange`, `av1-grain`, `avif-serialize`,
+`bit_field`, `bitstream-io`, `equator`, `exr`, `imgref`, `lewb`-family codec
+helpers, `paste`, `pastey 0.1.1`, `pulp`, `qoi`, `rav1e`, `ravif`, `rgb`,
+`v_frame`, `y4m` and the supporting helpers are removed. No surviving package
+changes version. The single non-deletion line is an artefact of the prune: with
+`pastey 0.1.1` gone, `rig-core`'s dependency on `pastey` no longer needs a
+version disambiguator.
+
+## Rejected options
+
+- **Drop or narrow the direct `image` declaration.** It is already
+  `default-features = false` with exactly the four declared codecs. Narrowing
+  it further would remove formats the UI supports, and changing it cannot
+  affect features activated by another package.
+- **Remove `arboard`'s `image-data` default.** `arboard` already uses
+  `default-features = false` on `image` with platform-appropriate codecs (`png`
+  on unix, `png`/`bmp` on Windows, `tiff` on macOS). It contributes only
+  `image feature "png"` and is not on either advisory path. Disabling
+  `image-data` would remove clipboard image support entirely.
+- **Upgrade a dependency to a maintained release.** There is no such release
+  to upgrade to. `rav1e` is at `0.8.1` and still declares `paste ^1.0`.
+  `exr 1.74.3` dropped `pulp` entirely, but `exr` only participates because
+  `default-formats` enables `image`'s `exr` feature; a lockfile bump would
+  still leave `ravif -> rav1e -> paste` in place unless `avif` were abandoned.
+- **Suppress the advisory.** `cargo audit` allow-list entries, `--ignore`
+  flags and a `.cargo/audit.toml` would all hide a real maintenance finding.
+  The task forbids it and none was added.
+- **Upgrade or replace `openai-harmony`.** `0.0.8` is its newest published
+  version. Switching to a mirror crate would change a runtime dependency for
+  reasons unrelated to this advisory.
+
+## Codec retention
+
+JPEG, PNG, GIF and WebP support is preserved because none of those decoders was
+on the advisory path, and every declared format is proven by a test that
+exercises a real file of that format.
+
+- The root declaration still requests `jpeg`, `png`, `gif` and `webp`.
+- `cargo tree --locked -e features -i image` after the change shows exactly
+  those four features, with `diapason-ui` as the activator for each and
+  `arboard` adding `png` through `image-data`.
+- `decodes_png_file_path_image_as_png`, `decodes_jpeg_file_path_image_as_png`,
+  `decodes_gif_file_path_image_as_png` and
+  `decodes_webp_file_path_image_as_png` in
+  `crates/codegen/diapason-ui/src/tui/core_tui/session/clipboard_image.rs`
+  write a deterministic sample image in each format, pass it through the
+  clipboard file-path path, and assert the returned content part is `image/png`
+  that decodes to the original geometry. The lossless formats additionally
+  compare pixels; JPEG is compared by geometry only.
+- AVIF and OpenEXR were never declared formats for Diapason. They arrived
+  exclusively through `openai-harmony`'s unwanted defaults, so removing them
+  changes no supported user behaviour.
+
+## Verification
+
+- `cargo audit --file Cargo.lock` reports no `RUSTSEC-2024-0436` and no new
+  advisory identifier.
+- `cargo tree --locked -i paste` reports no match.
+- `cargo metadata` resolves without a "patch was not used" warning.
+- Locked `cargo check`/`clippy` with `RUSTFLAGS="-D warnings"`, the
+  `diapason-ui` clipboard nextest filter, the `diapason-llm` Harmony tests and
+  the repository gates run clean.
+- `THIRD-PARTY-NOTICES` was regenerated with the pinned `cargo-about 0.9.2`.
+  It drops the 42 crates that left the graph and
+  `scripts/generate-notices.sh --check` passes.
+- `scripts/lint_changed_markdown.mjs`, `scripts/check_markdown_location.py`,
+  `scripts/check_docs_links.py` and `scripts/check_large_files.py` pass.
+- `cargo tree --locked --target x86_64-pc-windows-msvc -e features -i image`
+  shows the same codec set, plus `bmp` from `arboard`'s Windows codec, and no
+  `avif` or `exr`. A local `cargo check --target x86_64-pc-windows-msvc` cannot
+  finish on this host because `aws-lc-sys` needs an MSVC C compiler to build
+  its C sources; `cc` here is GCC. That is a host toolchain gap that predates
+  and is unaffected by this change. Windows builds run on a `windows-latest`
+  runner in `.github/workflows/build-linux-windows.yml`.
+
+### External scanner drift during review
+
+`Check Unmaintained Dependencies` failed twice in CI while passing locally. The
+cause is unrelated to this change: `sha2 0.11.2` was published at 15:26 UTC on
+2026-11-25, nine minutes before CI scanned, and the reviewed baseline recorded
+`sha2`'s `version_latest` as `0.11.1`. The scanner's finding identity includes
+that field, so `bs58@0.5.1` was reported as "unreviewed or changed".
+
+`sha2` resolution is untouched here: this branch's `Cargo.lock` diff contains no
+`sha2` line, and `0.10.9` and `0.11.0` are the same two versions before and
+after. The baseline's `version_latest` for both entries that cite `sha2`
+(`bs58` and `dbus-secret-service`) was refreshed to `0.11.2` so the recorded
+identity matches what the scanner now reports. No entry was added, removed
+beyond the two resolved by the dependency prune, or allow-listed.
+
+## First-party policy gates and vendored code
+
+Vendoring registry sources puts third-party Rust under `patches/`, where the
+first-party gates would otherwise judge it. Three gates needed a scope
+decision, and each exclusion names the vendored tree rather than silencing a
+finding about Diapason:
+
+- `scripts/check_no_unwrap_expect_prod.py` gained a repeatable `--exclude`
+  glob option. Both `make advisory` and the CI `unwrap-expect-enforcement` job
+  pass `--exclude 'patches/*/src/**'`. The CI enforce-mode job previously
+  failed on 14 upstream `unwrap` calls in the vendored crate; rewriting them
+  would put the vendor tree out of sync with the released archive for no
+  behavioural gain, which is exactly what the patch refuses to do everywhere
+  else. First-party scanning is unchanged: the run still covers 2000 files and
+  reports zero findings.
+- `.markdownlint-cli2.jsonc` ignores `patches/**`, alongside the existing
+  `typos.toml` exclusion for the same directory. Structural rules such as
+  `MD022`, `MD031` and `MD041` would otherwise require restyling upstream
+  documentation, and the vendored README legitimately opens with an HTML
+  banner. The CI `Check Markdown` job now lints only the two first-party
+  documents and reports zero issues.
+- `mdtablefix` has no exclusion option and reflows every tracked Markdown file,
+  so the vendored `README.md` and `docs/*.md` are reflowed as described above.
+  `scripts/check_rust_file_length.py` lists `patches/simdutf/src/generated.rs`
+  in warn mode only, which predates this work, and the large-file gate needed
+  no new allowlist entry.
+
+This is not an advisory allow-list. `RUSTSEC-2024-0436` is gone because the
+dependency left the graph, and nothing in this change suppresses a RustSec
+warning.
+
+## Publication limitation
+
+`[patch.crates-io]` entries are local. They apply to this workspace and never
+reach consumers of a published crate. A downstream project that depends on a
+published `diapason-llm` resolves `openai-harmony` from crates.io, still gets
+its `image` defaults, and still gets `paste` on an AVIF-enabled build.
+
+That limitation is inherent to a workspace-level patch and is why the vendored
+copy records an exit criterion rather than a permanent fork. Until upstream
+releases the fix, the patch is correct for Diapason and does not claim to fix
+its consumers. It also does not block packaging: `[patch.crates-io]` is not
+part of a packaged crate, so a published `diapason-llm` simply declares
+`openai-harmony = "0.0.8"` and resolves it from the registry.
+
+`cargo publish --dry-run -p diapason-llm` cannot run to completion in this
+workspace for a reason unrelated to the patch: `diapason-llm` depends on
+`diapason-commons`, which is not published to crates.io, so packaging stops at
+`no matching package named diapason-commons found`. That failure is identical
+before and after this change, and `crates/codegen/diapason-llm/Cargo.toml` is
+untouched here.
+
+## Exit criterion
+
+When a released `openai-harmony` drops `image` or disables its default features:
+
+1. bump the `diapason-llm` requirement to the fixed version,
+2. delete `patches/openai-harmony`,
+3. remove the `openai-harmony` entry from `[patch.crates-io]` and from
+   `workspace.exclude` in the root `Cargo.toml`,
+4. regenerate `Cargo.lock`,
+5. confirm `cargo tree --locked -i paste` stays empty and
+   `cargo audit --file Cargo.lock` still reports no `RUSTSEC-2024-0436`.
+
+## Review triage
+
+A `coderabbit review --agent` pass raised 38 findings. They fall into three
+groups, and only the first produced code changes:
+
+**Acted on (this change's own vendoring decisions).**
+
+- Broken documentation links: `README.md` links to `docs/python.md` and
+  `docs/rust.md`, so the upstream `docs/` tree is vendored after all. The
+  Python test was dropped instead; it cannot run without the excluded Python
+  wrapper, and keeping it would ship a test that only ever fails.
+- `VTCODE-PATCH.md` described a `demo/` directory that is not vendored, and
+  claimed the archive checksum verified the local tree. Both corrected: the
+  checksum identifies the archive only, and the verification procedure is to
+  diff an extracted archive against this tree.
+- Apache-2.0 section 4(b): every modified file now carries a prominent
+  "MODIFIED by Diapason" notice — the two manifests and the README. The delta
+  list was updated to match.
+
+**Deferred: upstream defects in `openai-harmony 0.0.8`.** These are real, and
+many are confirmed present in the published crate. They are out of scope here:
+the whole point of the patch is that the vendored source stays byte-identical
+to the published archive apart from the removed dependency. Fixing them would
+turn a scoped RustSec remediation into an unrequested fork of a third-party
+crate. They belong upstream, and the exit criterion below removes the fork
+entirely once a release ships. Examples raised: a `wasm32` struct literal that
+does not compile, a missing `.await` in the WASM loader, duplicate-rank panics
+in the tokenizer, non-atomic cache publication, thread-ID transmute soundness,
+and several parser round-trip bugs.
+
+**Noted: first-party policy applied to vendored code.** Module doc comments,
+400-line limits and `#[allow]` bans are Diapason's first-party rules. Applying
+them to vendored sources is covered by the scoped `--exclude` documented above,
+not by editing the vendor tree.
+
+A second review pass returned two findings and both are outside this change:
+
+- `patches/openai-harmony/src/tiktoken_ext/public_encodings.rs:534` — a
+  `BufWriter` flush error can be dropped on the cache-write path. This is
+  upstream `0.0.8`, in the group above.
+- `crates/codegen/diapason-llm/src/providers/openai/provider/harmony_client.rs:354`
+  — `send_harmony_tokens_to_inference_server` loads the encoding on an async
+  worker instead of `spawn_blocking`, which can block on a cold-cache download.
+  This file is **not** part of this change (`git diff` against the base does
+  not touch it); it is pre-existing first-party code. Fixing it here would mix
+  an unrelated async-runtime repair into a dependency remediation and would
+  need its own test evidence. It is recorded here so it is not lost.
+
+The patch record itself stays under `patches/openai-harmony/` rather than
+`docs/`, because its exit criterion is "delete this directory"; primary
+provenance living inside the thing it describes is what makes the deletion
+complete. The durable decision record is this file.
+
+## Outcomes & retrospective
+
+The advisory was not a `diapason-ui` image configuration problem. The
+declaration was already as narrow as the declared formats allow. The activator
+sat one dependency layer away, in a crate that declared an image dependency it
+never used, and Cargo's additive feature model turned that dead declaration
+into four extra codec backends for the whole workspace. Lockfile surgery could
+not have helped: only removing the declaration changed the resolution.

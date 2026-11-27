@@ -90,9 +90,15 @@ lint-policies:
 
 # Keep the existing warn-mode reports available without making them part of
 # the hard lint baseline.
+#
+# `patches/*/src/**` holds vendored dependency sources applied through
+# `[patch.crates-io]`. They are not first-party code and must stay
+# unmodified, so the first-party policy gates skip them.
+VENDORED_SOURCES_EXCLUDE = --exclude 'patches/*/src/**'
+
 advisory:
 	python3 scripts/check_rust_file_length.py --mode warn --max-lines 500
-	python3 scripts/check_no_unwrap_expect_prod.py --mode warn --allowlist scripts/zen_allowlist.txt
+	python3 scripts/check_no_unwrap_expect_prod.py --mode warn --allowlist scripts/zen_allowlist.txt $(VENDORED_SOURCES_EXCLUDE)
 	python3 scripts/check_zen_allowlist.py --mode warn --allowlist scripts/zen_allowlist.txt
 	python3 scripts/check_agent_legibility.py --mode warn
 

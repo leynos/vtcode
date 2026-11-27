@@ -178,6 +178,10 @@ default-members = [
 exclude = [
     "extensions/zed-extension",
     "fuzz",
+    # Vendored registry sources applied through `[patch.crates-io]`; they build
+    # as ordinary dependencies and are not workspace members.
+    "patches/openai-harmony",
+    "patches/simdutf",
 ]
 
 [patch.crates-io]
@@ -200,6 +204,12 @@ diapason-eval = { path = "crates/codegen/diapason-eval" }
 diapason-agent-plugins = { path = "crates/common/diapason-agent-plugins" }
 diapason-webmcp = { path = "crates/codegen/diapason-webmcp" }
 simdutf = { path = "patches/simdutf" }
+# `openai-harmony 0.0.8` declares `image` with default features although no
+# source file references it, which activates the AVIF and OpenEXR backends and
+# pulls in `paste 1.0.15` (RUSTSEC-2024-0436). The vendored copy removes only
+# that unused declaration; see `patches/openai-harmony/VTCODE-PATCH.md` and
+# upstream PR https://github.com/openai/harmony/pull/115.
+openai-harmony = { path = "patches/openai-harmony" }
 
 [workspace.lints]
 # Rust compiler lints

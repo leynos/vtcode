@@ -133,7 +133,10 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - name: Enforce production unwrap/expect policy
-        run: python3 scripts/check_no_unwrap_expect_prod.py --mode enforce --allowlist scripts/zen_allowlist.txt
+        run: |
+          python3 scripts/check_no_unwrap_expect_prod.py --mode enforce \
+            --allowlist scripts/zen_allowlist.txt \
+            --exclude 'patches/*/src/**'
 
   # Lint the formatting of the codebase.
   formatting:
