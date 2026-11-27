@@ -816,7 +816,10 @@ impl ExecSessionManager {
     ///
     /// The registry is process-wide state, so a test asserting that it was
     /// reclaimed must count only the ids it exercised.
-    #[cfg(test)]
+    ///
+    /// Gated with its only caller, which is a Unix test: on Windows the helper
+    /// would be dead code and fail the workspace's `-D warnings` build.
+    #[cfg(all(test, unix))]
     fn operation_lock_count(&self) -> usize {
         self.operation_locks
             .lock()

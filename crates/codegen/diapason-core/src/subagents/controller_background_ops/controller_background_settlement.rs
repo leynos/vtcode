@@ -203,7 +203,10 @@ fn background_claim_lock_gates() -> &'static Mutex<Vec<BackgroundClaimLockGate>>
 }
 
 /// Arms a gate that holds the next claim's ledger lock of `state`.
-#[cfg(test)]
+///
+/// Gated with its only caller, which is a Unix test, so a Windows build does
+/// not carry it as dead code.
+#[cfg(all(test, unix))]
 pub(super) fn gate_next_background_claim_lock(state: &Arc<RwLock<ControllerState>>) -> (Arc<Notify>, Arc<Notify>) {
     let entered = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
@@ -220,7 +223,10 @@ pub(super) fn gate_next_background_claim_lock(state: &Arc<RwLock<ControllerState
 }
 
 /// Parks the reservation at the claim-lock gate when one is armed for `state`.
-#[cfg(test)]
+///
+/// Gated with the gate it drives: both exist only for the Unix test that parks
+/// a reservation at the claim write.
+#[cfg(all(test, unix))]
 pub(super) async fn pass_background_claim_lock_gate(state: &Arc<RwLock<ControllerState>>) {
     let gate = {
         let mut gates = background_claim_lock_gates()

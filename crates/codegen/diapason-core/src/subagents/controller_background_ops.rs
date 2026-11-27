@@ -25,7 +25,7 @@ use self::controller_background_cancel::{background_record_close_is_unconfirmed,
 use self::controller_background_lifecycle::{clear_background_launch_owed, mark_background_launch_owed};
 use self::controller_background_liveness::exec_session_is_missing;
 use self::controller_background_query::{read_output_tail, read_preview};
-#[cfg(test)]
+#[cfg(all(test, unix))]
 use self::controller_background_settlement::pass_background_claim_lock_gate;
 use self::controller_background_settlement::{
     clear_background_ledger_write_pending, mark_background_ledger_write_pending,
@@ -222,7 +222,7 @@ impl SubagentController {
         // A test parks here to commit `Running` after the check above but before
         // the repeated one, which is the window in which the ledger can trail
         // the record it is supposed to describe.
-        #[cfg(test)]
+        #[cfg(all(test, unix))]
         {
             if ledger_guard.is_some() {
                 pass_background_claim_lock_gate(&self.state).await;
