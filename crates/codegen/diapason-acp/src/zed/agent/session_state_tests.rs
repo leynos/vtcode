@@ -163,14 +163,29 @@ fn session_listing(
 #[path = "session_state_tests/archive.rs"]
 mod archive;
 
+#[path = "session_state_tests/background_ownership.rs"]
+mod background_ownership;
+
+#[path = "session_state_tests/background_restore.rs"]
+mod background_restore;
+
 #[path = "session_state_tests/checkpoint_categories.rs"]
 mod checkpoint_categories;
 
 #[path = "session_state_tests/configuration.rs"]
 mod configuration;
 
+#[path = "session_state_tests/lifecycle_forwarder.rs"]
+mod lifecycle_forwarder;
+
 #[path = "session_state_tests/metadata.rs"]
 mod metadata;
+
+#[path = "session_state_tests/optional_setup_reporting.rs"]
+mod optional_setup_reporting;
+
+#[path = "session_state_tests/prior_session_background_ownership.rs"]
+mod prior_session_background_ownership;
 
 #[path = "session_state_tests/retention_properties.rs"]
 mod retention_properties;

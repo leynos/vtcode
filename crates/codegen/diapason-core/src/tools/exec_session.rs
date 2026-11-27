@@ -1,4 +1,9 @@
 //! Manages persistent command and PTY process sessions used by execution tools.
+//!
+//! The controller background launch-id convention lives with the background
+//! output adapter that authorizes archives by it; it is re-exported here
+//! because the exec-session manager and the launch producer name it through
+//! this module.
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -23,6 +28,9 @@ const PIPE_OUTPUT_HEAD_BYTES: usize = 8 * 1024;
 
 const PIPE_OUTPUT_TAIL_BYTES: usize = 8 * 1024;
 
+/// The controller launch-id convention, re-exported for this module's callers.
+pub(crate) use crate::subagents::controller_exec_session_task_id;
+
 /// A continuation referenced an exec session that is no longer active.
 #[derive(Debug, thiserror::Error)]
 #[error("exec session '{session_id}' not found")]
@@ -35,6 +43,26 @@ impl ExecSessionNotFound {
     fn new(session_id: &str) -> Self {
         Self { session_id: session_id.to_string() }
     }
+}
+
+/// Reports whether a read of an exec session failed because the session is
+/// genuinely gone.
+///
+/// Only a typed not-found cause counts, from either storage layer. A close
+/// terminates and releases the backend record before it removes the dispatch
+/// record, so a read that races the close can find the dispatch record and
+/// miss the backend handle; that is the same expected end as a read that misses
+/// the record, and treating it as a fault would report a fault for a session
+/// that has simply exited. Any other failure — a backend inconsistency or an
+/// I/O fault — told the caller nothing about the process, so it must stay
+/// distinguishable from an exit.
+///
+/// This lives next to the typed cause so the liveness projection and the
+/// background-output adapter cannot drift apart on what counts as an exit.
+pub(crate) fn is_missing_exec_session(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .any(|cause| cause.is::<ExecSessionNotFound>() || cause.is::<crate::tools::pty::PtySessionNotFound>())
 }
 
 /// A `write_stdin` continuation lost its session after the input bytes were
@@ -251,6 +279,14 @@ impl PipeSessionRecord {
 struct PipeSessionManager {
     workspace_root: PathBuf,
     sessions: Arc<RwLock<HashMap<ExecSessionId, Arc<PipeSessionRecord>>>>,
+    /// A scripted fault for the close-path termination.
+    ///
+    /// The record-retention rule for a failed kill is only observable when the
+    /// backend cannot signal the child, which a live manager cannot produce on
+    /// demand. The seam is `#[cfg(test)]`-only, so a production build neither
+    /// compiles the field nor the branch that reads it.
+    #[cfg(test)]
+    termination_failure: Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl PipeSessionManager {
@@ -258,16 +294,23 @@ impl PipeSessionManager {
         Self {
             workspace_root: canonicalize_workspace(&workspace_root),
             sessions: Arc::new(RwLock::new(HashMap::new())),
+            #[cfg(test)]
+            termination_failure: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
+    /// Spawns one pipe session and returns it with its backend record.
+    ///
+    /// The record is returned so a create that is cancelled before it reaches
+    /// the dispatch map can close the process it spawned; see
+    /// [`ExecSessionManager::create_pipe_session_with_sandbox`].
     async fn create_session(
         &self,
         session_id: ExecSessionId,
         command: Vec<String>,
         working_dir: PathBuf,
         env: HashMap<String, String>,
-    ) -> Result<DiapasonExecSession> {
+    ) -> Result<(DiapasonExecSession, Arc<PipeSessionRecord>)> {
         if command.is_empty() {
             return Err(anyhow!("exec session command cannot be empty"));
         }
@@ -408,9 +451,46 @@ impl PipeSessionManager {
             },
         ));
 
-        sessions.insert(session_id, record);
+        sessions.insert(session_id, Arc::clone(&record));
 
-        Ok(metadata)
+        Ok((metadata, record))
+    }
+
+    /// Signals a session a cancelled create spawned but never dispatched.
+    ///
+    /// Runs from a drop handler, so it never awaits. The child is signalled
+    /// first, which is what must not outlive the create. A child the backend
+    /// could not terminate may still be running, so its record is kept: the map
+    /// still names it and `close_session` can retry the kill. Withdrawing the
+    /// record would leave the only remaining attempt to the single, unchecked
+    /// kill in the process handle's drop, so a persistent failure would leave
+    /// an untracked live child.
+    ///
+    /// A terminated child's backend record is withdrawn when its map lock is
+    /// immediately available, so a later create under the same id does not
+    /// collide with a dead record. If the lock is contended the record
+    /// survives, and a later create under the id is refused as an existing
+    /// session rather than signalling a process it does not own; the signalled
+    /// child is already gone either way.
+    fn discard_undispatched_session(&self, session_id: &str, record: &Arc<PipeSessionRecord>) {
+        if self.terminate_record(session_id, record).is_err() {
+            return;
+        }
+        if let Ok(mut sessions) = self.sessions.try_write() {
+            if sessions.get(session_id).is_some_and(|current| Arc::ptr_eq(current, record)) {
+                sessions.remove(session_id);
+            }
+        }
+        if let Ok(mut output_task) = record.output_task.try_lock() {
+            if let Some(task) = output_task.take() {
+                task.abort();
+            }
+        }
+        if let Ok(mut exit_task) = record.exit_task.try_lock() {
+            if let Some(task) = exit_task.take() {
+                task.abort();
+            }
+        }
     }
 
     async fn read_session_output(&self, session_id: &str, drain: bool) -> Result<Option<String>> {
@@ -481,15 +561,23 @@ impl PipeSessionManager {
 
     /// Removes and terminates a pipe-backed session.
     ///
+    /// Termination runs before the record is removed, so a kill fault leaves
+    /// the session resolvable and retryable instead of dropping the only handle
+    /// to a process that may still be running. Termination is idempotent: a
+    /// retry after an earlier successful kill observes an absent killer and
+    /// succeeds, so a close that fails after the child was signalled cannot
+    /// kill it twice.
+    ///
     /// A missing identifier is reported through [`missing_session`]; callers
     /// surface that as a precise, non-mutating recovery hint.
     async fn close_session(&self, session_id: &str) -> Result<DiapasonExecSession> {
+        let record = self.session_record(session_id).await?;
+        self.terminate_record(session_id, &record)?;
+
         let record = {
             let mut sessions = self.sessions.write().await;
             sessions.remove(session_id).ok_or_else(|| missing_session(session_id))?
         };
-
-        record.handle.terminate();
         if let Some(task) = record.output_task.lock().await.take() {
             task.abort();
         }
@@ -498,6 +586,34 @@ impl PipeSessionManager {
         }
 
         Ok(record.metadata.clone())
+    }
+
+    /// Signals the session's child, reporting a kill fault.
+    fn terminate_record(&self, session_id: &str, record: &PipeSessionRecord) -> Result<()> {
+        #[cfg(test)]
+        if let Some(message) = self
+            .termination_failure
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
+        {
+            return Err(anyhow!("failed to terminate exec session '{session_id}': {message}"));
+        }
+
+        record
+            .handle
+            .try_terminate()
+            .with_context(|| format!("failed to terminate exec session '{session_id}'"))
+    }
+
+    /// Arms a one-shot kill fault for the next close-path termination.
+    ///
+    /// Test-only: it proves the close path keeps a session record retryable
+    /// when the backend cannot signal the child. Its only caller spawns a real
+    /// shell, so it is gated with that caller.
+    #[cfg(all(test, unix))]
+    fn fail_next_termination(&self, message: impl Into<String>) {
+        *self.termination_failure.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message.into());
     }
 
     async fn activity_receiver(&self, session_id: &str) -> Result<watch::Receiver<u64>> {
@@ -566,11 +682,102 @@ impl ExecSessionRecord {
     }
 }
 
+/// Closes a backend session whose creation was cancelled before dispatch.
+///
+/// A create spawns the backend process and then awaits the dispatch map to
+/// record it. A future dropped inside that await used to leave a live process
+/// no dispatch entry named, so no close could ever reach it: `close_session`
+/// starts from the dispatch map. The guard owns the spawned backend record
+/// across the registration and closes it when the create does not complete. A
+/// drop handler cannot await, so the child is signalled synchronously and the
+/// backend record is withdrawn only when its lock is immediately available.
+struct UndispatchedSessionGuard {
+    exec_sessions: ExecSessionManager,
+    session_id: ExecSessionId,
+    backend: ExecSessionBackend,
+    pipe_record: Option<Arc<PipeSessionRecord>>,
+    armed: bool,
+}
+
+impl UndispatchedSessionGuard {
+    /// Arms the guard for one pipe session the backend has already spawned.
+    fn pipe(exec_sessions: ExecSessionManager, session_id: ExecSessionId, record: Arc<PipeSessionRecord>) -> Self {
+        Self {
+            exec_sessions,
+            session_id,
+            backend: ExecSessionBackend::Pipe,
+            pipe_record: Some(record),
+            armed: true,
+        }
+    }
+
+    /// Arms the guard for one PTY session the backend has already created.
+    fn pty(exec_sessions: ExecSessionManager, session_id: ExecSessionId) -> Self {
+        Self {
+            exec_sessions,
+            session_id,
+            backend: ExecSessionBackend::Pty,
+            pipe_record: None,
+            armed: true,
+        }
+    }
+
+    /// Reports that the dispatch record now owns the session.
+    fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for UndispatchedSessionGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        match self.backend {
+            ExecSessionBackend::Pipe => {
+                if let Some(record) = self.pipe_record.as_ref() {
+                    self.exec_sessions
+                        .pipe_sessions
+                        .discard_undispatched_session(self.session_id.as_str(), record);
+                }
+            }
+            ExecSessionBackend::Pty => {
+                // The PTY backend's terminate is synchronous and idempotent, so
+                // the child cannot outlive the cancelled create either.
+                let _ = self
+                    .exec_sessions
+                    .pty_sessions
+                    .manager()
+                    .terminate_session(self.session_id.as_str());
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct ExecSessionManager {
     pipe_sessions: PipeSessionManager,
     pty_sessions: PtySessionManager,
     sessions: Arc<RwLock<HashMap<ExecSessionId, Arc<ExecSessionRecord>>>>,
+    /// Per-session mutexes serializing creation against close.
+    ///
+    /// A close must not signal a backend record that a later create inserted
+    /// under the same id, so both operations for one id hold this lock from the
+    /// check through the map update. The map holds weak references and expired
+    /// entries are pruned on every acquisition: a long-lived manager would
+    /// otherwise retain a key and a mutex for every historical session, including
+    /// failed creates. A strong reference held by an active operation or a
+    /// waiter keeps its entry alive, so operations for one id still share a
+    /// single lock.
+    operation_locks: Arc<std::sync::Mutex<HashMap<ExecSessionId, std::sync::Weak<Mutex<()>>>>>,
+    /// A scripted fault for the liveness read path.
+    ///
+    /// The background liveness projection must distinguish a genuinely absent
+    /// session from any other read fault, and a live manager has no natural way
+    /// to fail on demand. The seam exists only for this crate's tests and for
+    /// the `test-support` feature, so production reads are unchanged.
+    #[cfg(any(test, feature = "test-support"))]
+    snapshot_failure: Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl ExecSessionManager {
@@ -580,7 +787,56 @@ impl ExecSessionManager {
             pipe_sessions: PipeSessionManager::new(workspace_root),
             pty_sessions,
             sessions: Arc::new(RwLock::new(HashMap::new())),
+            operation_locks: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            #[cfg(any(test, feature = "test-support"))]
+            snapshot_failure: Arc::new(std::sync::Mutex::new(None)),
         }
+    }
+
+    /// Returns the per-session mutex that serializes create and close.
+    ///
+    /// Expired entries are pruned while the registry is locked, so a manager
+    /// that has served many short-lived sessions does not keep a key, a mutex
+    /// and their strings for every one of them. An entry is expired only once
+    /// no operation holds or awaits its lock, so the surviving handle is the one
+    /// every operation for that id shares.
+    fn session_operation_lock(&self, session_id: &str) -> Arc<Mutex<()>> {
+        let mut locks = self.operation_locks.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        locks.retain(|_, lock| lock.strong_count() > 0);
+        let key: ExecSessionId = session_id.to_string().into();
+        if let Some(lock) = locks.get(&key).and_then(std::sync::Weak::upgrade) {
+            return lock;
+        }
+        let lock = Arc::new(Mutex::new(()));
+        locks.insert(key, Arc::downgrade(&lock));
+        lock
+    }
+
+    /// Returns how many operation locks the registry still holds.
+    ///
+    /// The registry is process-wide state, so a test asserting that it was
+    /// reclaimed must count only the ids it exercised.
+    ///
+    /// Gated with its only caller, which is a Unix test: on Windows the helper
+    /// would be dead code and fail the workspace's `-D warnings` build.
+    #[cfg(all(test, unix))]
+    fn operation_lock_count(&self) -> usize {
+        self.operation_locks
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .len()
+    }
+
+    /// Makes every subsequent snapshot read fail with `message`.
+    ///
+    /// Test-only: it lets a regression exercise the liveness projection's
+    /// "read failed for another reason" branch without a real storage fault.
+    /// A dependent crate's tests reach it through the `test-support` feature;
+    /// a production build compiles neither this method nor the branch it arms.
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn fail_snapshot_reads(&self, message: impl Into<String>) {
+        *self.snapshot_failure.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message.into());
     }
 
     pub(crate) async fn create_pipe_session(
@@ -602,14 +858,23 @@ impl ExecSessionManager {
         env: HashMap<String, String>,
         sandbox_active: bool,
     ) -> Result<DiapasonExecSession> {
+        // Hold the per-session lock across check, spawn and dispatch insert so a
+        // concurrent close cannot remove a record this create would replace, and
+        // cannot terminate the session this create installs.
+        let operation = self.session_operation_lock(session_id.as_str());
+        let _operation = operation.lock().await;
         self.ensure_session_absent(&session_id).await?;
         let env = if sandbox_active {
             filter_sensitive_env(&env)
         } else {
             env
         };
-        let metadata = self.pipe_sessions.create_session(session_id, command, working_dir, env).await?;
+        let (metadata, record) = self.pipe_sessions.create_session(session_id, command, working_dir, env).await?;
+        // Armed across the dispatch registration, which is the last await of
+        // the create. A caller dropped there still closes the process.
+        let registration = UndispatchedSessionGuard::pipe(self.clone(), metadata.id.clone(), record);
         self.insert_session(metadata.clone(), ExecSessionBackend::Pipe, None).await?;
+        registration.disarm();
         Ok(metadata)
     }
 
@@ -636,6 +901,11 @@ impl ExecSessionManager {
         zsh_exec_bridge: Option<ZshExecBridgeSession>,
         sandbox_active: bool,
     ) -> Result<DiapasonExecSession> {
+        // Hold the per-session lock across check, spawn and dispatch insert so a
+        // concurrent close cannot remove a record this create would replace, and
+        // cannot terminate the session this create installs.
+        let operation = self.session_operation_lock(session_id.as_str());
+        let _operation = operation.lock().await;
         self.ensure_session_absent(&session_id).await?;
         let pty_guard = self.pty_sessions.start_session()?;
         let metadata = self.pty_sessions.manager().create_session_with_bridge_sandboxed(
@@ -648,12 +918,26 @@ impl ExecSessionManager {
             sandbox_active,
         )?;
         let exec_metadata = DiapasonExecSession::from(metadata);
+        // Armed across the dispatch registration for the same reason the pipe
+        // create arms it: a dropped create must not leave a live PTY child no
+        // dispatch entry names.
+        let registration = UndispatchedSessionGuard::pty(self.clone(), exec_metadata.id.clone());
         self.insert_session(exec_metadata.clone(), ExecSessionBackend::Pty, Some(pty_guard))
             .await?;
+        registration.disarm();
         Ok(exec_metadata)
     }
 
     pub(crate) async fn snapshot_session(&self, session_id: &str) -> Result<DiapasonExecSession> {
+        #[cfg(any(test, feature = "test-support"))]
+        if let Some(message) = self
+            .snapshot_failure
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+        {
+            return Err(anyhow!("{message}"));
+        }
         let record = self.session_record(session_id).await?;
         match record.backend {
             ExecSessionBackend::Pipe => self.pipe_sessions.session_record(session_id).await.map(|r| {
@@ -763,22 +1047,80 @@ impl ExecSessionManager {
 
     /// Removes and terminates a session, whatever its backend.
     ///
+    /// The dispatch record is released only after the backend has terminated,
+    /// so a kill fault leaves the session resolvable and retryable rather than
+    /// dropping the dispatch entry for a process that may still be running.
+    /// Termination is idempotent, so a retry after an earlier successful kill
+    /// cannot kill the child twice.
+    ///
+    /// A backend that no longer holds a handle is equally complete. A close
+    /// that is cancelled between closing the backend and removing the dispatch
+    /// record leaves the record behind, and failing the retry on the backend's
+    /// typed not-found would strand it — and the PTY guard it owns — forever.
+    /// The typed missing cause is therefore the one fault that proceeds to the
+    /// removal; every other fault keeps the record so the close stays
+    /// retryable.
+    ///
+    /// The record read here is the only one this close may terminate. Both
+    /// termination and removal run under the per-session lock that creation
+    /// also holds, and the record is revalidated under that lock before the
+    /// backend is touched. A close that read a record a concurrent close
+    /// removed — and a create replaced under the same id — therefore reports
+    /// the typed missing-session cause and leaves the replacement running
+    /// instead of signalling it.
+    ///
     /// A missing identifier is reported through [`missing_session`] rather
     /// than being treated as a successful no-op.
     pub(crate) async fn close_session(&self, session_id: &str) -> Result<DiapasonExecSession> {
-        let record = {
-            let mut sessions = self.sessions.write().await;
-            sessions.remove(session_id).ok_or_else(|| missing_session(session_id))?
-        };
+        let record = self.session_record(session_id).await?;
+        self.close_session_record(session_id, record).await
+    }
 
-        let metadata = match record.backend {
-            ExecSessionBackend::Pipe => self.pipe_sessions.close_session(session_id).await?,
+    /// Closes the exact dispatch record the caller read.
+    ///
+    /// The record is revalidated under the session's create/close lock, so a
+    /// record that a concurrent close removed — or a same-id create replaced —
+    /// is refused without touching the backend. The caller receives
+    /// [`missing_session`] and the replacement keeps running.
+    async fn close_session_record(
+        &self,
+        session_id: &str,
+        record: Arc<ExecSessionRecord>,
+    ) -> Result<DiapasonExecSession> {
+        let operation = self.session_operation_lock(session_id);
+        let _operation = operation.lock().await;
+        let current = self.session_record(session_id).await?;
+        if !Arc::ptr_eq(&current, &record) {
+            return Err(missing_session(session_id));
+        }
+
+        let closed_metadata = match record.backend {
+            ExecSessionBackend::Pipe => self.pipe_sessions.close_session(session_id).await,
             ExecSessionBackend::Pty => self
                 .pty_sessions
                 .manager()
                 .close_session(session_id)
-                .map(DiapasonExecSession::from)?,
+                .map(DiapasonExecSession::from),
         };
+        let metadata = match closed_metadata {
+            Ok(metadata) => metadata,
+            // The backend handle is already gone: that is where an interrupted
+            // close stops, so finish the removal the retry is here for.
+            Err(error) if is_missing_exec_session(&error) => record.metadata.clone(),
+            Err(error) => return Err(error),
+        };
+
+        {
+            let mut sessions = self.sessions.write().await;
+            // Only the record read above may be released: a session that was
+            // closed and re-created under the same id keeps its own guard. The
+            // per-session lock already excludes a replacement, so this remains
+            // a last defence rather than the rule that enforces it.
+            if !sessions.get(session_id).is_some_and(|current| Arc::ptr_eq(current, &record)) {
+                return Err(missing_session(session_id));
+            }
+            sessions.remove(session_id).ok_or_else(|| missing_session(session_id))?;
+        }
 
         Ok(metadata)
     }
@@ -820,6 +1162,8 @@ impl ExecSessionManager {
         backend: ExecSessionBackend,
         pty_guard: Option<PtySessionGuard>,
     ) -> Result<()> {
+        #[cfg(all(test, unix))]
+        pass_session_registration_gate(&self.sessions, metadata.id.as_str()).await;
         let mut sessions = self.sessions.write().await;
         use hashbrown::hash_map::Entry;
         match sessions.entry(metadata.id.clone()) {
@@ -846,8 +1190,76 @@ impl ExecSessionManager {
     }
 }
 
+/// A test gate between a spawned backend session and its dispatch record.
+///
+/// A create spawns the process in its backend and then awaits the dispatch map
+/// under an async lock. No real scheduling makes a caller drop inside that
+/// await deterministic, so a test arms this gate to cancel the create exactly
+/// there and observe what happens to the process.
+#[cfg(all(test, unix))]
+struct SessionRegistrationGate {
+    sessions: std::sync::Weak<RwLock<HashMap<ExecSessionId, Arc<ExecSessionRecord>>>>,
+    session_id: String,
+    entered: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
+#[cfg(all(test, unix))]
+fn session_registration_gates() -> &'static std::sync::Mutex<Vec<SessionRegistrationGate>> {
+    static GATES: std::sync::OnceLock<std::sync::Mutex<Vec<SessionRegistrationGate>>> = std::sync::OnceLock::new();
+    GATES.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
+
+/// Arms a gate that parks the next create of `session_id` before dispatch.
+#[cfg(all(test, unix))]
+pub(crate) fn gate_next_session_registration(
+    exec_sessions: &ExecSessionManager,
+    session_id: &str,
+) -> (Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>) {
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let mut gates = session_registration_gates()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    gates.retain(|gate| gate.sessions.strong_count() > 0);
+    gates.push(SessionRegistrationGate {
+        sessions: Arc::downgrade(&exec_sessions.sessions),
+        session_id: session_id.to_owned(),
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+    });
+    (entered, release)
+}
+
+/// Parks a create here when the gate armed for its session and manager matches.
+#[cfg(all(test, unix))]
+async fn pass_session_registration_gate(
+    sessions: &Arc<RwLock<HashMap<ExecSessionId, Arc<ExecSessionRecord>>>>,
+    session_id: &str,
+) {
+    let gate = {
+        let mut gates = session_registration_gates()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        gates.retain(|gate| gate.sessions.strong_count() > 0);
+        gates
+            .iter()
+            .position(|gate| {
+                gate.session_id == session_id && std::ptr::eq(gate.sessions.as_ptr(), Arc::as_ptr(sessions))
+            })
+            .map(|index| gates.remove(index))
+    };
+    let Some(gate) = gate else {
+        return;
+    };
+    gate.entered.notify_one();
+    gate.release.notified().await;
+}
+
 #[cfg(all(test, unix))]
 mod tests {
+    use std::sync::Arc;
+
     use hashbrown::HashMap;
     use tempfile::tempdir;
     use tokio::sync::watch;
@@ -857,9 +1269,56 @@ mod tests {
         ExecSessionLostAfterInput, ExecSessionManager, ExecSessionNotFound, ExecSessionWriterClosed, write_failure,
     };
     use crate::config::PtyConfig;
-    use crate::tools::pty::PtySize;
+    use crate::tools::pty::{PtySessionNotFound, PtySize};
     use crate::tools::registry::PtySessionManager;
     use crate::utils::path::canonicalize_workspace;
+
+    /// A create cancelled before its dispatch record closes the child it spawned.
+    ///
+    /// The pipe backend spawns the process and stores it before the dispatch
+    /// record is inserted under an async lock. A caller dropped inside that
+    /// await leaves a live child no dispatch entry names, so `close_session`
+    /// could never reach it. The gate parks the create there; the guard must
+    /// signal the child and release the backend record, which re-creating the
+    /// same id proves.
+    #[tokio::test]
+    async fn a_create_cancelled_before_dispatch_closes_the_child_it_spawned() {
+        let workspace = tempdir().expect("workspace");
+        let manager = ExecSessionManager::new(
+            workspace.path().to_path_buf(),
+            PtySessionManager::new(workspace.path().to_path_buf(), PtyConfig::default()),
+        );
+        let (entered, _release) = super::gate_next_session_registration(&manager, "exec-cancelled");
+        {
+            let creator = manager.clone();
+            let create = creator.create_pipe_session(
+                "exec-cancelled".to_string().into(),
+                vec!["sh".to_string(), "-c".to_string(), "sleep 30".to_string()],
+                workspace.path().to_path_buf(),
+                HashMap::new(),
+            );
+            tokio::pin!(create);
+            tokio::select! {
+                result = &mut create => panic!("the gated create registered before it was cancelled: {result:?}"),
+                () = entered.notified() => {}
+            }
+            // Dropping the pinned future here cancels the create inside its
+            // dispatch registration, after the backend spawned the process.
+        }
+        // Re-creating the id succeeds only when the cancelled create withdrew
+        // its backend record, and that path terminates the child first.
+        manager
+            .create_pipe_session(
+                "exec-cancelled".to_string().into(),
+                vec!["sh".to_string(), "-c".to_string(), "sleep 5".to_string()],
+                workspace.path().to_path_buf(),
+                HashMap::new(),
+            )
+            .await
+            .expect("the cancelled create released its session id");
+        assert!(manager.snapshot_session("exec-cancelled").await.is_ok(), "the replacement session is registered");
+        manager.terminate_all_sessions_async().await.expect("close the replacement");
+    }
 
     /// Polls the session's activity channel until output appears or times out.
     async fn wait_for_pipe_output(
@@ -1013,6 +1472,114 @@ mod tests {
             )
             .await?;
         manager.close_session("run-3").await?;
+
+        Ok(())
+    }
+
+    /// A close interrupted after the backend released its handle still
+    /// finishes, releasing the PTY guard the dispatch record owns.
+    ///
+    /// The close terminates the backend first and removes the dispatch record
+    /// second. A cancellation in that window leaves the record behind, and a
+    /// retry that stopped at the backend's typed not-found would report a fault
+    /// for a session that is already closed and hold the PTY slot forever.
+    #[tokio::test]
+    #[cfg(all(unix, feature = "tui"))]
+    async fn close_session_finishes_after_the_backend_released_its_handle() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        let size = PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+
+        manager
+            .create_pty_session(
+                "close-interrupted".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 5".to_string()],
+                workspace_root,
+                size,
+                HashMap::new(),
+                None,
+            )
+            .await?;
+        assert_eq!(pty_sessions.active_sessions(), 1, "the open session holds one PTY guard");
+
+        // Release only the backend handle, exactly the window `close_session`
+        // opens between closing the backend and removing the dispatch record.
+        pty_sessions.manager().close_session("close-interrupted")?;
+        assert_eq!(
+            pty_sessions.active_sessions(),
+            1,
+            "the interrupted close leaves the dispatch record, and its guard, behind"
+        );
+
+        let metadata = manager.close_session("close-interrupted").await?;
+        assert_eq!(metadata.id.as_str(), "close-interrupted");
+        assert_eq!(metadata.backend, "pty", "the recovered close must keep the session's backend");
+        assert_eq!(
+            pty_sessions.active_sessions(),
+            0,
+            "the retried close must release the PTY guard the dispatch record owned"
+        );
+        assert!(manager.list_sessions().await.is_empty(), "the retried close must remove the record");
+        Ok(())
+    }
+
+    /// Classifies a backend that dropped its handle after the record was read.
+    ///
+    /// Closing a session terminates and releases the backend handle first and
+    /// removes the dispatch record second, so a concurrent read can find the
+    /// record and still miss the handle. That race must surface as the typed
+    /// missing-session cause, so the background liveness projection treats it
+    /// as an expected exit rather than logging an unobserved fault that quotes
+    /// the session id.
+    #[tokio::test]
+    #[cfg(all(unix, feature = "tui"))]
+    async fn snapshot_after_the_backend_dropped_the_handle_reports_a_missing_session() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        let size = PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+
+        manager
+            .create_pty_session(
+                "run-race".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 5".to_string()],
+                workspace_root,
+                size,
+                HashMap::new(),
+                None,
+            )
+            .await?;
+
+        // Release only the backend handle, exactly the window `close_session`
+        // opens between terminating the process and removing the dispatch
+        // record.
+        pty_sessions.manager().close_session("run-race")?;
+
+        let error = manager
+            .snapshot_session("run-race")
+            .await
+            .expect_err("a record whose backend handle is gone must not read as alive");
+        assert!(
+            error.chain().any(|cause| cause.is::<PtySessionNotFound>()),
+            "the race must retain the typed missing-session cause: {error}"
+        );
+        assert!(
+            error.downcast_ref::<ExecSessionNotFound>().is_none(),
+            "the dispatch record still exists, so the failure must not claim the record is missing"
+        );
 
         Ok(())
     }
@@ -1198,5 +1765,181 @@ mod tests {
         let (total_bytes, truncated) = buffer.stats().await;
         assert_eq!(total_bytes, chunk.len() as u64);
         assert!(truncated);
+    }
+
+    /// A normal close terminates the child, removes the record and returns its
+    /// metadata.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn close_session_removes_the_record_and_returns_metadata() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root.clone(), pty_sessions);
+
+        manager
+            .create_pipe_session(
+                "close-normal".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 5".to_string()],
+                workspace_root,
+                HashMap::new(),
+            )
+            .await?;
+
+        let metadata = manager.close_session("close-normal").await?;
+        assert_eq!(metadata.id.as_str(), "close-normal");
+        assert_eq!(metadata.backend, "pipe");
+
+        let error = manager
+            .snapshot_session("close-normal")
+            .await
+            .expect_err("a closed session must no longer resolve");
+        assert!(
+            error.downcast_ref::<ExecSessionNotFound>().is_some(),
+            "the removed record must report the typed missing-session cause: {error}"
+        );
+        assert!(manager.list_sessions().await.is_empty(), "the closed record must not be listed");
+        Ok(())
+    }
+
+    /// A failed kill must keep the record reachable so a retry can finish the
+    /// close instead of abandoning a live process.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn close_session_keeps_the_record_when_termination_fails() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root.clone(), pty_sessions);
+
+        manager
+            .create_pipe_session(
+                "close-fault".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 5".to_string()],
+                workspace_root,
+                HashMap::new(),
+            )
+            .await?;
+
+        manager.pipe_sessions.fail_next_termination("simulated kill failure");
+
+        let error = manager
+            .close_session("close-fault")
+            .await
+            .expect_err("a kill fault must surface from close_session");
+        assert!(
+            format!("{error:#}").contains("simulated kill failure"),
+            "the injected fault must be reported: {error:#}"
+        );
+
+        // The dispatch and backend records must both survive so a retry can
+        // still reach the process.
+        manager.session_record("close-fault").await?;
+        manager.pipe_sessions.session_record("close-fault").await?;
+        let retained = manager.snapshot_session("close-fault").await?;
+        assert_eq!(retained.id.as_str(), "close-fault");
+
+        // The one-shot fault has cleared, so the retry completes the close.
+        let metadata = manager.close_session("close-fault").await?;
+        assert_eq!(metadata.id.as_str(), "close-fault");
+
+        let error = manager
+            .snapshot_session("close-fault")
+            .await
+            .expect_err("the retried close must remove the record");
+        assert!(
+            error.downcast_ref::<ExecSessionNotFound>().is_some(),
+            "the retried close must report the typed missing-session cause: {error}"
+        );
+        Ok(())
+    }
+
+    /// A close bound to a removed record must not kill its same-id replacement.
+    ///
+    /// A close reads its dispatch record before it terminates the backend. If
+    /// that record is closed and a replacement is launched under the same id in
+    /// the meantime, terminating by the textual id would signal the replacement
+    /// while the later identity check rejects the stale removal. Termination
+    /// now runs under the per-session lock and revalidates the record, so the
+    /// stale close reports the typed missing-session cause and the replacement
+    /// keeps running.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_stale_close_after_a_same_id_recreate_leaves_the_replacement_running() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root.clone(), pty_sessions);
+
+        manager
+            .create_pipe_session(
+                "recreated".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 30".to_string()],
+                workspace_root.clone(),
+                HashMap::new(),
+            )
+            .await?;
+        // The record a close would have read before the replacement existed.
+        let stale = manager.session_record("recreated").await?;
+
+        manager.close_session("recreated").await?;
+        manager
+            .create_pipe_session(
+                "recreated".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 30".to_string()],
+                workspace_root,
+                HashMap::new(),
+            )
+            .await?;
+
+        let error = manager
+            .close_session_record("recreated", stale)
+            .await
+            .expect_err("a close bound to the removed record must not touch the replacement");
+        assert!(
+            error.downcast_ref::<ExecSessionNotFound>().is_some(),
+            "the stale close must report the typed missing-session cause: {error}"
+        );
+
+        let replacement = manager.pipe_sessions.session_record("recreated").await?;
+        assert!(!replacement.handle.has_exited(), "the replacement process must keep running");
+        let snapshot = manager.snapshot_session("recreated").await?;
+        assert_eq!(
+            snapshot.lifecycle_state,
+            Some(crate::tools::types::DiapasonSessionLifecycleState::Running),
+            "the replacement must still be the live session under the id"
+        );
+
+        manager.close_session("recreated").await?;
+        Ok(())
+    }
+    /// Operation locks are reclaimed once no operation can still hold them.
+    ///
+    /// Every create and close asks the registry for the same per-id lock. A
+    /// long-lived manager used to retain one entry, with its key and mutex, for
+    /// every session it had ever served, including failed creates. An expired
+    /// entry must be pruned, while a lock an operation still holds is shared by
+    /// every other operation for that id.
+    #[tokio::test]
+    async fn operation_locks_are_reclaimed_after_the_last_user_releases_them() {
+        let workspace = tempdir().expect("workspace");
+        let manager = ExecSessionManager::new(
+            workspace.path().to_path_buf(),
+            PtySessionManager::new(workspace.path().to_path_buf(), PtyConfig::default()),
+        );
+
+        let first = manager.session_operation_lock("exec-reclaimed");
+        let waiter = manager.session_operation_lock("exec-reclaimed");
+        assert!(Arc::ptr_eq(&first, &waiter), "one id must share one lock while either handle lives");
+        drop(first);
+        drop(waiter);
+
+        // A different id must not retain the expired entry beside its own.
+        let _other = manager.session_operation_lock("exec-other");
+        assert_eq!(
+            manager.operation_lock_count(),
+            1,
+            "an expired operation lock must be pruned instead of retained for the process lifetime"
+        );
     }
 }

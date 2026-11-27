@@ -59,8 +59,8 @@ pub(crate) use self::resume_render::{build_structured_resume_lines, render_resum
 
 #[cfg(test)]
 use self::local_agents::{
-    background_local_agent_preview_placeholder, delegated_local_agent_preview_placeholder,
-    visible_background_local_agents, visible_delegated_local_agents,
+    background_local_agent_preview_placeholder, background_local_agent_row, delegated_local_agent_preview_placeholder,
+    visible_delegated_local_agents,
 };
 #[cfg(test)]
 use self::persistent_memory::apply_persistent_memory_header_guide;

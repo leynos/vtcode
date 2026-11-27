@@ -36,5 +36,5 @@ async fn spawn_custom_preserves_explicit_spec_when_input_mentions_multiple_agent
 
     assert_eq!(spawned.agent_name, "init-grounding-explorer");
     assert_eq!(spawned.source, SubagentSource::ProjectDiapason.label());
-    controller.close(&spawned.id).await.expect("close");
+    controller.close(TaskOwner::Workspace, &spawned.id).await.expect("close");
 }

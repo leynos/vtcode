@@ -123,6 +123,8 @@ async fn next_buffered_generation(
                 .map(BufferedGenerationStep::Finished);
         }
     };
+    turn.agent
+        .publish_lody_usage(&turn.args.session_id, &turn.session_model, &response);
     if turn.session.cancellation.is_cancelled() {
         store_buffered_output(turn, output);
         return Ok(BufferedGenerationStep::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)));

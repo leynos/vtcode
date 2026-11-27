@@ -1,3 +1,4 @@
+//! Tests for the `/agents` slash command's listing, summaries, and actions.
 use super::{
     DEFAULT_AGENT_TOOL_IDS, active_subagent_entries, background_subprocess_summary, scaffold_agent_markdown,
     subprocess_action_prompt, summarize_thread_event_preview, visible_subagent_entries,
@@ -134,6 +135,7 @@ fn summarize_thread_event_preview_uses_latest_live_updates() {
 fn background_subprocess_summary_reports_waiting_state_without_summary() {
     let entry = BackgroundSubprocessEntry {
         id: "background-rust-engineer".to_string(),
+        owner_session_id: None,
         session_id: "session-123".to_string(),
         exec_session_id: "exec-session-123".to_string(),
         agent_name: "rust-engineer".to_string(),

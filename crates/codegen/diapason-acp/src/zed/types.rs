@@ -117,6 +117,14 @@ impl SessionActivity {
         self.closing.store(true, Ordering::SeqCst);
     }
 
+    /// Reports whether the session has begun closing.
+    ///
+    /// Closing is sticky, and it stays observable on the shared activity so a
+    /// clone of the handle can still tell that the session is going away.
+    fn is_closing(&self) -> bool {
+        self.closing.load(Ordering::SeqCst)
+    }
+
     async fn wait_for_prompts(&self) {
         loop {
             let notified = self.prompts_idle.notified();
@@ -138,7 +146,7 @@ impl SessionActivity {
 
 impl SessionPromptGuard {
     pub(crate) fn is_closing(&self) -> bool {
-        self.activity.closing.load(Ordering::SeqCst)
+        self.activity.is_closing()
     }
 }
 
@@ -172,9 +180,25 @@ impl SessionHandle {
     pub(crate) async fn wait_for_prompts(&self) {
         self.activity.wait_for_prompts().await;
     }
+
+    /// Reports whether the session has begun closing.
+    ///
+    /// This flag marks the start of the close sequence, not its completion: the
+    /// session's workspace runtime is still held and is released later by the
+    /// cleanup path (`finish_closed_session` releases the lease after waiting
+    /// for in-flight prompts). The flag is the authority a management request
+    /// uses to tell that it lost the race: `resolve_open_session_controller`
+    /// checks it before and after resolving a controller and reports
+    /// `unknown_session` when it is set. It is not evidence that the runtime
+    /// has already been released, so a caller that has another use for the
+    /// runtime must not read it as one; a management request must.
+    pub(crate) fn is_closing(&self) -> bool {
+        self.activity.is_closing()
+    }
 }
 
 pub(crate) struct SessionData {
+    pub(in crate::zed) subagent_controller: Option<Arc<diapason_core::subagents::SubagentController>>,
     pub(crate) session_id: acp::SessionId,
     pub(crate) thread: ThreadRuntimeHandle,
     pub(crate) archive: Option<diapason_core::utils::session_archive::SessionArchive>,
@@ -193,6 +217,11 @@ pub(crate) struct SessionData {
     pub(crate) session_started: bool,
     pub(crate) session_ended: bool,
     pub(crate) task_lifecycle_forwarder: Option<tokio::task::JoinHandle<()>>,
+    /// The one-shot publisher of the initial task snapshots for this
+    /// forwarder. It writes into the forwarder's queue, so it must be aborted
+    /// with the forwarder; otherwise it outlives the receiver and keeps
+    /// enqueueing into a queue that nothing drains.
+    pub(crate) task_lifecycle_snapshot_publisher: Option<tokio::task::JoinHandle<()>>,
     pub(crate) task_lifecycle_registration: Option<diapason_core::subagents::SubagentProgressObserverRegistration>,
 }
 
@@ -239,6 +268,9 @@ pub(crate) fn lock_poison_error(context: &str, error: impl std::fmt::Display) ->
 
 impl Drop for SessionData {
     fn drop(&mut self) {
+        if let Some(snapshot_publisher) = self.task_lifecycle_snapshot_publisher.take() {
+            snapshot_publisher.abort();
+        }
         if let Some(forwarder) = self.task_lifecycle_forwarder.take() {
             forwarder.abort();
         }
@@ -256,38 +288,47 @@ impl SessionHandle {
     }
 
     pub(crate) async fn release_workspace_lease(&self) -> anyhow::Result<()> {
-        let (lease, runtime) = {
+        let (lease, runtime, controller) = {
             let mut data = self
                 .data
                 .lock()
                 .map_err(|error| lock_poison_error("releasing ACP session workspace lease", error))?;
-            (data.workspace_lease.take(), data.workspace_runtime.take())
+            (data.workspace_lease.take(), data.workspace_runtime.take(), data.subagent_controller.take())
         };
-        drop(runtime);
-        if let Some(lease) = lease {
-            lease.release().await;
-        }
+        // The cleanup runs on a task of its own, in the order it always ran.
+        // The lease has already left the session, so a cancelled caller would
+        // otherwise drop the last lease without ever starting the runtime
+        // shutdown it asks for: the lease's own `Drop` can only publish a
+        // pending shutdown because it cannot await. Spawning before the first
+        // await makes cancellation detach the task instead of stranding the
+        // lease.
+        let cleanup = tokio::spawn(async move {
+            if let Some(controller) = controller {
+                controller.signal_shutdown().await;
+            }
+            drop(runtime);
+            if let Some(lease) = lease {
+                lease.release().await;
+            }
+        });
+        cleanup.await.context("waiting for ACP workspace lease release")?;
         Ok(())
     }
 
     pub(crate) async fn stop_task_lifecycle_forwarder(&self) -> anyhow::Result<()> {
-        let (forwarder, registration) = {
+        let (forwarder, snapshot_publisher, registration) = {
             let mut data = self
                 .data
                 .lock()
                 .map_err(|error| lock_poison_error("stopping ACP task lifecycle forwarding", error))?;
-            (data.task_lifecycle_forwarder.take(), data.task_lifecycle_registration.take())
+            (
+                data.task_lifecycle_forwarder.take(),
+                data.task_lifecycle_snapshot_publisher.take(),
+                data.task_lifecycle_registration.take(),
+            )
         };
         drop(registration);
-        if let Some(forwarder) = forwarder {
-            forwarder.abort();
-            match forwarder.await {
-                Ok(()) => {}
-                Err(error) if error.is_cancelled() => {}
-                Err(error) => return Err(error).context("waiting for ACP task lifecycle forwarder to stop"),
-            }
-        }
-        Ok(())
+        stop_task_lifecycle_tasks(forwarder, snapshot_publisher).await
     }
 
     pub(crate) fn lifecycle_hooks(&self) -> anyhow::Result<Option<LifecycleHookEngine>> {
@@ -337,387 +378,54 @@ impl SessionHandle {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::future::Future;
-    use std::pin::Pin;
-    use std::sync::atomic::Ordering;
-    use std::task::{Context, Poll, Waker};
-    use std::time::Duration;
-
-    use super::{SessionActivity, SessionCancellation, SessionPromptGuard};
-
-    /// Poll `future` once without installing a real waker.
-    ///
-    /// A `Notify` waiter records itself on its first poll, so this observes
-    /// whether the waiter is still pending without sleeping or depending on a
-    /// scheduler.
-    fn poll_once<F: Future>(mut future: Pin<&mut F>) -> Poll<F::Output> {
-        let waker = Waker::noop();
-        let mut context = Context::from_waker(waker);
-        future.as_mut().poll(&mut context)
-    }
-
-    #[tokio::test]
-    async fn cancellation_wakes_a_pending_operation() {
-        let cancellation = SessionCancellation::default();
-        let waiter = cancellation.clone();
-        let task = tokio::spawn(async move { waiter.cancelled().await });
-
-        tokio::task::yield_now().await;
-        cancellation.cancel();
-        tokio::time::timeout(Duration::from_secs(1), task)
-            .await
-            .expect("cancellation waiter should wake")
-            .expect("waiter task should finish");
-    }
-
-    #[tokio::test]
-    async fn reset_allows_the_signal_to_be_reused_for_the_next_turn() {
-        let cancellation = SessionCancellation::default();
-        cancellation.cancel();
-        cancellation.cancelled().await;
-        assert!(cancellation.reset());
-
-        assert!(
-            tokio::time::timeout(Duration::from_millis(10), cancellation.cancelled())
-                .await
-                .is_err(),
-            "reset signal must wait for a fresh cancellation"
-        );
-    }
-
-    #[test]
-    fn close_cancellation_cannot_be_reset_for_another_prompt() {
-        let cancellation = SessionCancellation::default();
-        cancellation.close();
-
-        assert!(!cancellation.reset());
-        assert!(cancellation.is_cancelled());
-        assert!(cancellation.is_closed());
-    }
-
-    /// Reference model for [`SessionCancellation`]'s two sticky flags.
-    ///
-    /// `cancel` and `close` are idempotent setters, and `reset` clears only
-    /// `cancelled` — and only while the session has not been closed. The
-    /// generated sequences are sequential; they do not prove anything about
-    /// concurrent interleavings.
-    #[derive(Debug, Default)]
-    struct CancellationModel {
-        cancelled: bool,
-        closed: bool,
-    }
-
-    impl CancellationModel {
-        fn cancel(&mut self) {
-            self.cancelled = true;
-        }
-
-        fn close(&mut self) {
-            self.cancelled = true;
-            self.closed = true;
-        }
-
-        fn reset(&mut self) -> bool {
-            if self.closed {
-                return false;
-            }
-            self.cancelled = false;
-            true
-        }
-    }
-
-    #[derive(Clone, Copy, Debug)]
-    enum CancellationOp {
-        Cancel,
-        Close,
-        Reset,
-    }
-
-    proptest::proptest! {
-        #![proptest_config(proptest::prelude::ProptestConfig {
-            cases: 128,
-            max_shrink_iters: 256,
-            ..proptest::prelude::ProptestConfig::default()
-        })]
-
-        #[test]
-        fn cancellation_flags_match_the_reference_model(
-            ops in proptest::collection::vec(
-                proptest::prop_oneof![
-                    proptest::prelude::Just(CancellationOp::Cancel),
-                    proptest::prelude::Just(CancellationOp::Close),
-                    proptest::prelude::Just(CancellationOp::Reset),
-                ],
-                0..12,
-            ),
-        ) {
-            let cancellation = SessionCancellation::default();
-            let mut model = CancellationModel::default();
-
-            for op in ops {
-                match op {
-                    CancellationOp::Cancel => {
-                        cancellation.cancel();
-                        model.cancel();
-                    }
-                    CancellationOp::Close => {
-                        cancellation.close();
-                        model.close();
-                    }
-                    CancellationOp::Reset => {
-                        proptest::prop_assert_eq!(
-                            cancellation.reset(),
-                            model.reset(),
-                            "reset must report whether the signal was revived"
-                        );
-                    }
-                }
-
-                proptest::prop_assert_eq!(cancellation.is_cancelled(), model.cancelled);
-                proptest::prop_assert_eq!(cancellation.is_closed(), model.closed);
-            }
-
-            // Closing is terminal: no later operation may revive the session.
-            if model.closed {
-                proptest::prop_assert!(cancellation.is_closed());
-                proptest::prop_assert!(!cancellation.reset());
-                proptest::prop_assert!(cancellation.is_cancelled());
-            }
-        }
-    }
-
-    /// Reference model for [`SessionActivity`] and [`SessionPromptGuard`].
-    ///
-    /// A guard exists exactly while its prompt is in flight: starting one
-    /// increments the in-flight count, and dropping the guard decrements it
-    /// exactly once. Closing is sticky — once `begin_close` runs no further
-    /// prompt may start, and guards taken before the close stay valid so the
-    /// close can wait for them. `wait_for_prompts` completes if and only if the
-    /// in-flight count is zero.
-    ///
-    /// The generated sequences are sequential. They pin the bookkeeping a close
-    /// depends on; they say nothing about concurrent interleavings.
-    #[derive(Debug, Default)]
-    struct ActivityModel {
-        in_flight: usize,
-        closing: bool,
-    }
-
-    impl ActivityModel {
-        /// Mirrors the double-check in `try_start_prompt`: a close that lands
-        /// between the two checks must not leave a prompt counted.
-        fn try_start_prompt(&mut self) -> bool {
-            if self.closing {
-                return false;
-            }
-            self.in_flight += 1;
-            true
-        }
-
-        fn drop_guard(&mut self) {
-            assert!(self.in_flight > 0, "reference model underflow");
-            self.in_flight -= 1;
-        }
-
-        fn begin_close(&mut self) {
-            self.closing = true;
-        }
-    }
-
-    #[derive(Clone, Copy, Debug)]
-    enum ActivityOp {
-        StartPrompt,
-        DropGuard,
-        Close,
-        WaitForPrompts,
-    }
-
-    proptest::proptest! {
-        #![proptest_config(proptest::prelude::ProptestConfig {
-            cases: 64,
-            max_shrink_iters: 256,
-            ..proptest::prelude::ProptestConfig::default()
-        })]
-
-        #[test]
-        fn session_activity_matches_the_reference_model(
-            ops in proptest::collection::vec(
-                proptest::prop_oneof![
-                    proptest::prelude::Just(ActivityOp::StartPrompt),
-                    proptest::prelude::Just(ActivityOp::DropGuard),
-                    proptest::prelude::Just(ActivityOp::Close),
-                    proptest::prelude::Just(ActivityOp::WaitForPrompts),
-                ],
-                0..16,
-            ),
-        ) {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_time()
-                .build()
-                .expect("current-thread runtime");
-            let _guard = runtime.enter();
-
-            let activity = SessionActivity::default();
-            let mut model = ActivityModel::default();
-            let mut guards: Vec<SessionPromptGuard> = Vec::new();
-
-            for op in ops {
-                match op {
-                    ActivityOp::StartPrompt => {
-                        let guard = activity.try_start_prompt();
-                        let model_grants = model.try_start_prompt();
-                        proptest::prop_assert_eq!(
-                            guard.is_some(),
-                            model_grants,
-                            "prompt admission must match the model"
-                        );
-                        match guard {
-                            Some(guard) => {
-                                proptest::prop_assert_eq!(
-                                    guard.is_closing(),
-                                    model.closing,
-                                    "a guard must report the close state it was taken under"
-                                );
-                                guards.push(guard);
-                            }
-                            None => {
-                                proptest::prop_assert!(
-                                    model.closing,
-                                    "a refused prompt must be explained by a pending close"
-                                );
-                            }
-                        }
-                    }
-                    ActivityOp::DropGuard => {
-                        if let Some(guard) = guards.pop() {
-                            drop(guard);
-                            model.drop_guard();
-                        }
-                    }
-                    ActivityOp::Close => {
-                        activity.begin_close();
-                        model.begin_close();
-                    }
-                    ActivityOp::WaitForPrompts => {
-                        let idle = runtime.block_on(tokio::time::timeout(
-                            Duration::from_millis(50),
-                            activity.wait_for_prompts(),
-                        ));
-                        proptest::prop_assert_eq!(
-                            idle.is_ok(),
-                            model.in_flight == 0,
-                            "waiting for prompts must complete exactly when none are in flight"
-                        );
-                    }
-                }
-
-                // A pending close is sticky for the rest of the sequence. The
-                // refused branch of `try_start_prompt` does not mutate the
-                // count, so this observation cannot perturb the model.
-                if model.closing {
-                    proptest::prop_assert!(
-                        activity.try_start_prompt().is_none(),
-                        "a closing session must refuse every later prompt"
-                    );
-                }
-
-                proptest::prop_assert_eq!(
-                    activity.active_prompts.load(Ordering::Acquire),
-                    model.in_flight,
-                    "the in-flight count must match the model after {:?}",
-                    op
-                );
-            }
-
-            // Closing is sticky and does not invalidate guards taken earlier,
-            // so one waiter registered before the drain must stay pending
-            // across every intermediate departure and then complete. Reusing
-            // the same waiter matters: a fresh waiter created after the final
-            // drop would succeed from the count alone and would not detect a
-            // missing `prompts_idle.notify_waiters()`.
-            activity.begin_close();
-            let outstanding = guards.len();
-            proptest::prop_assert_eq!(outstanding, model.in_flight);
-
-            let mut waiter = std::pin::pin!(activity.wait_for_prompts());
-            if outstanding > 0 {
-                proptest::prop_assert!(
-                    poll_once(waiter.as_mut()).is_pending(),
-                    "an in-flight prompt must keep the close waiting"
-                );
-            }
-
-            let mut remaining = outstanding;
-            for guard in guards.drain(..) {
-                drop(guard);
-                model.drop_guard();
-                remaining -= 1;
-                proptest::prop_assert_eq!(
-                    activity.active_prompts.load(Ordering::Acquire),
-                    model.in_flight,
-                    "the in-flight count must match the model mid-drain"
-                );
-                if remaining > 0 {
-                    proptest::prop_assert!(
-                        poll_once(waiter.as_mut()).is_pending(),
-                        "a remaining prompt must keep the registered waiter pending"
-                    );
-                }
-            }
-            proptest::prop_assert_eq!(remaining, 0, "the drain must visit every guard once");
-            proptest::prop_assert!(
-                poll_once(waiter.as_mut()).is_ready(),
-                "dropping every guard must let the registered waiter finish"
-            );
-        }
-    }
-
-    /// A waiter registered while prompts are in flight must stay pending across
-    /// every intermediate departure and complete only when the last guard drops.
-    ///
-    /// Polling one waiter throughout is what makes this a regression test for
-    /// the final-guard notification: a waiter created after the last drop would
-    /// return from the count check without ever waiting.
-    #[tokio::test]
-    async fn final_guard_drop_wakes_the_waiter_that_was_already_registered() {
-        let activity = SessionActivity::default();
-        let first = activity.try_start_prompt().expect("an open session admits a prompt");
-        let second = activity.try_start_prompt().expect("an open session admits a second prompt");
-
-        let mut waiter = std::pin::pin!(activity.wait_for_prompts());
-        assert!(poll_once(waiter.as_mut()).is_pending(), "two in-flight prompts must keep the close waiting");
-
-        drop(first);
-        assert_eq!(activity.active_prompts.load(Ordering::Acquire), 1);
-        assert!(
-            poll_once(waiter.as_mut()).is_pending(),
-            "one remaining prompt must keep the registered waiter pending"
-        );
-
-        drop(second);
-        assert_eq!(activity.active_prompts.load(Ordering::Acquire), 0);
-        assert!(poll_once(waiter.as_mut()).is_ready(), "the final guard drop must wake the registered waiter");
-    }
-
-    /// A guard taken before `begin_close` stays valid and observes the sticky
-    /// close; its departure still releases a waiter registered afterwards.
-    #[tokio::test]
-    async fn guards_taken_before_a_close_observe_it_and_still_release_the_waiter() {
-        let activity = SessionActivity::default();
-        let guard = activity.try_start_prompt().expect("an open session admits a prompt");
-        assert!(!guard.is_closing(), "an open session must not report a close");
-
-        activity.begin_close();
-        assert!(guard.is_closing(), "a live guard must observe the sticky close");
-        assert!(activity.try_start_prompt().is_none(), "a closing session must refuse new prompts");
-
-        let mut waiter = std::pin::pin!(activity.wait_for_prompts());
-        assert!(poll_once(waiter.as_mut()).is_pending(), "the live guard must keep the close waiting");
-
-        drop(guard);
-        assert!(poll_once(waiter.as_mut()).is_ready(), "the live guard's departure must release the waiter");
-        assert!(activity.try_start_prompt().is_none(), "closing stays terminal after every prompt departs");
+/// Awaits one aborted lifecycle task, discarding its cancellation.
+///
+/// Cancellation is the expected outcome: the caller aborted the handle before
+/// this await. Every other join failure is returned with task-specific context
+/// so the caller can keep awaiting the other task before reporting it.
+async fn join_aborted_lifecycle_task(
+    task: Option<tokio::task::JoinHandle<()>>,
+    context: &'static str,
+) -> Option<anyhow::Error> {
+    let task = task?;
+    match task.await {
+        Ok(()) => None,
+        Err(error) if error.is_cancelled() => None,
+        Err(error) => Some(anyhow::Error::new(error).context(context)),
     }
 }
+
+/// Stops the lifecycle forwarder and its initial-snapshot publisher.
+///
+/// Aborting the publisher first keeps it from enqueueing while the receiver is
+/// awaited to completion, and both are aborted before either is awaited. A
+/// non-cancellation join error from either task is saved and returned only
+/// after both have been awaited: returning at the publisher's panic would leave
+/// the forwarder detached and still running. The publisher's error is returned
+/// first because it was captured first.
+async fn stop_task_lifecycle_tasks(
+    forwarder: Option<tokio::task::JoinHandle<()>>,
+    snapshot_publisher: Option<tokio::task::JoinHandle<()>>,
+) -> anyhow::Result<()> {
+    if let Some(snapshot_publisher) = &snapshot_publisher {
+        snapshot_publisher.abort();
+    }
+    if let Some(forwarder) = &forwarder {
+        forwarder.abort();
+    }
+    let publisher_error =
+        join_aborted_lifecycle_task(snapshot_publisher, "waiting for ACP task lifecycle snapshot publisher to stop")
+            .await;
+    let forwarder_error =
+        join_aborted_lifecycle_task(forwarder, "waiting for ACP task lifecycle forwarder to stop").await;
+    if let Some(error) = publisher_error {
+        return Err(error);
+    }
+    if let Some(error) = forwarder_error {
+        return Err(error);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests;

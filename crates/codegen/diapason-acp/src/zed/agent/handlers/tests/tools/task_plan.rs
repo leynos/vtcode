@@ -34,6 +34,7 @@ async fn task_tracker_tool_result_emits_standard_acp_plan() {
         "wire-test",
         Arc::new(move || {
             Box::new(StreamToolThenAnswerProvider {
+                emit_usage: false,
                 calls: Arc::clone(&factory_calls),
                 requests: Arc::clone(&factory_requests),
                 tool_name: "task_tracker",

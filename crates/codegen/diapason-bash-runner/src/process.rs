@@ -192,21 +192,70 @@ impl ProcessHandle {
 
     /// Attempts to kill the child and abort helper tasks.
     ///
+    /// Best-effort wrapper around [`Self::try_terminate`]. A termination fault
+    /// is reported to standard error using this module's `[diapason]` logging
+    /// convention and then swallowed, because `terminate()` is infallible for
+    /// its existing callers. The crate has no logging dependency, so the
+    /// swallow is deliberate and documented here rather than delegated to a
+    /// logger.
+    ///
     /// This is idempotent and safe to call multiple times.
     pub fn terminate(&self) {
-        self.terminate_internal();
+        if let Err(error) = self.try_terminate() {
+            eprintln!(
+                "[diapason] failed to terminate process (exited={}, exit_code={:?}): {error}",
+                self.has_exited(),
+                self.exit_code()
+            );
+        }
     }
 
-    /// Internal termination that aborts all tasks.
-    fn terminate_internal(&self) {
-        // Kill the child process
-        if let Ok(mut killer_opt) = self.killer.lock()
-            && let Some(mut killer) = killer_opt.take()
-        {
-            let _ = killer.kill();
-        }
-
+    /// Terminates the child process, aborting its helper tasks once it is gone,
+    /// and reports a kill fault.
+    ///
+    /// The killer is taken out of its lock so that termination cannot race a
+    /// second call. If the child was already terminated, or a previous call
+    /// already consumed the killer, this returns `Ok(())` exactly as the
+    /// best-effort path did. A kill that reports the child is already gone is
+    /// also success: the terminal state is what the caller asked for.
+    ///
+    /// A failed [`ChildTerminator::kill`] restores the killer and returns the
+    /// error without aborting the helper tasks, so a caller that keeps a handle
+    /// (for example a session record) can retry instead of stranding a process
+    /// it can no longer signal. The helpers stay running on that path because a
+    /// failed kill says nothing about the child: the wait task must still record
+    /// a later exit, and the reader and writer must still drain its streams.
+    /// Helper tasks are aborted only once termination succeeds or the child is
+    /// confirmed already gone.
+    ///
+    /// This is idempotent: once the child has been terminated, later calls
+    /// observe an absent killer and succeed without signalling again.
+    pub fn try_terminate(&self) -> io::Result<()> {
+        self.kill_child()?;
         self.abort_tasks();
+        Ok(())
+    }
+
+    /// Signals the child, restoring the killer if signalling fails.
+    fn kill_child(&self) -> io::Result<()> {
+        let mut killer_opt = self.killer.lock().unwrap_or_else(|error| error.into_inner());
+        let Some(mut killer) = killer_opt.take() else {
+            return Ok(());
+        };
+
+        match killer.kill() {
+            Ok(()) => Ok(()),
+            Err(error) if is_already_gone(&error) => Ok(()),
+            Err(error) => {
+                // Restore the killer so a later retry can still reach the
+                // child. A failed signal must not leave an unrecorded process
+                // alive with no handle left to terminate it.
+                if killer_opt.is_none() {
+                    *killer_opt = Some(killer);
+                }
+                Err(error)
+            }
+        }
     }
 
     /// Abort all background tasks associated with this process.
@@ -257,6 +306,32 @@ impl ProcessHandle {
     #[inline]
     pub fn is_writer_closed(&self) -> bool {
         self.writer_tx.is_closed()
+    }
+}
+
+/// Reports whether a kill failed because the child is already gone.
+///
+/// `killpg` reports `ESRCH` when the target group no longer exists. Current
+/// toolchains classify that number as `ErrorKind::Uncategorized` rather than
+/// `NotFound`, so the raw OS error is matched explicitly on Unix. A missing
+/// child is the terminal state termination asks for, not a fault.
+///
+/// `ErrorKind::NotFound` is deliberately not treated as absence. On Windows
+/// that kind is how `Command::status` reports that the `taskkill` executable
+/// itself could not be found, before anything signalled the child; reading it
+/// as "already gone" would consume the killer, abort the helper tasks and
+/// report a termination that never happened. Each backend that can prove the
+/// target absent reports that proof itself, as the Windows `kill_process`
+/// does after a failed `taskkill` and as the Unix `ESRCH` check does here.
+fn is_already_gone(error: &io::Error) -> bool {
+    #[cfg(unix)]
+    {
+        error.raw_os_error() == Some(libc::ESRCH)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = error;
+        false
     }
 }
 
@@ -429,67 +504,4 @@ pub type ExecCommandSession = ProcessHandle;
 pub type SpawnedPty = SpawnedProcess;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    struct NoopTerminator;
-    impl ChildTerminator for NoopTerminator {
-        fn kill(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
-    #[tokio::test]
-    async fn test_process_handle_debug() {
-        // Just verify Debug impl doesn't panic
-        let exit_status = Arc::new(AtomicBool::new(false));
-        let exit_code = Arc::new(StdMutex::new(None));
-
-        let (writer_tx, _) = mpsc::channel(1);
-        let (output_tx, initial_rx) = broadcast::channel(1);
-
-        let (handle, _) = ProcessHandle::new(
-            writer_tx,
-            output_tx,
-            initial_rx,
-            Box::new(NoopTerminator),
-            tokio::spawn(async {}),
-            vec![],
-            tokio::spawn(async {}),
-            tokio::spawn(async {}),
-            exit_status,
-            exit_code,
-            None,
-        );
-
-        let debug_str = format!("{handle:?}");
-        assert!(debug_str.contains("ProcessHandle"));
-    }
-
-    #[tokio::test]
-    async fn test_has_exited() {
-        let exit_status = Arc::new(AtomicBool::new(false));
-        let exit_code = Arc::new(StdMutex::new(None));
-
-        let (writer_tx, _) = mpsc::channel(1);
-        let (output_tx, initial_rx) = broadcast::channel(1);
-
-        let (handle, _) = ProcessHandle::new(
-            writer_tx,
-            output_tx,
-            initial_rx,
-            Box::new(NoopTerminator),
-            tokio::spawn(async {}),
-            vec![],
-            tokio::spawn(async {}),
-            tokio::spawn(async {}),
-            Arc::clone(&exit_status),
-            exit_code,
-            None,
-        );
-
-        assert!(!handle.has_exited());
-        exit_status.store(true, Ordering::SeqCst);
-        assert!(handle.has_exited());
-    }
-}
+mod tests;

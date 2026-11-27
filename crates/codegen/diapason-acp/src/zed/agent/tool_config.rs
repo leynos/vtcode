@@ -15,6 +15,16 @@ use std::path::{Path, PathBuf};
 use super::super::constants::*;
 use super::super::types::{RunTerminalMode, SessionHandle, ToolRuntime};
 
+/// Reports whether one local tool may be offered to the model.
+///
+/// Subagent tools are advertised only when the session owns a controller. The
+/// workspace catalogue can hold them because the launch workspace has its own
+/// controller, which is exactly the fallback a session without one must not
+/// inherit.
+pub(super) fn subagent_tool_is_advertised(controller_attached: bool, tool_name: &str) -> bool {
+    controller_attached || !diapason_core::subagents::is_subagent_tool(tool_name)
+}
+
 fn is_acp_session_tool(tool_name: &str) -> bool {
     // Task tracking belongs to the ACP session rather than to a selected
     // primary agent's filesystem/tool policy. Runtime permission and safety
@@ -43,6 +53,22 @@ impl ZedAgent {
         enabled_tools: &[SupportedTool],
         primary_agent: &str,
     ) -> Option<Vec<ToolDefinition>> {
+        self.tool_definitions_with_subagent_gate(provider_supports_tools, enabled_tools, primary_agent, true)
+    }
+
+    /// Builds the definitions advertised while subagent tools are gated.
+    ///
+    /// The catalogue can hold subagent tools because the launch workspace has a
+    /// controller of its own. A session without a workspace runtime advertises
+    /// from that catalogue, so it must apply the same controller gate the
+    /// runtime-backed path does; the runtime-enabled tool set is left unchanged.
+    fn tool_definitions_with_subagent_gate(
+        &self,
+        provider_supports_tools: bool,
+        enabled_tools: &[SupportedTool],
+        primary_agent: &str,
+        subagent_tools_advertised: bool,
+    ) -> Option<Vec<ToolDefinition>> {
         if !provider_supports_tools {
             return None;
         }
@@ -55,10 +81,11 @@ impl ZedAgent {
             Some(
                 self.acp_tool_registry
                     .definitions_for_filtered(enabled_tools, include_local, |tool_name| {
-                        is_acp_session_tool(tool_name)
-                            || self
-                                .primary_agents
-                                .allows_tool(primary_agent, tool_name, workspace_root.as_path())
+                        subagent_tool_is_advertised(subagent_tools_advertised, tool_name)
+                            && (is_acp_session_tool(tool_name)
+                                || self
+                                    .primary_agents
+                                    .allows_tool(primary_agent, tool_name, workspace_root.as_path()))
                     }),
             )
         }
@@ -93,7 +120,18 @@ impl ZedAgent {
             .workspace_runtime()
             .context("reading ACP session workspace runtime for tool definitions")?
         else {
-            return Ok(self.tool_definitions(provider_supports_tools, enabled_tools, primary_agent));
+            // This session advertises from the launch catalogue, so it must
+            // gate subagent tools on the controller it actually resolves (the
+            // launch fallback here) rather than inheriting them from the
+            // catalogue.
+            let subagent_tools_advertised =
+                provider_supports_tools && self.session_subagent_controller(session)?.is_some();
+            return Ok(self.tool_definitions_with_subagent_gate(
+                provider_supports_tools,
+                enabled_tools,
+                primary_agent,
+                subagent_tools_advertised,
+            ));
         };
         if !provider_supports_tools {
             return Ok(None);
@@ -102,14 +140,20 @@ impl ZedAgent {
         if enabled_tools.is_empty() && !include_local {
             return Ok(None);
         }
+        // A subagent tool is offered from the session's own controller, never
+        // from the cached workspace catalogue: the executor admits those calls
+        // against the same controller, so advertising one the session cannot
+        // own would hand the model a call that is settled as a failure.
+        let subagent_tools_advertised = self.session_subagent_controller(session)?.is_some();
         Ok(Some(runtime.acp_tool_registry.definitions_for_filtered(
             enabled_tools,
             include_local,
             |tool_name| {
-                is_acp_session_tool(tool_name)
-                    || runtime
-                        .primary_agents
-                        .allows_tool(primary_agent, tool_name, &runtime.workspace_root)
+                subagent_tool_is_advertised(subagent_tools_advertised, tool_name)
+                    && (is_acp_session_tool(tool_name)
+                        || runtime
+                            .primary_agents
+                            .allows_tool(primary_agent, tool_name, &runtime.workspace_root))
             },
         )))
     }

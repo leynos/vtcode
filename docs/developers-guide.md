@@ -215,3 +215,49 @@ Related design records and protocol references:
 - [ACP PR convergence ExecPlan](./execplans/review-acp-pr13-convergence-20260908.md)
 - [Zed ACP guide](./guides/zed-acp.md)
 - [Tool specifications](./tools/TOOL_SPECS.md)
+
+## ACP and Lody runtime
+
+The [ACP runtime](./development/acp-runtime.md) guide describes the developer
+surface behind the Zed integration:
+
+- session-scoped subagent controller resolution, ownership, and descendant
+  routing;
+- lifecycle projection into standard ACP `session/update` messages;
+- the `_lody/subagents/list`, `_lody/subagents/cancel`, and
+  `_lody/subagents/output` management RPCs;
+- `_lody/session/usage_update` publication; and
+- the `supports_stream_usage` custom-provider opt-in.
+
+The user-facing capability and extension contract is in the
+[Zed ACP guide](./guides/zed-acp.md#acp-capability-negotiation-and-lody-extensions).
+
+### Controller locks and background ledger
+
+`SubagentLockScope` owns the two locks a controller tree shares: an adoption
+mutex that serializes subtree grafting and child-id allocation, and a
+persistence mutex that serializes background-ledger saves.
+`SubagentControllerConfig.lock_scope: Option<Arc<SubagentLockScope>>` selects
+the scope. `None` resolves to `default_lock_scope()`, one process-global
+instance, so controllers built without a scope still exclude each other across
+the process. A nested child controller starts with `None` and then calls
+`inherit_lock_scope` to join its parent's scope. An injected scope is
+deliberately isolated: grafting a controller bound to a different scope is
+rejected rather than merged into one tree.
+
+A ledger save also takes an advisory inter-process lock on
+`.diapason/state/background_subagents.lock` (under the configured workspace
+directory) and holds it across the reload, merge and write. Acquisition retries
+a non-blocking `flock` with async backoff from 5 ms, doubling to 250 ms, under
+a 10 s deadline. On expiry the save fails with a contextual error and writes
+nothing; see `subagents/background_lock.rs`.
+
+Background record ids are owner-scoped. `background_record_id_for_owner` appends
+`@<owner>` to `background-<agent>` and percent-encodes every owner byte outside
+`[A-Za-z0-9_-]` as uppercase `%XX`, so distinct owners cannot collide. An
+absent or empty owner keeps the unscoped id. A save merges rather than
+replaces: records join on their canonical id, the copy with the newest
+`updated_at` wins, a record only one side holds is kept, and an owner-scoped
+save removes the records its session no longer tracks. A persisted cancellation
+of an exec session outranks a later refresh of the same launch, so a stale copy
+cannot resurrect a stopped task.

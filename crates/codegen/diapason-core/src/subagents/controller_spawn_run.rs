@@ -6,11 +6,11 @@
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::Utc;
 use futures::future::{BoxFuture, select_all};
-use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::collections::{BTreeMap, VecDeque};
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use tokio::sync::{Notify, RwLock};
 
 use crate::config::DiapasonConfig;
@@ -32,6 +32,10 @@ use self::constants::*;
 use self::discovery::discover_controller_subagents;
 use self::model::*;
 use diapason_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
+
+use super::TaskOwner;
+pub(super) use super::controller_child_ids::ChildIdScopeSlot;
+use super::controller_persistence::{persist_background_records, record_committed_owner_ids, removable_owner_ids};
 
 #[allow(
     unused_imports,
@@ -166,8 +170,12 @@ impl SubagentController {
     }
 
     /// Sends additional input to a running or queued subagent.
-    pub async fn send_input(&self, request: SendInputRequest) -> Result<SubagentStatusEntry> {
-        self.ensure_child_owned_by_invocation(&request.target).await?;
+    ///
+    /// `owner` is the authority the caller presents: a session may address
+    /// only a task inside its own delegation tree, while the workspace
+    /// operator may address any task the controller holds.
+    pub async fn send_input(&self, owner: TaskOwner<'_>, request: SendInputRequest) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned(owner, &request.target).await?;
         let prompt = request_prompt(&request.message, &request.items)
             .ok_or_else(|| anyhow!("send_input requires a message or items"))?;
 
@@ -178,9 +186,18 @@ impl SubagentController {
                 .get_mut(&request.target)
                 .ok_or_else(|| anyhow!("Unknown subagent id {}", request.target))?;
 
-            if record.status == SubagentStatus::Closed {
+            // An explicit close outlives the terminal outcome. Closing a
+            // settled child keeps its `Completed`/`Failed` status so a
+            // transport does not project success as failure, so the status
+            // alone cannot tell a closed task from one that merely finished.
+            // `reopen_single` clears this flag.
+            if record.status == SubagentStatus::Closed || record.closed {
                 bail!("Subagent {} is closed", request.target);
             }
+            // Refuse before queuing input that would restart the child: the
+            // restart below must not run an isolated task in the parent
+            // workspace.
+            ensure_resume_worktree(record, &request.target)?;
 
             record.updated_at = Utc::now();
             record.last_prompt = Some(prompt.clone());
@@ -193,7 +210,16 @@ impl SubagentController {
                 record.queued_prompts.clear();
                 record.queued_prompts.push_back(prompt.clone());
                 true
-            } else if matches!(record.status, SubagentStatus::Running | SubagentStatus::Queued) {
+            } else if matches!(
+                record.status,
+                SubagentStatus::Running | SubagentStatus::Queued | SubagentStatus::Waiting
+            ) {
+                // Input that does not ask to interrupt a run only queues. A
+                // record already `Waiting` is the same live loop it was on the
+                // first call: the prompt is added behind the queued one and the
+                // loop is left for its next dequeue. Restarting here would set
+                // `Queued` and relaunch, and the launch would abort the very
+                // loop that is about to run both prompts.
                 record.status = SubagentStatus::Waiting;
                 record.queued_prompts.push_back(prompt.clone());
                 false
@@ -219,8 +245,12 @@ impl SubagentController {
     /// their prompts. Cascades recursively through child-scoped controllers so
     /// grandchildren closed by `close_tree` are resumed too, not merely
     /// un-gated.
-    pub async fn resume(&self, target: &str) -> Result<SubagentStatusEntry> {
-        self.ensure_child_owned_by_invocation(target).await?;
+    ///
+    /// `owner` is the authority the caller presents: a session may resume only
+    /// a task inside its own delegation tree, while the workspace operator may
+    /// resume any task the controller holds.
+    pub async fn resume(&self, owner: TaskOwner<'_>, target: &str) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned(owner, target).await?;
         self.resume_tree(target).await
     }
 
@@ -234,6 +264,12 @@ impl SubagentController {
                 bail!("Subagent controller is shutting down; cannot resume subagents");
             }
             let subtree_ids = self_owned.collect_spawn_subtree_ids(&target_owned).await?;
+            // Every record the local subtree would reopen is checked before any
+            // of them changes. A descendant whose isolation worktree has been
+            // reclaimed otherwise fails after the root is already `Queued`: the
+            // error leaves a prompt queued with no loop behind it, and a retry
+            // skips the root because reopening a `Queued` record is a no-op.
+            self_owned.ensure_subtree_worktrees(&subtree_ids).await?;
             let mut restart_ids = Vec::new();
             for node_id in subtree_ids.iter() {
                 if self_owned.reopen_single(node_id.as_str()).await? {
@@ -268,8 +304,12 @@ impl SubagentController {
     }
 
     /// Closes a subagent and all its descendants, aborting any in-flight work.
-    pub async fn close(&self, target: &str) -> Result<SubagentStatusEntry> {
-        self.ensure_child_owned_by_invocation(target).await?;
+    ///
+    /// `owner` is the authority the caller presents: a session may close only
+    /// a task inside its own delegation tree, while the workspace operator may
+    /// close any task the controller holds.
+    pub async fn close(&self, owner: TaskOwner<'_>, target: &str) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned(owner, target).await?;
         // `close_tree` walks the full nesting tree (including grandchildren
         // spawned through child-scoped controllers) and closes bottom-up.
         self.close_tree(target).await
@@ -336,9 +376,20 @@ impl SubagentController {
     }
 
     /// Blocks until one of the target subagents reaches a terminal state or the timeout expires.
-    pub async fn wait(&self, targets: &[String], timeout_ms: Option<u64>) -> Result<Option<SubagentStatusEntry>> {
+    ///
+    /// `owner` is the authority the caller presents: a session may wait on only
+    /// a task inside its own delegation tree, while the workspace operator may
+    /// wait on any task the controller holds. Every target is checked before
+    /// the wait begins, so a session's foreign or absent target is refused
+    /// rather than silently treated as one that never becomes terminal.
+    pub async fn wait(
+        &self,
+        owner: TaskOwner<'_>,
+        targets: &[String],
+        timeout_ms: Option<u64>,
+    ) -> Result<Option<SubagentStatusEntry>> {
         for target in targets {
-            self.ensure_child_owned_by_invocation(target).await?;
+            self.ensure_child_owned(owner, target).await?;
         }
         if let Some(entry) = self.first_terminal_wait_target(targets).await {
             return Ok(Some(entry));
@@ -381,16 +432,24 @@ impl SubagentController {
             return ChildWaitOutcome::TimedOut;
         }
 
-        // Register notified() futures before rechecking status. Merely
-        // constructing a Notified future does not register it; enable() is
-        // needed because notify_waiters() does not retain a permit for futures
-        // that have not yet been polled.
+        // Create the notified() futures before rechecking status. Tokio delivers
+        // notify_waiters() to a Notified future that existed when the call was
+        // made, even if it has not been polled yet: construction captures the
+        // notification counter, and polling compares against it. Creating the
+        // futures first is therefore what makes a status change between the
+        // recheck and the select observable; enable() is only an optimization
+        // for directed notifications and is not what provides this guarantee.
         let wait_any = select_all(register_notify_waiters(&notifies));
         tokio::pin!(wait_any);
 
         if let Some(entry) = self.first_terminal_wait_target(targets).await {
             return ChildWaitOutcome::Terminal(Box::new(entry));
         }
+        // A test parks the waiter here, once its notification futures exist and
+        // its status recheck is complete. A completion signalled after this
+        // point can therefore only reach it through those futures.
+        #[cfg(test)]
+        wait_checkpoints::pass(&self.state).await;
 
         let sleep = tokio::time::sleep_until(deadline);
         tokio::pin!(sleep);
@@ -401,8 +460,12 @@ impl SubagentController {
     }
 
     /// Returns the current status of a tracked subagent by its target id.
-    pub async fn status_for(&self, target: &str) -> Result<SubagentStatusEntry> {
-        self.ensure_child_owned_by_invocation(target).await?;
+    ///
+    /// `owner` is the authority the caller presents: a session may read only a
+    /// task inside its own delegation tree, while the workspace operator may
+    /// read any task the controller holds.
+    pub async fn status_for(&self, owner: TaskOwner<'_>, target: &str) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned(owner, target).await?;
         self.status_for_unchecked(target).await
     }
 
@@ -461,6 +524,25 @@ impl SubagentController {
             .collect()
     }
 
+    /// Refuses a resume that cannot start every record in its local subtree.
+    ///
+    /// The worktree check `reopen_single` applies to the record it is about to
+    /// reopen is repeated here for the whole subtree, under one state lock and
+    /// before any record changes. A resume is a single request: validating one
+    /// record at a time would let an earlier record be reopened and queued
+    /// before a later one is rejected, leaving work nothing is running.
+    async fn ensure_subtree_worktrees(&self, subtree_ids: &[String]) -> Result<()> {
+        let state = self.state.write().await;
+        for node_id in subtree_ids {
+            let record = state
+                .children
+                .get(node_id)
+                .ok_or_else(|| anyhow!("Unknown subagent id {node_id}"))?;
+            ensure_resume_worktree(record, node_id)?;
+        }
+        Ok(())
+    }
+
     pub(super) async fn reopen_single(&self, target: &str) -> Result<bool> {
         let child_controller = {
             let mut state = self.state.write().await;
@@ -468,9 +550,13 @@ impl SubagentController {
                 .children
                 .get_mut(target)
                 .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
+            ensure_resume_worktree(record, target)?;
             if matches!(record.status, SubagentStatus::Running | SubagentStatus::Queued) {
                 return Ok(false);
             }
+            // Reopening releases the explicit closure, so input can reach the
+            // task again even if its last outcome was terminal.
+            record.closed = false;
             let prompt = record
                 .last_prompt
                 .clone()
@@ -498,11 +584,41 @@ impl SubagentController {
             .children
             .get_mut(target)
             .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
-        if record.status == SubagentStatus::Closed {
-            return Ok(record.build_status_entry());
-        }
-        if let Some(handle) = record.handle.take() {
+        // The task is aborted before the status guard. A terminal status is
+        // written before the child loop finishes: it still has to run the stop
+        // hook and its completion bookkeeping, and the stored handle is only
+        // cleared once the loop goes idle. Closing a child during that window
+        // must still stop the task, or it would go on to close its nested
+        // subagents and reconcile its worktree after being cancelled. Aborting
+        // a finished handle is a no-op, so the settled outcome is untouched.
+        let aborted_live_handle = record.handle.take();
+        if let Some(handle) = aborted_live_handle.as_ref() {
             handle.abort();
+        }
+        // Record the explicit closure before the terminal short-circuit below.
+        // A settled `Completed`/`Failed` child keeps its outcome, so this flag
+        // is what still makes `send_input` refuse it until the subtree is
+        // reopened.
+        record.closed = true;
+        // Cancellation must not rewrite a settled outcome. `Completed` and
+        // `Failed` children already stopped running, and a transport projects
+        // `Closed` as a failure, so closing them again would turn a
+        // successful task into a visibly failed one and overwrite its
+        // completion timestamp.
+        if record.status.is_terminal() {
+            // A child records its terminal status before it awaits the
+            // publication of that outcome, so the abort above may have stopped
+            // the only publisher. The outcome is already recorded and the
+            // caller of `close` does not consume it (the ACP caller discards
+            // the returned entry), so publish it here once the state lock is
+            // released rather than leave observers showing a running task.
+            let entry = record.build_status_entry();
+            let owes_publication = aborted_live_handle.is_some();
+            drop(state);
+            if owes_publication {
+                self.publish_subagent_progress(entry.clone()).await;
+            }
+            return Ok(entry);
         }
         record.status = SubagentStatus::Closed;
         record.updated_at = Utc::now();
@@ -581,20 +697,100 @@ impl SubagentController {
         }
     }
 
+    /// Persists this controller's background records into the shared ledger.
+    ///
+    /// The sidecar file lock is acquired before the in-process persistence
+    /// mutex, and both are held until the write completes. The file lock is
+    /// outer so another process holding it cannot make this save hold the
+    /// process-wide mutex for the whole acquisition deadline, stalling every
+    /// other controller tree's save; every save takes the two locks in this
+    /// order, so they cannot deadlock. The snapshot is read only after both
+    /// guards, so two saves cannot snapshot v1 and v2 and then write v2 before
+    /// v1, leaving the older snapshot as the file.
+    ///
+    /// Only records this controller has already committed may be removed from
+    /// the ledger. A record another live controller of the same owner persisted
+    /// after this snapshot is kept, because this controller never committed its
+    /// id and so has no authority to delete it. This controller also never
+    /// omits an id it did commit: its `background_children` only gains entries,
+    /// so a newer launch another controller writes under a committed id stays
+    /// in the snapshot and survives the merge. See
+    /// `merge_background_records` for that invariant.
     pub(super) async fn save_background_state(&self) -> Result<()> {
         if self.shutdown_requested.load(Ordering::Relaxed) {
             return Ok(());
         }
-        let records = {
-            let state = self.state.read().await;
-            state
-                .background_children
-                .values()
-                .cloned()
-                .map(BackgroundRecord::into_persisted)
-                .collect()
-        };
-        persist_background_state(&self.config.workspace_root, records).await
+        if self.config.managed_background_runtime {
+            // Nested scopes never own background records. Persisting their
+            // always-empty view would erase the ledger owned by the root
+            // controller.
+            return Ok(());
+        }
+        let lock_scope = Arc::clone(&self.lock_scope);
+        let state = Arc::clone(&self.state);
+        let workspace_root = self.config.workspace_root.clone();
+        let owner_session_id = self.background_owner_session_id.clone();
+        // Both guards live in the persistence task. Cancelling this caller
+        // only detaches that task, so neither lock is released until the
+        // reload, merge, write and rename have finished; dropping them here
+        // instead would let a second writer start from the same stale ledger
+        // while this write was still in flight.
+        tokio::spawn(async move {
+            // The in-process mutex cannot serialize another Diapason process
+            // that shares this workspace, so the ledger's inter-process lock is
+            // taken first and held across the reload, merge and write. Taking
+            // the persistence mutex first would hold it while this save waits
+            // out another process's file lock.
+            let _ledger_guard = lock_background_state(&workspace_root).await?;
+            let _persistence_guard = lock_scope.persistence().lock().await;
+            let (mut records, expected_stops, removable) = {
+                let guard = state.read().await;
+                let records = guard
+                    .background_children
+                    .values()
+                    .cloned()
+                    .map(BackgroundRecord::into_persisted)
+                    .collect::<Vec<_>>();
+                // A stop only governs the launch it names. The expectation is
+                // read from the in-memory records, whose fields this module can
+                // see, and keyed by the canonical id the merge will use, so a
+                // stopped copy whose exec session has since been replaced in
+                // the ledger keeps that replacement.
+                let expected_stops = guard
+                    .background_children
+                    .values()
+                    .filter(|record| !record.desired_enabled)
+                    .map(|record| {
+                        (
+                            background_record_id_for_owner(
+                                record.agent_name.as_str(),
+                                record.owner_session_id.as_deref(),
+                            ),
+                            record.exec_session_id.clone(),
+                        )
+                    })
+                    .collect::<BTreeMap<_, _>>();
+                (records, expected_stops, removable_owner_ids(&state))
+            };
+            // The merge rekeys legacy ids, so authority to remove a record must
+            // name the same canonical id the retained record carries.
+            for record in &mut records {
+                record.canonicalize_id();
+            }
+            let committed_ids = records.iter().map(|record| record.id.clone()).collect::<Vec<_>>();
+            persist_background_records(
+                &workspace_root,
+                owner_session_id.as_deref(),
+                records,
+                &removable,
+                &expected_stops,
+            )
+            .await?;
+            record_committed_owner_ids(&state, committed_ids);
+            Ok(())
+        })
+        .await
+        .context("Failed to join the background state persistence task")?
     }
 
     pub(super) async fn find_spec(&self, candidate: &str) -> Option<SubagentSpec> {
@@ -731,17 +927,40 @@ impl SubagentController {
             let worktree_path = self.create_spawn_worktree(&launch.spec).await?;
             let worktree_path_for_cleanup = worktree_path.clone();
             let child = self.prepare_queued_child(launch, worktree_path, runtime);
-            let id = child.id.clone();
-            if let Err(error) = Box::pin(self.insert_queued_child(child)).await {
-                // The record never became visible, so nothing owns the
-                // worktree; reclaim it rather than leaking the checkout.
-                if let Some(worktree_path) = worktree_path_for_cleanup.as_deref() {
-                    self.remove_unused_spawn_worktree(worktree_path).await;
+            // The stored id is authoritative: insertion may have to
+            // disambiguate it against a child registered in the same
+            // millisecond, so launching the pre-insertion id would address the
+            // wrong record, or none at all.
+            let id = match Box::pin(self.insert_queued_child(child)).await {
+                Ok(id) => id,
+                Err(error) => {
+                    // The record never became visible, so nothing owns the
+                    // worktree; reclaim it rather than leaking the checkout.
+                    if let Some(worktree_path) = worktree_path_for_cleanup.as_deref() {
+                        self.remove_unused_spawn_worktree(worktree_path).await;
+                    }
+                    return Err(error);
+                }
+            };
+            if let Err(error) = self.launch_child(&id).await {
+                // The record is visible but was never started: a close that
+                // landed between the insertion and the launch settled it, and
+                // the launcher refused to resurrect it. Nothing will run in the
+                // checkout this spawn created then, so reclaim it rather than
+                // leak it — but only while the record still shows that closure.
+                // A resume can reopen the record in the same window, and its
+                // run must keep the checkout.
+                if let Some(worktree_path) = self
+                    .take_unstarted_spawn_worktree(&id, worktree_path_for_cleanup.as_deref())
+                    .await
+                {
+                    self.remove_unused_spawn_worktree(worktree_path.as_path()).await;
                 }
                 return Err(error);
             }
-            self.launch_child(&id).await?;
-            self.status_for(&id).await
+            // The record was inserted by this call, so no ownership check
+            // applies to reading it back.
+            self.status_for_unchecked(&id).await
         })
     }
 
@@ -786,11 +1005,57 @@ impl SubagentController {
         }
     }
 
+    /// Takes the checkout this launch still owns after its launch was refused.
+    ///
+    /// A launch that fails after its record became visible leaves a checkout no
+    /// run will use, so the caller reclaims it. The record is only the launch's
+    /// own while it is still the record this spawn inserted, still settled,
+    /// still carries the path this spawn created and has never had a run
+    /// start in it: a close settles the record but leaves it in place, so a
+    /// resume that reopened it between the insertion and the refusal has
+    /// already claimed the checkout for the resumed run. Reclaiming it then
+    /// would remove the directory out from under that run.
+    ///
+    /// The status alone is not enough. A resumed run that starts, executes and
+    /// settles before this cleanup is reached is terminal again, and looks
+    /// exactly like a record nothing ever ran in; removing the checkout then
+    /// deletes a directory that run's archive and transcript describe. The
+    /// claim counter the run bumps as it begins is what separates the two.
+    ///
+    /// Anything that does not match this launch's record is left untouched, and
+    /// only an exact match is taken and cleared. The check runs under the state
+    /// lock, so no run can begin between it and the path being cleared.
+    ///
+    /// The path is cleared as it is taken, so a later resume cannot be handed a
+    /// directory that is about to be removed.
+    async fn take_unstarted_spawn_worktree(&self, id: &str, created: Option<&Path>) -> Option<PathBuf> {
+        let created = created?;
+        let mut state = self.state.write().await;
+        let record = state.children.get_mut(id)?;
+        // The refusal is only this launch's to clean up while the record is
+        // still settled. A resume reopens it into `Queued` and, once it starts,
+        // `Running`: either state means the resumed run has claimed the
+        // checkout and is about to execute in it.
+        if !record.status.is_terminal() {
+            return None;
+        }
+        // A run has started in the checkout, so it is no longer unused even
+        // though the record is terminal again.
+        if record.worktree_claim > 0 {
+            return None;
+        }
+        let path = record.worktree_path.as_ref()?;
+        if path.as_path() != created {
+            return None;
+        }
+        record.worktree_path.take()
+    }
+
     /// Best-effort removal of a worktree whose child record was never registered.
     ///
     /// Cleanup failures are logged rather than propagated so they cannot mask
     /// the registration error that caused the rollback.
-    async fn remove_unused_spawn_worktree(&self, worktree_path: &std::path::Path) {
+    async fn remove_unused_spawn_worktree(&self, worktree_path: &Path) {
         let Some(name) = worktree_path.file_name().and_then(|name| name.to_str()).map(str::to_owned) else {
             tracing::warn!(
                 path = %worktree_path.display(),
@@ -905,12 +1170,27 @@ impl SubagentController {
             handle: None,
             notify,
             worktree_path,
+            // No run has started in the checkout this spawn created, which is
+            // what lets a refused launch reclaim it.
+            worktree_claim: 0,
             child_controller: None,
+            closed: false,
         };
         QueuedChildRecord { id, record }
     }
 
-    async fn insert_queued_child(&self, child: QueuedChildRecord) -> Result<()> {
+    /// Inserts a prepared child and returns the id it was stored under.
+    ///
+    /// Generated ids carry millisecond precision, so two spawns of the same
+    /// kind in one millisecond propose the same id, and the colliding pair need
+    /// not even belong to the same controller: a session exposes its whole
+    /// controller tree and routes an id to the first match. `BTreeMap::insert`
+    /// would replace the earlier record, silently dropping a subagent that has
+    /// already been admitted and may already own a worktree. Allocating the
+    /// unique id inside the write lock, against the tree-wide scope, is what
+    /// makes the check race-free, so the record's id and session id are both
+    /// rewritten before insertion.
+    async fn insert_queued_child(&self, mut child: QueuedChildRecord) -> Result<String> {
         let mut state = self.state.write().await;
         // Re-check the close gates while the write lock is held. The earlier
         // check can race with a concurrent `close_tree` that snapshots and
@@ -919,8 +1199,43 @@ impl SubagentController {
         if self.shutdown_requested.load(Ordering::Relaxed) || self.closing.load(Ordering::Relaxed) {
             bail!("Subagent controller is shutting down; cannot spawn new subagents");
         }
+        // The scope's read guard stays held for the allocation, so joining a
+        // controller to another tree cannot swap the allocator out from under
+        // an id that is being reserved here.
+        let unique_id = self
+            .child_id_slot()
+            .with_scope(|scope| scope.allocate(|id| state.children.contains_key(id), child.id.as_str()));
+        if unique_id != child.id {
+            child.record.session_id = format!(
+                "{}-{}",
+                sanitize_component(child.record.parent_thread_id.as_str()),
+                sanitize_component(unique_id.as_str())
+            );
+            child.record.id = unique_id.clone();
+            child.id = unique_id;
+        }
+        let id = child.id.clone();
         state.children.insert(child.id, child.record);
-        Ok(())
+        Ok(id)
+    }
+
+    /// Inserts a prepared record under a caller-chosen candidate id.
+    ///
+    /// Test seam only: a real spawn derives its id from the agent kind and a
+    /// millisecond clock, so two controllers can only be forced to propose the
+    /// same id by supplying the candidate directly. Everything else about the
+    /// insertion — the close-gate recheck, the tree-wide allocation, and the
+    /// returned id — is the production path.
+    #[cfg(test)]
+    pub(super) async fn insert_child_with_candidate_id(
+        &self,
+        candidate_id: &str,
+        record: ChildRecord,
+    ) -> Result<String> {
+        // The insertion future carries the whole record, and a test future that
+        // large trips `clippy::large_futures`; boxing it here keeps the seam's
+        // own future small without changing the production path.
+        Box::pin(self.insert_queued_child(QueuedChildRecord { id: candidate_id.to_owned(), record })).await
     }
 
     async fn restart_child(&self, target: &str) -> Result<()> {
@@ -930,6 +1245,9 @@ impl SubagentController {
                 .children
                 .get_mut(target)
                 .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
+            // `send_input` restarts a settled record without passing through
+            // `reopen_single`, so the isolation check must be repeated here.
+            ensure_resume_worktree(record, target)?;
             if record.queued_prompts.is_empty()
                 && let Some(prompt) = record.last_prompt.clone()
             {
@@ -944,6 +1262,32 @@ impl SubagentController {
     }
 }
 
+/// Refuses to run a child whose isolation worktree has disappeared.
+///
+/// A child whose spec requests `IsolationMode::Worktree` must run inside the
+/// checkout created for it. The checkout can disappear while the record is
+/// settled: a launch refused after insertion reclaims it, and an operator may
+/// remove it. Any run started without it would execute outside the isolation
+/// its spec demands and outside the scope its archive was recorded in, so the
+/// run fails closed instead of falling back to the parent workspace.
+///
+/// The resume, restart and child-run paths all call this one rule, so the three
+/// entry points cannot drift into different answers.
+pub(super) fn ensure_isolation_worktree(spec: &SubagentSpec, worktree_path: Option<&Path>, target: &str) -> Result<()> {
+    if spec.isolation == Some(diapason_config::IsolationMode::Worktree) && worktree_path.is_none() {
+        bail!(
+            "Subagent {target} requests isolation=worktree, but its isolation worktree is gone; \
+             refusing to run it in the parent workspace"
+        );
+    }
+    Ok(())
+}
+
+/// Applies [`ensure_isolation_worktree`] to a tracked child record.
+fn ensure_resume_worktree(record: &ChildRecord, target: &str) -> Result<()> {
+    ensure_isolation_worktree(&record.spec, record.worktree_path.as_deref(), target)
+}
+
 fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync::futures::Notified<'_>>>> {
     let mut waiters = notifies.iter().map(|notify| Box::pin(notify.notified())).collect::<Vec<_>>();
     for waiter in &mut waiters {
@@ -953,21 +1297,11 @@ fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync:
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::Duration;
+pub(super) use self::regression_tests::wait_checkpoints;
 
-    #[tokio::test]
-    async fn registered_waiter_observes_notify_waiters_before_first_wait_poll() {
-        let notify = Arc::new(Notify::new());
-        let notifies = [Arc::clone(&notify)];
-        let waiters = register_notify_waiters(&notifies);
-
-        // notify_waiters() is lossy for futures that have not registered.
-        // Deliver it after enable() but before select_all first polls a waiter.
-        notify.notify_waiters();
-
-        let outcome = tokio::time::timeout(Duration::from_millis(50), select_all(waiters)).await;
-        assert!(outcome.is_ok(), "registered waiter should retain the wakeup");
-    }
-}
+#[cfg(test)]
+mod regression_tests;
+#[cfg(test)]
+mod tests;
+#[cfg(test)]
+mod unstarted_worktree_tests;

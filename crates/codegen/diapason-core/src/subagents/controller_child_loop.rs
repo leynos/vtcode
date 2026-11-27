@@ -32,6 +32,7 @@ use self::config::*;
 use self::constants::*;
 use self::discovery::discover_controller_subagents;
 use self::model::*;
+use super::TaskOwner;
 use super::types::ChildRunRequest;
 use diapason_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
 
@@ -41,7 +42,12 @@ use diapason_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
 )]
 use super::*;
 
-struct ChildExecutionContext {
+/// The inputs one child run executes with, captured as the run begins.
+///
+/// Visible to this module's neighbours because
+/// [`SubagentController::begin_child_run`] returns it, and a regression for the
+/// spawn cleanup drives that same entry point.
+pub(super) struct ChildExecutionContext {
     spec: SubagentSpec,
     session_id: String,
     parent_thread_id: String,
@@ -50,49 +56,6 @@ struct ChildExecutionContext {
     background: bool,
     worktree_path: Option<PathBuf>,
     existing_child_controller: Option<Arc<SubagentController>>,
-}
-
-struct PreparedChildExecution {
-    spec: SubagentSpec,
-    session_id: String,
-    parent_session_id: String,
-    prompt: String,
-    display_label: String,
-    background: bool,
-    bootstrap_messages: Vec<Message>,
-    effective_workspace: PathBuf,
-    allow_nested_delegation: bool,
-    existing_child_controller: Option<Arc<SubagentController>>,
-    child_controller: Option<Arc<SubagentController>>,
-    child_cfg: DiapasonConfig,
-    child_reasoning_effort: ReasoningEffortLevel,
-    archive_metadata: SessionArchiveMetadata,
-    archive: SessionArchive,
-    runner: Pin<Box<AgentRunner>>,
-}
-
-struct ResolvedChildRuntime {
-    effective_workspace: PathBuf,
-    allow_nested_delegation: bool,
-    parent_session_id: String,
-    resolved_model: ModelId,
-    child_reasoning_effort: ReasoningEffortLevel,
-    child_cfg: DiapasonConfig,
-}
-
-struct ChildArchiveRequest<'a> {
-    session_id: &'a str,
-    workspace: &'a Path,
-    config: &'a DiapasonConfig,
-    reasoning_effort: ReasoningEffortLevel,
-    parent_session_id: &'a str,
-    bootstrap_messages: &'a [Message],
-}
-
-struct PreparedChildArchive {
-    metadata: SessionArchiveMetadata,
-    bootstrap: ThreadBootstrap,
-    archive: SessionArchive,
 }
 
 struct SubagentStopHookContext {
@@ -105,23 +68,104 @@ struct SubagentStopHookContext {
     transcript_path: Option<PathBuf>,
 }
 
+/// The id of the live task the record carries, if one is still running.
+///
+/// A finished handle is not a loop: a task that died without settling the
+/// record leaves its handle behind, and a later launch is the recovery for it.
+fn live_handle_id(record: &ChildRecord) -> Option<tokio::task::Id> {
+    record
+        .handle
+        .as_ref()
+        .filter(|handle| !handle.is_finished())
+        .map(|handle| handle.id())
+}
+
 impl SubagentController {
     pub(super) async fn launch_child(&self, child_id: &str) -> Result<()> {
-        // Acquire the lock first to set up the record state, then release it
-        // before spawning the task. This avoids the spawned task immediately
-        // contending on the write lock.
-        {
+        // Publish the queued state first, so an observer sees the position the
+        // run is waiting in before the run can report itself running.
+        let observed_handle = {
             let mut state = self.state.write().await;
             let record = state
                 .children
                 .get_mut(child_id)
                 .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
+            // A record a close already settled must not be resurrected. The
+            // explicit closure outlives a settled `Completed`/`Failed` status,
+            // so starting the task here would undo a cancellation whose caller
+            // was already told it had succeeded.
+            if record.status.is_terminal() {
+                bail!("Subagent {child_id} is closed; refusing to launch it");
+            }
+            // The live handle this launch found when it published the queued
+            // state. A different one at publication is another launch's.
+            // A finished handle is not a loop: a task that died without
+            // settling the record must not block the recovery below.
+            let observed_handle = live_handle_id(record);
+            // A live loop that is running or waiting already owns the record.
+            // An interrupt that arrived before its launch published a handle
+            // leaves the prompt queued, and that loop can dequeue it before this
+            // launch takes the lock. Overwriting `Running` here would erase the
+            // evidence the guards below read, so this launch would abort the
+            // loop that is running the prompt and its replacement would find an
+            // empty queue. The live loop serves the prompt instead.
+            if observed_handle.is_some() && matches!(record.status, SubagentStatus::Running | SubagentStatus::Waiting) {
+                return Ok(());
+            }
             record.status = SubagentStatus::Queued;
             record.updated_at = Utc::now();
-        }
+            observed_handle
+        };
         self.publish_child_status(child_id).await;
+        // A test parks a launch here, after the queued status is published and
+        // before the launch re-acquires the state lock, so a close that lands
+        // in this window must still refuse the start.
+        #[cfg(test)]
+        launch_checkpoints::pass(&self.state).await;
 
-        // Spawn the task after releasing the lock.
+        // Spawn the task and publish its handle in one state-lock section. A
+        // cancel either lands before it — leaving the record closed, which
+        // refuses the launch — or after it, where the handle is already
+        // published and is aborted with the record. Releasing the lock between
+        // the two would let a cancel find no handle and report success while
+        // the launcher started the task anyway.
+        let mut state = self.state.write().await;
+        let (status, current_handle) = {
+            let record = state
+                .children
+                .get(child_id)
+                .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
+            (record.status, live_handle_id(record))
+        };
+        if status.is_terminal() {
+            bail!("Subagent {child_id} was closed before it could start");
+        }
+        // A close and a resume can both land in the window since this launch
+        // published the queued state, and the resume starts a loop of its own.
+        // Replacing a running loop's handle would abort the run in progress and
+        // leave the record with no loop to settle it, so this launch declines:
+        // the resumed loop also dequeues any prompt queued after it.
+        //
+        // `Waiting` is the same loop: input that did not ask to interrupt a run
+        // queues onto it and leaves it waiting for the next prompt, so it is
+        // still live and must not be displaced. `Queued` is deliberately not
+        // included: this launch published that status itself above, so it
+        // cannot distinguish a loop that is coming from one that is only
+        // finishing bookkeeping, and declining for it would strand the prompt
+        // this launch just queued.
+        if matches!(status, SubagentStatus::Running | SubagentStatus::Waiting) && current_handle.is_some() {
+            return Ok(());
+        }
+        // A live handle this launch did not see when it published the queued
+        // state belongs to another launch, such as a resume that has not
+        // dequeued yet; declining leaves that launch to run the queued prompt.
+        if let Some(current) = current_handle
+            && Some(current) != observed_handle
+        {
+            return Ok(());
+        }
+        // The loop's first act is to take this same lock, so the task cannot
+        // dequeue its prompt before its handle is published below.
         let controller = self.clone();
         let target = child_id.to_string();
         let handle = tokio::spawn(async move {
@@ -144,12 +188,15 @@ impl SubagentController {
                 controller.run_worktree_reconciliation(&target, &wt_path, &wt_name).await;
             }
         });
-
-        // Store the handle in the record.
-        let mut state = self.state.write().await;
-        if let Some(record) = state.children.get_mut(child_id) {
-            record.handle = Some(handle);
-        }
+        let record = state
+            .children
+            .get_mut(child_id)
+            .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
+        // A resume can reach this point while the previous loop is still
+        // finishing its bookkeeping, and the record then still carries that
+        // loop's handle. The replacement aborts it rather than overwriting it,
+        // so exactly one loop owns the record and a close aborts that one.
+        publish_child_loop_handle(record, handle);
         Ok(())
     }
 
@@ -178,7 +225,11 @@ impl SubagentController {
         let record = state.children.get_mut(child_id)?;
         let request = record.dequeue_run();
         if request.is_none() {
-            record.handle = None;
+            // Only the loop that owns this handle may retire it. A superseded
+            // loop that was aborted mid-run still reaches this point, and
+            // clearing the record unconditionally would drop the handle of the
+            // loop that replaced it, leaving that task uncloseable.
+            self.clear_own_handle(record);
             record.updated_at = Utc::now();
         }
         request
@@ -191,23 +242,15 @@ impl SubagentController {
             record.updated_at = Utc::now();
             let has_more_work = record.apply_result(result);
             let hook_payload = (!has_more_work).then(|| {
-                let (
-                    parent_session_id,
-                    child_thread_id,
-                    agent_name,
-                    display_label,
-                    background,
-                    status,
-                    transcript_path,
-                ) = record.build_hook_payload();
+                let payload = record.build_hook_payload();
                 SubagentStopHookContext {
-                    parent_session_id,
-                    child_thread_id,
-                    agent_name,
-                    display_label,
-                    background,
-                    status,
-                    transcript_path,
+                    parent_session_id: payload.parent_session_id,
+                    child_thread_id: payload.child_thread_id,
+                    agent_name: payload.agent_name,
+                    display_label: payload.display_label,
+                    background: payload.background,
+                    status: payload.status,
+                    transcript_path: payload.transcript_path,
                 }
             });
             let progress_entry = record.build_status_entry();
@@ -256,7 +299,7 @@ impl SubagentController {
         if let Some((controller, session_id)) = nested {
             let ids = controller.spawn_child_ids_for_parent(&session_id).await;
             for id in ids {
-                if let Err(err) = controller.close(&id).await {
+                if let Err(err) = controller.close(TaskOwner::Workspace, &id).await {
                     tracing::warn!(child_id, node_id = id.as_str(), error = %err, "Failed to close nested subagent subtree on child completion");
                 }
             }
@@ -266,12 +309,44 @@ impl SubagentController {
     async fn mark_child_loop_idle(&self, child_id: &str) {
         let mut state = self.state.write().await;
         if let Some(record) = state.children.get_mut(child_id) {
-            record.handle = None;
+            self.clear_own_handle(record);
             record.updated_at = Utc::now();
         }
     }
 
-    async fn begin_child_run(&self, child_id: &str) -> Result<ChildExecutionContext> {
+    /// Clears the record's handle only when it belongs to the running loop.
+    ///
+    /// Every loop runs inside one tokio task, and a task can name itself with
+    /// [`tokio::task::try_id`]. Comparing that id with the published handle's
+    /// id is what tells the owning loop apart from a stale or duplicate one: a
+    /// superseded loop that finished its bookkeeping must not withdraw the
+    /// handle of the loop that replaced it, or a later close would find nothing
+    /// to abort and the replacement would outlive the record.
+    ///
+    /// Every loop runs inside the task `launch_child` spawns, so `try_id` is
+    /// `Some` for every production caller. A caller that cannot name its task
+    /// cannot show that the published handle is its own, so it leaves the
+    /// handle alone: clearing it would strand the loop that really owns it, and
+    /// the only handle it could ever legitimately clear is a finished task's,
+    /// which a later close treats as an abort of an exited task and a later
+    /// launch replaces.
+    fn clear_own_handle(&self, record: &mut ChildRecord) {
+        let owned = match (tokio::task::try_id(), record.handle.as_ref()) {
+            (Some(current), Some(published)) => published.id() == current,
+            (None, Some(_)) => false,
+            (_, None) => true,
+        };
+        if owned {
+            record.handle = None;
+        }
+    }
+
+    /// Reads the context a child run begins with and marks the run as started.
+    ///
+    /// Visible to this module's neighbours so a regression for the spawn
+    /// cleanup can start a run through the same path production uses, rather
+    /// than reproducing the claim bookkeeping by hand.
+    pub(super) async fn begin_child_run(&self, child_id: &str) -> Result<ChildExecutionContext> {
         let context = {
             let mut state = self.state.write().await;
             let record = state
@@ -279,6 +354,11 @@ impl SubagentController {
                 .get_mut(child_id)
                 .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
             record.status = SubagentStatus::Running;
+            // This run now claims the checkout the record carries. A launch
+            // that was refused while this run was starting reads the counter
+            // before it reclaims the directory, so it can tell a checkout no
+            // run ever used from one a resumed child has already used.
+            record.worktree_claim = record.worktree_claim.saturating_add(1);
             record.updated_at = Utc::now();
             ChildExecutionContext {
                 spec: record.spec.clone(),
@@ -295,299 +375,91 @@ impl SubagentController {
         Ok(context)
     }
 
-    fn run_child_once<'a>(
-        &'a self,
-        child_id: &'a str,
-        request: ChildRunRequest,
-    ) -> BoxFuture<'a, Result<ChildRunResult>> {
-        Box::pin(async move {
-            let context = self.begin_child_run(child_id).await?;
-            let mut execution = self.prepare_child_execution(context, request).await?;
-            self.attach_child_controller(child_id, &mut execution).await;
-            let thread_handle = self.record_child_runtime(child_id, &execution).await?;
-            self.run_child_start_hook(child_id, &execution, &thread_handle).await;
-            self.execute_child_task(execution).await
-        })
+    /// Gives a newly created child controller the context it shares with its
+    /// parent tree.
+    ///
+    /// The three inheritances are one unit: a child controller that adopted the
+    /// parent's observers but kept its own allocator or locks would publish
+    /// through one tree while reserving ids and ledger access through another.
+    /// Production's only creator is [`Self::child_controller_for`], and tests
+    /// exercise this same sequence rather than repeating it.
+    pub(super) async fn inherit_tree_context(&mut self, parent: &SubagentController, parent_session_id: &str) {
+        self.inherit_progress_observers(parent, parent_session_id).await;
+        self.inherit_child_id_scope(parent);
+        self.inherit_lock_scope(parent);
     }
 
-    fn prepare_child_execution(
-        &self,
-        context: ChildExecutionContext,
-        request: ChildRunRequest,
-    ) -> BoxFuture<'_, Result<PreparedChildExecution>> {
-        Box::pin(async move {
-            let runtime = self.resolve_child_runtime(&context, &request).await?;
-            let ChildExecutionContext {
-                spec,
-                session_id,
-                bootstrap_messages,
-                display_label,
-                background,
-                existing_child_controller,
-                ..
-            } = context;
-            let ChildRunRequest { prompt, .. } = request;
-            let archive = self
-                .prepare_child_archive(ChildArchiveRequest {
-                    session_id: session_id.as_str(),
-                    workspace: &runtime.effective_workspace,
-                    config: &runtime.child_cfg,
-                    reasoning_effort: runtime.child_reasoning_effort,
-                    parent_session_id: runtime.parent_session_id.as_str(),
-                    bootstrap_messages: &bootstrap_messages,
-                })
-                .await?;
-            let mut runner = Box::pin(
-                AgentRunner::new_with_bootstrap(
-                    agent_type_for_spec(&spec),
-                    runtime.resolved_model,
-                    self.config.api_key.clone(),
-                    runtime.effective_workspace.clone(),
-                    session_id.clone(),
-                    RunnerSettings {
-                        reasoning_effort: Some(runtime.child_reasoning_effort),
-                        verbosity: None,
-                    },
-                    None,
-                    archive.bootstrap,
-                    Some(runtime.child_cfg.clone()),
-                    self.config.openai_chatgpt_auth.clone(),
-                )
-                .await?,
-            );
-            runner.set_quiet(true);
-            runner.set_subagent_mode(true);
-            Ok(PreparedChildExecution {
-                spec,
-                session_id,
-                parent_session_id: runtime.parent_session_id,
-                prompt,
-                display_label,
-                background,
-                bootstrap_messages,
-                effective_workspace: runtime.effective_workspace,
-                allow_nested_delegation: runtime.allow_nested_delegation,
-                existing_child_controller,
-                child_controller: None,
-                child_cfg: runtime.child_cfg,
-                child_reasoning_effort: runtime.child_reasoning_effort,
-                archive_metadata: archive.metadata,
-                archive: archive.archive,
-                runner,
-            })
-        })
-    }
-
-    async fn resolve_child_runtime(
-        &self,
-        context: &ChildExecutionContext,
-        request: &ChildRunRequest,
-    ) -> Result<ResolvedChildRuntime> {
-        // A worktree-isolated child executes and archives against its own root.
-        let effective_workspace = context
-            .worktree_path
-            .clone()
-            .unwrap_or_else(|| self.config.workspace_root.clone());
-        let allow_nested_delegation = !context.spec.is_read_only()
-            && self.config.depth.saturating_add(2) <= self.config.vt_cfg.subagents.max_depth;
-        let (resolved_model, child_reasoning_effort, child_cfg) = prepare_child_runtime_config(
-            &self.config.vt_cfg,
-            &context.spec,
-            self.config.parent_model.as_str(),
-            self.config.parent_provider.as_str(),
-            self.config.parent_reasoning_effort,
-            request.max_turns,
-            request.model_override.as_deref(),
-            request.reasoning_override.as_deref(),
-            allow_nested_delegation,
-            resolve_effective_subagent_model,
-        )?;
-        Ok(ResolvedChildRuntime {
-            effective_workspace,
-            allow_nested_delegation,
-            // Attribute the run to the record's own parent thread rather than
-            // this controller's parent; a nested controller serves several
-            // parent threads and must not re-attribute their children.
-            parent_session_id: context.parent_thread_id.clone(),
-            resolved_model,
-            child_reasoning_effort,
-            child_cfg,
-        })
-    }
-
-    async fn prepare_child_archive(&self, request: ChildArchiveRequest<'_>) -> Result<PreparedChildArchive> {
-        let metadata = build_subagent_archive_metadata(
-            request.workspace,
-            request.config.agent.default_model.as_str(),
-            request.config.agent.provider.as_str(),
-            request.config.agent.theme.as_str(),
-            request.reasoning_effort.as_str(),
-            request.parent_session_id,
-            !request.bootstrap_messages.is_empty(),
-        );
-        let bootstrap = ThreadBootstrap::new(Some(metadata.clone())).with_messages(request.bootstrap_messages.to_vec());
-        let archive = if let Some(listing) = find_session_by_identifier(request.session_id).await? {
-            SessionArchive::resume_from_listing(&listing, metadata.clone())
-        } else {
-            SessionArchive::new_with_identifier(metadata.clone(), request.session_id.to_string()).await?
-        };
-        checkpoint_subagent_archive_start(&archive, request.bootstrap_messages).await?;
-        Ok(PreparedChildArchive { metadata, bootstrap, archive })
-    }
-
-    async fn attach_child_controller(&self, child_id: &str, execution: &mut PreparedChildExecution) {
-        let child_controller = self.child_controller_for(child_id, execution).await;
-        execution.child_controller = child_controller;
-        if let Some(controller) = execution.child_controller.as_ref() {
-            controller.set_parent_messages(&execution.bootstrap_messages).await;
-            execution.runner.set_subagent_controller(controller.clone());
-        }
-    }
-
-    async fn child_controller_for(
-        &self,
-        child_id: &str,
-        execution: &mut PreparedChildExecution,
-    ) -> Option<Arc<SubagentController>> {
-        if !execution.allow_nested_delegation {
-            return None;
-        }
-        if let Some(controller) = execution.existing_child_controller.take() {
-            return Some(controller);
-        }
-
-        // Child-scoped controllers keep grandchildren reachable across resumes
-        // while preventing nested background subprocesses from escaping.
-        let nested_config = SubagentControllerConfig {
-            workspace_root: execution.effective_workspace.clone(),
-            parent_session_id: execution.session_id.clone(),
-            parent_model: execution.child_cfg.agent.default_model.clone(),
-            parent_provider: execution.child_cfg.agent.provider.clone(),
-            parent_reasoning_effort: execution.child_reasoning_effort,
-            api_key: self.config.api_key.clone(),
-            vt_cfg: execution.child_cfg.clone(),
-            openai_chatgpt_auth: self.config.openai_chatgpt_auth.clone(),
-            depth: self.config.depth.saturating_add(1),
-            workspace_gated: self.config.workspace_gated,
-            exec_sessions: self.config.exec_sessions.clone(),
-            pty_manager: self.config.pty_manager.clone(),
-            managed_background_runtime: true,
-        };
-        match SubagentController::new(nested_config).await {
-            Ok(controller) => Some(Arc::new(controller)),
-            Err(err) => {
-                // Fail closed: without a controller the child keeps the current
-                // non-nested toolset and cannot delegate.
-                tracing::warn!(
-                    child_id,
-                    error = %err,
-                    "Failed to create nested subagent controller; child delegation disabled"
-                );
-                None
-            }
-        }
-    }
-
-    async fn record_child_runtime(
-        &self,
-        child_id: &str,
-        execution: &PreparedChildExecution,
-    ) -> Result<ThreadRuntimeHandle> {
-        let thread_handle = execution.runner.thread_handle();
-        let archive_path = execution.archive.path().to_path_buf();
-        {
-            let mut state = self.state.write().await;
-            let record = state
-                .children
-                .get_mut(child_id)
-                .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
-            record.archive_metadata = Some(execution.archive_metadata.clone());
-            record.archive_path = Some(archive_path.clone());
-            record.effective_config = Some(execution.child_cfg.clone());
-            record.thread_handle = Some(thread_handle.clone());
-            if let Some(controller) = execution.child_controller.clone() {
-                record.child_controller = Some(controller);
-            }
-        }
-        Ok(thread_handle)
-    }
-
-    async fn run_child_start_hook(
-        &self,
-        child_id: &str,
-        execution: &PreparedChildExecution,
-        thread_handle: &ThreadRuntimeHandle,
-    ) {
-        if let Some(hooks) = self.lifecycle_hooks.as_ref()
-            && let Err(err) = hooks
-                .run_subagent_start(
-                    execution.parent_session_id.as_str(),
-                    thread_handle.thread_id().as_str(),
-                    execution.spec.name.as_str(),
-                    &execution.display_label,
-                    execution.background,
-                    SubagentStatus::Running.as_str(),
-                    Some(execution.archive.path()),
-                )
-                .await
-        {
-            tracing::warn!(
-                child_id,
-                error = %err,
-                "Failed to run subagent start hooks"
-            );
-        }
-    }
-
-    fn execute_child_task(&self, execution: PreparedChildExecution) -> BoxFuture<'_, Result<ChildRunResult>> {
-        Box::pin(async move {
-            let mut execution = execution;
-            // Fail closed on tool exposure: only expose the delegation tools when
-            // the child-scoped controller is actually attached. If controller
-            // creation failed the child keeps the non-nested toolset even though
-            // its config deny-list may omit the delegation tools.
-            let nested_tools_enabled = execution.allow_nested_delegation && execution.child_controller.is_some();
-            let filtered_tools = filter_child_tools(
-                &execution.spec,
-                execution.runner.build_universal_tools().await?,
-                execution.spec.is_read_only(),
-                nested_tools_enabled,
-            );
-            let allowed_tools = filtered_tools
-                .iter()
-                .map(|tool| tool.function_name().to_string())
-                .collect::<Vec<_>>();
-            execution.runner.set_tool_definitions_override(filtered_tools);
-            execution.runner.enable_full_auto(&allowed_tools).await;
-
-            let memory_appendix = load_memory_appendix_async(
-                &self.config.workspace_root,
-                execution.spec.name.as_str(),
-                execution.spec.memory,
-            )
-            .await?;
-            let mut task = Task::new(
-                format!("subagent-{}", execution.spec.name),
-                format!("Subagent {}", execution.spec.name),
-                execution.prompt,
-            );
-            task.instructions = Some(compose_subagent_instructions(&execution.spec, memory_appendix));
-
-            let results = Box::pin(execution.runner.execute_task(&task, &[])).await?;
-            let messages = execution.runner.session_messages();
-            let transcript_path =
-                persist_child_archive(&execution.archive, &messages, execution.spec.name.as_str()).await?;
-
-            Ok(ChildRunResult {
-                messages,
-                summary: if results.summary.trim().is_empty() {
-                    results.outcome.description()
-                } else {
-                    results.summary.clone()
-                },
-                outcome: results.outcome,
-                transcript_path,
-            })
-        })
+    /// Returns how many child runtime captures this controller tree published.
+    ///
+    /// A test that must observe the capture itself cannot wait on the status
+    /// change: the record is reopened and stamped before the resumed execution
+    /// publishes its runtime, so the earlier configuration would satisfy a
+    /// status-only wait.
+    #[cfg(test)]
+    pub(super) fn runtime_capture_count(&self) -> u64 {
+        runtime_capture_witness::capture_count(&self.state)
     }
 }
+
+/// Publishes a freshly spawned loop's handle, aborting a displaced one.
+///
+/// Only a loop that was finishing bookkeeping is displaced, never a live run.
+fn publish_child_loop_handle(record: &mut ChildRecord, handle: tokio::task::JoinHandle<()>) {
+    if let Some(displaced) = record.handle.replace(handle) {
+        displaced.abort();
+    }
+}
+
+#[cfg(test)]
+pub(in crate::subagents) mod launch_checkpoints;
+mod runner;
+
+/// Counts each controller tree's runtime captures for tests that must observe
+/// the capture rather than a status change that precedes it.
+///
+/// Keyed by the tree's shared state allocation, pruned when a tree is dropped,
+/// so every clone of one controller observes the same count and a test cannot
+/// read another test's progress.
+#[cfg(test)]
+mod runtime_capture_witness {
+    use super::*;
+    use std::sync::{Mutex, OnceLock, Weak};
+
+    struct CaptureCount {
+        state: Weak<RwLock<ControllerState>>,
+        captures: u64,
+    }
+
+    fn captures() -> &'static Mutex<Vec<CaptureCount>> {
+        static CAPTURES: OnceLock<Mutex<Vec<CaptureCount>>> = OnceLock::new();
+        CAPTURES.get_or_init(|| Mutex::new(Vec::new()))
+    }
+
+    fn with_captures<R>(state: &Arc<RwLock<ControllerState>>, update: impl FnOnce(&mut u64) -> R) -> R {
+        let mut registry = captures().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        registry.retain(|entry| entry.state.strong_count() > 0);
+        if let Some(entry) = registry
+            .iter_mut()
+            .find(|entry| std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)))
+        {
+            return update(&mut entry.captures);
+        }
+        let mut count = 0;
+        let result = update(&mut count);
+        registry.push(CaptureCount { state: Arc::downgrade(state), captures: count });
+        result
+    }
+
+    /// Records that `state`'s tree published one child runtime capture.
+    pub(super) fn observe_capture(state: &Arc<RwLock<ControllerState>>) {
+        with_captures(state, |captures| *captures = captures.saturating_add(1));
+    }
+
+    /// Returns how many runtime captures `state`'s tree has published.
+    pub(super) fn capture_count(state: &Arc<RwLock<ControllerState>>) -> u64 {
+        with_captures(state, |captures| *captures)
+    }
+}
+
+#[cfg(test)]
+mod tests;

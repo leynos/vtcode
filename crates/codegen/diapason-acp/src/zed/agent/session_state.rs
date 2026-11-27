@@ -1,24 +1,27 @@
 //! ACP session state and durable archive lifecycle. ACP handlers delegate
 //! workspace-aware list/load/resume operations here, then provider runtime
 //! uses the resulting session handles for model execution.
+//!
+//! The bootstrap that builds and registers a handle lives in the private
+//! `bootstrap` child module so this file stays within the size budget. The
+//! session-state test tree imports this module's namespace with `use super::*`,
+//! so its prelude keeps the fixture types the tests name directly.
 
 use super::{ZedAgent, log_suppressed_error};
 use crate::acp;
 use crate::workspace::{WorkspaceTrustSyncOutcome, WorkspaceTrustSynchronizer};
 use anyhow::Context;
 use diapason_config::auth::AuthCredentialsStoreMode;
-use diapason_core::core::threads::{ThreadBootstrap, build_thread_archive_metadata};
+use diapason_core::core::threads::ThreadBootstrap;
 use diapason_core::hooks::{LifecycleHookEngine, SessionStartTrigger};
 use diapason_core::llm::provider::{FinishReason, Message};
 use diapason_core::utils::session_archive::SessionArchive;
-use std::sync::atomic::Ordering;
+use futures::future::BoxFuture;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, warn};
-use uuid::Uuid;
 
-use super::super::constants::SESSION_PREFIX;
 use super::super::session::AcpSessionWorkspace;
-use super::super::types::{SessionData, SessionHandle, SessionPromptGuard, lock_poison_error};
+use super::super::types::{SessionHandle, SessionPromptGuard, lock_poison_error};
 use super::{SessionWorkspaceLease, SessionWorkspaceRuntime};
 #[cfg(test)]
 use metadata::BoundedMetadataSizeWriter;
@@ -28,11 +31,13 @@ use metadata::{
 };
 
 mod archive;
+mod bootstrap;
 mod configuration;
 mod lifecycle;
 mod metadata;
 
 pub(in crate::zed::agent) use archive::{CheckpointFailure, RequiredCheckpointError, checkpoint_failure_label};
+pub(super) use bootstrap::SessionHandleBootstrap;
 
 pub(super) fn safe_internal_error(
     operation: &'static str,
@@ -58,14 +63,6 @@ pub(super) fn safe_invalid_params_error(
         "error_category": error_category,
         "message": message,
     }))
-}
-
-struct SessionHandleBootstrap {
-    session_id: acp::SessionId,
-    archive: Option<SessionArchive>,
-    trigger: SessionStartTrigger,
-    workspace_runtime: Option<Arc<SessionWorkspaceRuntime>>,
-    workspace_lease: Option<SessionWorkspaceLease>,
 }
 
 impl ZedAgent {
@@ -102,176 +99,6 @@ impl ZedAgent {
             );
         }
         Ok(())
-    }
-
-    fn build_session_handle(
-        &self,
-        thread: diapason_core::core::threads::ThreadRuntimeHandle,
-        bootstrap: SessionHandleBootstrap,
-    ) -> SessionHandle {
-        let SessionHandleBootstrap {
-            session_id,
-            mut archive,
-            trigger,
-            workspace_runtime,
-            workspace_lease,
-        } = bootstrap;
-        // Archive metadata is protocol-neutral in core; restore the old ACP
-        // fields before the client adapter exposes this session.
-        if let Some(mut metadata) = thread.metadata()
-            && migrate_legacy_acp_meta(&mut metadata)
-        {
-            if let Some(archive) = archive.as_mut() {
-                archive.replace_metadata(metadata.clone());
-            }
-            thread.replace_metadata(Some(metadata));
-        }
-        let reasoning_effort = self.session_reasoning_effort_for_thread(&thread);
-        let provider = self.session_provider_for_thread(&thread);
-        let model = self.session_model_for_thread(&thread);
-        let primary_agents = workspace_runtime
-            .as_ref()
-            .map_or(&self.primary_agents, |runtime| &runtime.primary_agents);
-        let primary_agent = self.session_primary_agent_for_thread(&thread, primary_agents);
-        let hook_workspace = workspace_runtime
-            .as_ref()
-            .map_or_else(|| self.config.workspace.clone(), |runtime| runtime.workspace_root.clone());
-        let workspace_hooks_gated = workspace_runtime.as_ref().map_or_else(
-            || {
-                self.vt_config
-                    .as_ref()
-                    .and_then(|config| config.workspace_lifecycle_hooks.as_ref())
-                    .is_some_and(|hooks| !hooks.is_empty())
-            },
-            |runtime| runtime.workspace_hooks_gated,
-        );
-        let lifecycle_hooks = self.vt_config.as_ref().and_then(|config| {
-            match LifecycleHookEngine::new_with_session_gated(
-                hook_workspace,
-                &config.hooks,
-                trigger,
-                session_id.0.to_string(),
-                workspace_hooks_gated,
-            ) {
-                Ok(hooks) => hooks,
-                Err(error) => {
-                    warn!(%error, "Failed to initialize ACP lifecycle hooks");
-                    None
-                }
-            }
-        });
-        SessionHandle {
-            data: Arc::new(Mutex::new(SessionData {
-                session_id,
-                thread,
-                archive,
-                workspace_runtime,
-                workspace_lease,
-                primary_agent,
-                reasoning_effort,
-                provider,
-                model,
-                last_tool_call_at: None,
-                write_ahead_call_ids: Vec::new(),
-                auto_compact_suppressed: 0,
-                lifecycle_hooks,
-                session_started: false,
-                session_ended: false,
-                task_lifecycle_forwarder: None,
-                task_lifecycle_registration: None,
-            })),
-            cancellation: super::super::types::SessionCancellation::default(),
-            activity: super::super::types::SessionActivity::default(),
-        }
-    }
-
-    pub(crate) fn register_session(&self) -> anyhow::Result<acp::SessionId> {
-        let raw_id = self.next_session_id.fetch_add(1, Ordering::Relaxed);
-        let session_id = acp::SessionId::new(Arc::from(format!("{SESSION_PREFIX}-{raw_id}")));
-        let metadata = build_thread_archive_metadata(
-            self.config.workspace.as_path(),
-            &self.config.model,
-            &self.config.provider,
-            &self.config.theme,
-            self.config.reasoning_effort.as_str(),
-        );
-        let thread = self
-            .thread_manager
-            .start_thread_with_identifier(session_id.0.to_string(), ThreadBootstrap::new(Some(metadata)));
-        let handle = self.build_session_handle(
-            thread,
-            SessionHandleBootstrap {
-                session_id: session_id.clone(),
-                archive: None,
-                trigger: SessionStartTrigger::NewSession,
-                workspace_runtime: None,
-                workspace_lease: None,
-            },
-        );
-        drop(
-            self.sessions
-                .lock()
-                .map_err(|error| lock_poison_error("registering ACP session", error))?
-                .insert(session_id.clone(), handle),
-        );
-        Ok(session_id)
-    }
-
-    async fn register_durable_session(
-        &self,
-        workspace_lease: SessionWorkspaceLease,
-        acp_meta: Option<acp::Meta>,
-    ) -> anyhow::Result<acp::SessionId> {
-        let workspace_runtime = Arc::clone(workspace_lease.runtime());
-        let session_id = acp::SessionId::new(Arc::from(format!("{SESSION_PREFIX}-{}", Uuid::new_v4())));
-        let mut metadata = build_thread_archive_metadata(
-            workspace_runtime.workspace_root.as_path(),
-            &self.config.model,
-            &self.config.provider,
-            &self.config.theme,
-            self.config.reasoning_effort.as_str(),
-        )
-        .with_primary_agent(workspace_runtime.primary_agents.default_id());
-        metadata.set_extension(ACP_SESSION_METADATA_NAMESPACE, serde_json::json!({}));
-        let thread = self
-            .thread_manager
-            .start_thread_with_identifier(session_id.0.to_string(), ThreadBootstrap::new(Some(metadata)));
-        let handle = self.build_session_handle(
-            thread,
-            SessionHandleBootstrap {
-                session_id: session_id.clone(),
-                archive: None,
-                trigger: SessionStartTrigger::NewSession,
-                workspace_runtime: Some(workspace_runtime),
-                workspace_lease: Some(workspace_lease),
-            },
-        );
-        if let Err(error) = self.merge_session_acp_meta(&handle, acp_meta) {
-            if let Err(cleanup_error) = handle.release_workspace_lease().await {
-                warn!(
-                    %cleanup_error,
-                    session_id = %session_id,
-                    "Failed to release ACP workspace lease after session metadata merge failed"
-                );
-            }
-            return Err(error);
-        }
-        let insert_result = self
-            .sessions
-            .lock()
-            .map_err(|error| lock_poison_error("registering durable ACP session", error))
-            .map(|mut sessions| drop(sessions.insert(session_id.clone(), handle.clone())));
-        if let Err(error) = insert_result {
-            if let Err(cleanup_error) = handle.release_workspace_lease().await {
-                warn!(
-                    %cleanup_error,
-                    session_id = %session_id,
-                    "Failed to release ACP workspace lease after session registration failed"
-                );
-            }
-            return Err(error);
-        }
-        Ok(session_id)
     }
 
     pub(crate) fn session_handle(&self, session_id: &acp::SessionId) -> anyhow::Result<Option<SessionHandle>> {
@@ -342,98 +169,106 @@ impl ZedAgent {
 
     /// Programmatic equivalent of the SACP `session/new` handler — exposed
     /// for tests and for the SACP handler shim to call.
-    pub(crate) async fn new_session(&self, req: acp::NewSessionRequest) -> Result<acp::NewSessionResponse, acp::Error> {
-        let workspace = self.workspace_policy.resolve_client_cwd(&req.cwd).await?;
-        let desired_trust = self
-            .workspace_runtime_config
-            .zed_config
-            .workspace_trust
-            .to_workspace_trust_level();
-        let _trust_outcome = self
-            .workspace_trust_synchronizer
-            .synchronize(workspace.path(), desired_trust)
-            .await
-            .map_err(|error| {
-                log_suppressed_error(&error, "new_session", "workspace_trust_sync_failed");
+    /// The future is boxed because the session-open path is large enough to
+    /// trip `clippy::large_futures` at every one of its call sites — the
+    /// request handlers and the tests alike.
+    pub(crate) fn new_session(
+        &self,
+        req: acp::NewSessionRequest,
+    ) -> BoxFuture<'_, Result<acp::NewSessionResponse, acp::Error>> {
+        Box::pin(async move {
+            let workspace = self.workspace_policy.resolve_client_cwd(&req.cwd).await?;
+            let desired_trust = self
+                .workspace_runtime_config
+                .zed_config
+                .workspace_trust
+                .to_workspace_trust_level();
+            let _trust_outcome = self
+                .workspace_trust_synchronizer
+                .synchronize(workspace.path(), desired_trust)
+                .await
+                .map_err(|error| {
+                    log_suppressed_error(&error, "new_session", "workspace_trust_sync_failed");
+                    safe_internal_error(
+                        "new_session",
+                        "workspace_trust_sync_failed",
+                        "Unable to synchronize workspace trust",
+                    )
+                })?;
+            let workspace_lease = self.workspace_runtime_for(&workspace, None).await.map_err(|error| {
+                log_suppressed_error(&error, "new_session", "workspace_runtime_setup_failed");
                 safe_internal_error(
                     "new_session",
-                    "workspace_trust_sync_failed",
-                    "Unable to synchronize workspace trust",
+                    "workspace_runtime_setup_failed",
+                    "Unable to initialize ACP workspace runtime",
                 )
             })?;
-        let workspace_lease = self.workspace_runtime_for(&workspace).await.map_err(|error| {
-            log_suppressed_error(&error, "new_session", "workspace_runtime_setup_failed");
-            safe_internal_error(
-                "new_session",
-                "workspace_runtime_setup_failed",
-                "Unable to initialize ACP workspace runtime",
-            )
-        })?;
-        let session_id = self
-            .register_durable_session(workspace_lease, req.meta)
-            .await
-            .map_err(|error| {
-                log_suppressed_error(&error, "new_session", "session_archive_initialization_failed");
-                safe_internal_error(
-                    "new_session",
-                    "session_archive_initialization_failed",
-                    "Unable to initialize ACP session storage",
-                )
-            })?;
-        let session = match self.session_handle(&session_id) {
-            Ok(Some(session)) => session,
-            Ok(None) => {
+            let session_id = self
+                .register_durable_session(workspace_lease, req.meta)
+                .await
+                .map_err(|error| {
+                    log_suppressed_error(&error, "new_session", "session_archive_initialization_failed");
+                    safe_internal_error(
+                        "new_session",
+                        "session_archive_initialization_failed",
+                        "Unable to initialize ACP session storage",
+                    )
+                })?;
+            let session = match self.session_handle(&session_id) {
+                Ok(Some(session)) => session,
+                Ok(None) => {
+                    self.discard_failed_new_session(&session_id).await;
+                    return Err(acp::Error::internal_error().data("newly registered ACP session is missing"));
+                }
+                Err(error) => {
+                    self.discard_failed_new_session(&session_id).await;
+                    log_suppressed_error(&error, "new_session", "session_registration_failed");
+                    return Err(safe_internal_error(
+                        "new_session",
+                        "session_registration_failed",
+                        "Unable to register ACP session",
+                    ));
+                }
+            };
+            if let Err(error) = self.ensure_task_lifecycle_forwarder(&session) {
                 self.discard_failed_new_session(&session_id).await;
-                return Err(acp::Error::internal_error().data("newly registered ACP session is missing"));
-            }
-            Err(error) => {
-                self.discard_failed_new_session(&session_id).await;
-                log_suppressed_error(&error, "new_session", "session_registration_failed");
+                log_suppressed_error(&error, "new_session", "task_lifecycle_setup_failed");
                 return Err(safe_internal_error(
                     "new_session",
-                    "session_registration_failed",
-                    "Unable to register ACP session",
+                    "task_lifecycle_setup_failed",
+                    "Unable to initialize ACP session updates",
                 ));
             }
-        };
-        if let Err(error) = self.ensure_task_lifecycle_forwarder(&session) {
-            self.discard_failed_new_session(&session_id).await;
-            log_suppressed_error(&error, "new_session", "task_lifecycle_setup_failed");
-            return Err(safe_internal_error(
-                "new_session",
-                "task_lifecycle_setup_failed",
-                "Unable to initialize ACP session updates",
-            ));
-        }
-        if let Err(error) = self.run_session_start_hooks(&session).await {
-            self.discard_failed_new_session(&session_id).await;
-            log_suppressed_error(&error, "new_session", "session_start_hook_failed");
-            return Err(safe_internal_error(
-                "new_session",
-                "session_start_hook_failed",
-                "Unable to run ACP session start hooks",
-            ));
-        }
-        let config_options = match self.current_session_config_options(&session) {
-            Ok(config_options) => config_options,
-            Err(error) => {
+            if let Err(error) = self.run_session_start_hooks(&session).await {
                 self.discard_failed_new_session(&session_id).await;
-                log_suppressed_error(&error, "new_session", "session_configuration_failed");
+                log_suppressed_error(&error, "new_session", "session_start_hook_failed");
                 return Err(safe_internal_error(
                     "new_session",
-                    "session_configuration_failed",
-                    "Unable to read ACP session configuration",
+                    "session_start_hook_failed",
+                    "Unable to run ACP session start hooks",
                 ));
             }
-        };
+            let config_options = match self.current_session_config_options(&session) {
+                Ok(config_options) => config_options,
+                Err(error) => {
+                    self.discard_failed_new_session(&session_id).await;
+                    log_suppressed_error(&error, "new_session", "session_configuration_failed");
+                    return Err(safe_internal_error(
+                        "new_session",
+                        "session_configuration_failed",
+                        "Unable to read ACP session configuration",
+                    ));
+                }
+            };
 
-        if let Err(error) = self.send_available_commands_update(&session_id).await {
-            warn!(%error, "Failed to advertise initial slash commands");
-        }
+            if let Err(error) = self.send_available_commands_update(&session_id).await {
+                warn!(%error, "Failed to advertise initial slash commands");
+            }
 
-        debug!(%session_id, "Created ACP session");
+            debug!(%session_id, "Created ACP session");
 
-        Ok(acp::NewSessionResponse::new(session_id).config_options(config_options))
+            Ok(acp::NewSessionResponse::new(session_id).config_options(config_options))
+        })
     }
 }
 

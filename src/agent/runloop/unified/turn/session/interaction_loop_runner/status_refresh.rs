@@ -1,3 +1,9 @@
+//! Runtime counter and status refresh for the interactive session loop.
+//!
+//! The loop refreshes its displayed counters and workspace status between
+//! turns. This module performs that refresh, including the workspace-owner
+//! background status query, and hands the updated values back to the loop in
+//! `super::interaction_loop`.
 use std::path::Path;
 
 use super::super::interaction_loop::{InteractionLoopContext, InteractionState};
@@ -9,6 +15,7 @@ use crate::agent::runloop::unified::status_line;
 use crate::agent::runloop::unified::turn::turn_processing::resolve_effective_request_model;
 use diapason_core::config::loader::DiapasonConfig;
 use diapason_core::llm::provider::LLMProvider;
+use diapason_core::subagents::TaskOwner;
 use diapason_core::tools::registry::ToolRegistry;
 use diapason_ui::tui::app::{InlineHandle, InlineHeaderContext};
 
@@ -117,7 +124,7 @@ async fn refresh_runtime_counters(ctx: &mut StatusRefreshContext<'_>, state: &mu
         crate::agent::runloop::ui::sync_active_subagent_badges(ctx.header_context, ctx.handle, &entries);
         let delegated_count = entries.iter().filter(|entry| !entry.status.is_terminal()).count();
         let background_count = controller
-            .background_status_entries()
+            .background_status_entries(TaskOwner::Workspace)
             .await
             .into_iter()
             .filter(|entry| {

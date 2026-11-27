@@ -1,1014 +1,675 @@
 //! Manages background subagent work, including task completion, cancellation, and archived results.
-#![allow(
-    unused_imports,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
-use anyhow::{Context, Result, anyhow, bail};
-use chrono::Utc;
-use futures::future::select_all;
-use std::collections::VecDeque;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::{Notify, RwLock};
 
-use crate::config::DiapasonConfig;
-use crate::config::types::ReasoningEffortLevel;
-use crate::core::agent::runner::{AgentRunner, RunnerSettings};
-use crate::core::agent::task::Task;
-use crate::core::threads::{ThreadBootstrap, ThreadId, ThreadRuntimeHandle, ThreadSnapshot};
-use crate::hooks::{LifecycleHookEngine, SessionStartTrigger};
-use crate::llm::provider::Message;
-use crate::tools::exec_session::ExecSessionManager;
-use crate::tools::pty::{PtyManager, PtySize};
-use crate::utils::session_archive::{SessionArchive, find_session_by_identifier};
-use diapason_config::SubagentSpec;
-use diapason_config::auth::OpenAIChatGptAuthHandle;
-
-use self::background::*;
-use self::config::*;
-use self::constants::*;
-use self::discovery::discover_controller_subagents;
-use self::model::*;
-use diapason_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
-
-struct CapturedSubagentThread {
-    id: String,
-    session_id: String,
-    parent_thread_id: String,
-    agent_name: String,
-    display_label: String,
-    status: SubagentStatus,
-    background: bool,
-    created_at: chrono::DateTime<Utc>,
-    updated_at: chrono::DateTime<Utc>,
-    archive_path: Option<PathBuf>,
-    transcript_path: Option<PathBuf>,
-    effective_config: DiapasonConfig,
-    thread_handle: Option<ThreadRuntimeHandle>,
-    archive_metadata: Option<crate::utils::session_archive::SessionArchiveMetadata>,
-    stored_messages: Vec<Message>,
-    recent_events: Vec<crate::exec::events::ThreadEvent>,
-}
-
-struct BackgroundCancellation {
-    agent_name: String,
-    exec_session_id: String,
-}
-
-enum BackgroundCancellationMode {
-    Graceful,
-    Force,
-}
-
-fn usable_background_parent_session_id(owner: Option<String>) -> Option<String> {
-    owner.filter(|owner| !owner.is_empty())
-}
-
-struct PreparedBackgroundSubprocess {
-    agent_name: String,
-    record_id: String,
-    prompt: String,
-    desired_max_turns: Option<usize>,
-    desired_model_override: Option<String>,
-    desired_reasoning_override: Option<String>,
-    max_turns: Option<usize>,
-    model_override: Option<String>,
-    reasoning_override: Option<String>,
-    parent_session_id: String,
-}
-
-pub(super) struct BackgroundRunRequest {
-    pub(super) agent_name: String,
-    pub(super) stable_id: Option<String>,
-    pub(super) restart_attempts: u8,
-    pub(super) overrides: Option<BackgroundLaunchOverrides>,
-}
-
-struct BackgroundRunIdentity {
-    spec: SubagentSpec,
-    record_id: String,
-    parent_session_id: String,
-    session_id: String,
-    exec_session_id: String,
-    created_at: chrono::DateTime<Utc>,
-    previous_record: Option<BackgroundRecord>,
-}
-
-struct BackgroundRunPlan {
-    spec: SubagentSpec,
-    record_id: String,
-    parent_session_id: String,
-    session_id: String,
-    exec_session_id: String,
-    created_at: chrono::DateTime<Utc>,
-    prompt: String,
-    max_turns: Option<usize>,
-    model_override: Option<String>,
-    reasoning_override: Option<String>,
-    restart_attempts: u8,
-}
-
-#[allow(
-    unused_imports,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
-use super::*;
-
-impl SubagentController {
-    /// Returns status entries for all tracked background subprocesses.
-    pub async fn background_status_entries(&self) -> Vec<BackgroundSubprocessEntry> {
-        let state = self.state.read().await;
-        let invocation_owner = current_subagent_invocation_context().map(|context| context.parent_session_id);
-        state
-            .background_children
-            .values()
-            .filter(|record| invocation_owner.as_ref().is_none_or(|owner| &record.parent_session_id == owner))
-            .map(BackgroundRecord::build_status_entry)
-            .collect()
-    }
-
-    /// Returns a snapshot of a background subprocess including its preview output.
-    pub async fn background_snapshot(&self, target: &str) -> Result<BackgroundSubprocessSnapshot> {
-        let _ = self.refresh_background_processes().await?;
-
-        let entry = {
-            let state = self.state.read().await;
-            let record = state
-                .background_children
-                .get(target)
-                .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?;
-            if current_subagent_invocation_context()
-                .is_some_and(|context| context.parent_session_id != record.parent_session_id)
-            {
-                bail!("Unknown background subprocess {target}");
-            }
-            record.build_status_entry()
-        };
-
-        let preview = if entry.exec_session_id.is_empty() {
-            String::new()
-        } else {
-            match self
-                .config
-                .exec_sessions
-                .read_session_output(&entry.exec_session_id, false)
-                .await
-            {
-                Ok(Some(output)) => extract_tail_lines(&output, SUBAGENT_PREVIEW_LINES),
-                Ok(None) | Err(_) => {
-                    if let Some(path) = entry.transcript_path.as_ref().or(entry.archive_path.as_ref()) {
-                        load_archive_preview(path).await.unwrap_or_default()
-                    } else {
-                        String::new()
-                    }
-                }
-            }
-        };
-
-        Ok(BackgroundSubprocessSnapshot { entry, preview })
-    }
-
-    /// Returns whether background subagents are enabled in the configuration.
-    #[must_use]
-    pub fn background_subagents_enabled(&self) -> bool {
-        self.config.vt_cfg.subagents.background.enabled
-    }
-
-    /// Returns the configured default background agent name, if any.
-    #[must_use]
-    pub fn configured_default_background_agent(&self) -> Option<&str> {
-        self.config
-            .vt_cfg
-            .subagents
-            .background
-            .default_agent
-            .as_deref()
-            .map(str::trim)
-            .filter(|agent| !agent.is_empty())
-    }
-
-    /// Toggles the default background subagent between running and stopped.
-    pub async fn toggle_default_background_subagent(&self) -> Result<BackgroundSubprocessEntry> {
-        if !self.background_subagents_enabled() {
-            bail!("Background subagents are disabled by configuration");
-        }
-
-        let agent_name = self
-            .configured_default_background_agent()
-            .ok_or_else(|| anyhow!("No default background subagent is configured"))?
-            .to_string();
-        let target_id = background_record_id(agent_name.as_str());
-        let should_stop = {
-            let state = self.state.read().await;
-            state
-                .background_children
-                .get(&target_id)
-                .is_some_and(|record| record.desired_enabled && record.status.is_active())
-        };
-
-        if should_stop {
-            self.graceful_stop_background(&target_id).await
-        } else {
-            self.ensure_background_record_running(BackgroundRunRequest {
-                agent_name,
-                stable_id: Some(target_id),
-                restart_attempts: 0,
-                overrides: None,
-            })
-            .await
-        }
-    }
-
-    /// Restarts background subagents that were previously enabled but are no longer running.
-    pub async fn restore_background_subagents(&self) -> Result<Vec<BackgroundSubprocessEntry>> {
-        let desired_records = {
-            let state = self.state.read().await;
-            state
-                .background_children
-                .values()
-                .filter(|record| record.desired_enabled)
-                .map(|record| {
-                    (
-                        record.id.clone(),
-                        record.agent_name.clone(),
-                        record.exec_session_id.clone(),
-                        record.restart_attempts,
-                    )
-                })
-                .collect::<Vec<_>>()
-        };
-
-        for (record_id, agent_name, exec_session_id, restart_attempts) in desired_records {
-            let is_live = !exec_session_id.is_empty()
-                && self
-                    .config
-                    .exec_sessions
-                    .snapshot_session(&exec_session_id)
-                    .await
-                    .ok()
-                    .is_some_and(|snapshot| exec_session_is_running(&snapshot));
-
-            if is_live || !self.config.vt_cfg.subagents.background.auto_restore {
-                continue;
-            }
-            tracing::info!(
-                agent_name = agent_name.as_str(),
-                record_id = record_id.as_str(),
-                "Restoring background subagent subprocess"
-            );
-            self.ensure_background_record_running(BackgroundRunRequest {
-                agent_name,
-                stable_id: Some(record_id),
-                restart_attempts,
-                overrides: None,
-            })
-            .await?;
-        }
-
-        self.refresh_background_processes().await
-    }
-
-    /// Refreshes the state of all background subprocesses and respawns as needed.
-    pub async fn refresh_background_processes(&self) -> Result<Vec<BackgroundSubprocessEntry>> {
-        let record_ids = {
-            let state = self.state.read().await;
-            state.background_children.keys().cloned().collect::<Vec<_>>()
-        };
-
-        let mut changed = false;
-        for record_id in record_ids {
-            let (snapshot_target, before_status, before_error) = {
-                let state = self.state.read().await;
-                let record = state.background_children.get(&record_id);
-                (
-                    record.map(|r| r.exec_session_id.clone()),
-                    record.map(|r| r.status),
-                    record.and_then(|r| r.error.clone()),
-                )
-            };
-
-            let snapshot = if let Some(exec_session_id) = snapshot_target.as_ref()
-                && !exec_session_id.is_empty()
-            {
-                self.config.exec_sessions.snapshot_session(exec_session_id).await.ok()
-            } else {
-                None
-            };
-
-            let respawn = self.update_background_record_state(&record_id, snapshot).await?;
-            let respawning = respawn.is_some();
-
-            if let Some((agent_name, stable_id, restart_attempts)) = respawn {
-                self.ensure_background_record_running(BackgroundRunRequest {
-                    agent_name,
-                    stable_id: Some(stable_id),
-                    restart_attempts,
-                    overrides: None,
-                })
-                .await?;
-            }
-
-            let changed_this_record = {
-                let state = self.state.read().await;
-                state.background_children.get(&record_id).is_some_and(|r| {
-                    r.status != before_status.unwrap_or(BackgroundSubprocessStatus::Starting) || r.error != before_error
-                })
-            };
-            changed |= changed_this_record;
-
-            if changed_this_record && !respawning {
-                self.publish_background_status(&record_id).await;
-            }
-
-            self.refresh_background_archive_metadata(&record_id).await?;
-        }
-
-        if changed {
-            self.save_background_state().await?;
-        }
-        Ok(self.background_status_entries().await)
-    }
-
-    async fn update_background_record_state(
-        &self,
-        record_id: &str,
-        snapshot: Option<crate::tools::types::DiapasonExecSession>,
-    ) -> Result<Option<(String, String, u8)>> {
-        let mut state = self.state.write().await;
-        let Some(record) = state.background_children.get_mut(record_id) else {
-            return Ok(None);
-        };
-        record.updated_at = Utc::now();
-
-        let Some(snapshot) = snapshot else {
-            return Self::handle_missing_background_snapshot(record, &self.config);
-        };
-
-        record.pid = snapshot.child_pid;
-        record.started_at = snapshot.started_at.or(record.started_at);
-
-        match snapshot.lifecycle_state {
-            Some(crate::tools::types::DiapasonSessionLifecycleState::Running) => {
-                record.status = BackgroundSubprocessStatus::Running;
-                record.ended_at = None;
-                record.error = None;
-            }
-            Some(crate::tools::types::DiapasonSessionLifecycleState::Exited) | None => {
-                record.ended_at.get_or_insert(Utc::now());
-                if record.desired_enabled
-                    && self.config.vt_cfg.subagents.background.auto_restore
-                    && record.restart_attempts < 1
-                {
-                    let next_restart_attempt = record.restart_attempts.saturating_add(1);
-                    record.restart_attempts = next_restart_attempt;
-                    record.status = BackgroundSubprocessStatus::Starting;
-                    tracing::warn!(
-                        agent_name = record.agent_name.as_str(),
-                        record_id = record.id.as_str(),
-                        attempt = next_restart_attempt,
-                        "Background subprocess exited unexpectedly; scheduling restart"
-                    );
-                    return Ok(Some((record.agent_name.clone(), record.id.clone(), next_restart_attempt)));
-                }
-                Self::mark_background_record_stopped_or_error(record, &snapshot, &self.config);
-            }
-        }
-
-        Ok(None)
-    }
-
-    fn handle_missing_background_snapshot(
-        record: &mut BackgroundRecord,
-        config: &SubagentControllerConfig,
-    ) -> Result<Option<(String, String, u8)>> {
-        if record.desired_enabled && config.vt_cfg.subagents.background.auto_restore {
-            if record.restart_attempts < 1 {
-                let next_restart_attempt = record.restart_attempts.saturating_add(1);
-                record.restart_attempts = next_restart_attempt;
-                record.status = BackgroundSubprocessStatus::Starting;
-                tracing::warn!(
-                    agent_name = record.agent_name.as_str(),
-                    record_id = record.id.as_str(),
-                    attempt = next_restart_attempt,
-                    "Background subprocess is missing; scheduling restart"
-                );
-                return Ok(Some((record.agent_name.clone(), record.id.clone(), next_restart_attempt)));
-            }
-            record.status = BackgroundSubprocessStatus::Error;
-            record.error = Some("Background subprocess is not running".to_string());
-            record.ended_at.get_or_insert(Utc::now());
-        } else if !record.desired_enabled {
-            record.status = BackgroundSubprocessStatus::Stopped;
-            record.ended_at.get_or_insert(Utc::now());
-        }
-        Ok(None)
-    }
-
-    fn mark_background_record_stopped_or_error(
-        record: &mut BackgroundRecord,
-        snapshot: &crate::tools::types::DiapasonExecSession,
-        _config: &SubagentControllerConfig,
-    ) {
-        if record.desired_enabled {
-            record.status = BackgroundSubprocessStatus::Error;
-            record.error = Some(match snapshot.exit_code {
-                Some(exit_code) => format!("Background subprocess exited with code {exit_code}"),
-                None => "Background subprocess exited unexpectedly".to_string(),
-            });
-        } else {
-            record.status = BackgroundSubprocessStatus::Stopped;
-        }
-    }
-
-    /// Gracefully stops a background subprocess by setting its desired state to disabled.
-    pub async fn graceful_stop_background(&self, target: &str) -> Result<BackgroundSubprocessEntry> {
-        self.cancel_background(target, BackgroundCancellationMode::Graceful).await
-    }
-
-    /// Force-cancels a background subprocess, closing its exec session immediately.
-    pub async fn force_cancel_background(&self, target: &str) -> Result<BackgroundSubprocessEntry> {
-        self.cancel_background(target, BackgroundCancellationMode::Force).await
-    }
-
-    async fn cancel_background(
-        &self,
-        target: &str,
-        mode: BackgroundCancellationMode,
-    ) -> Result<BackgroundSubprocessEntry> {
-        let cancellation = self.begin_background_cancellation(target).await?;
-        self.log_background_cancellation(target, &cancellation, &mode);
-        if !cancellation.exec_session_id.is_empty() {
-            match mode {
-                BackgroundCancellationMode::Graceful => {
-                    let _ = self.config.exec_sessions.terminate_session(&cancellation.exec_session_id).await;
-                    let _ = self
-                        .config
-                        .exec_sessions
-                        .prune_exited_session(&cancellation.exec_session_id)
-                        .await;
-                }
-                BackgroundCancellationMode::Force => {
-                    let _ = self.config.exec_sessions.close_session(&cancellation.exec_session_id).await;
-                }
-            }
-        }
-        self.finish_background_cancellation(target).await
-    }
-
-    fn log_background_cancellation(
-        &self,
-        target: &str,
-        cancellation: &BackgroundCancellation,
-        mode: &BackgroundCancellationMode,
-    ) {
-        let message = match mode {
-            BackgroundCancellationMode::Graceful => "Gracefully stopping",
-            BackgroundCancellationMode::Force => "Force cancelling",
-        };
-        tracing::info!(
-            agent_name = cancellation.agent_name.as_str(),
-            record_id = target,
-            exec_session_id = cancellation.exec_session_id.as_str(),
-            "{message} background subagent subprocess"
-        );
-    }
-
-    async fn begin_background_cancellation(&self, target: &str) -> Result<BackgroundCancellation> {
-        let mut state = self.state.write().await;
-        let record = state
-            .background_children
-            .get_mut(target)
-            .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?;
-        if current_subagent_invocation_context()
-            .is_some_and(|context| context.parent_session_id != record.parent_session_id)
-        {
-            bail!("Unknown background subprocess {target}");
-        }
-        record.desired_enabled = false;
-        record.status = BackgroundSubprocessStatus::Stopped;
-        record.updated_at = Utc::now();
-        record.ended_at = Some(Utc::now());
-        Ok(BackgroundCancellation {
-            agent_name: record.agent_name.clone(),
-            exec_session_id: record.exec_session_id.clone(),
-        })
-    }
-
-    async fn finish_background_cancellation(&self, target: &str) -> Result<BackgroundSubprocessEntry> {
-        self.refresh_background_archive_metadata(target).await?;
-        self.save_background_state().await?;
-        let status = self.background_status_for(target).await?;
-        self.publish_background_progress(status.clone()).await;
-        Ok(status)
-    }
-
-    /// Returns a thread snapshot for a tracked child subagent by its target id.
-    pub async fn snapshot_for_thread(&self, target: &str) -> Result<SubagentThreadSnapshot> {
-        self.ensure_child_owned_by_invocation(target).await?;
-        let captured = self.capture_subagent_thread(target).await?;
-        let snapshot = self.materialize_thread_snapshot(&captured).await;
-        Ok(SubagentThreadSnapshot {
-            id: captured.id,
-            session_id: captured.session_id,
-            parent_thread_id: captured.parent_thread_id,
-            agent_name: captured.agent_name,
-            display_label: captured.display_label,
-            status: captured.status,
-            background: captured.background,
-            created_at: captured.created_at,
-            updated_at: captured.updated_at,
-            archive_path: captured.archive_path,
-            transcript_path: captured.transcript_path,
-            effective_config: captured.effective_config,
-            snapshot,
-            recent_events: captured.recent_events,
-        })
-    }
-
-    async fn capture_subagent_thread(&self, target: &str) -> Result<CapturedSubagentThread> {
-        let state = self.state.read().await;
-        let record = state
-            .children
-            .get(target)
-            .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
-        let effective_config = record
-            .effective_config
-            .clone()
-            .ok_or_else(|| anyhow!("Subagent {target} does not have a captured runtime configuration yet"))?;
-        Ok(CapturedSubagentThread {
-            id: record.id.clone(),
-            session_id: record.session_id.clone(),
-            parent_thread_id: record.parent_thread_id.clone(),
-            agent_name: record.spec.name.clone(),
-            display_label: record.display_label.clone(),
-            status: record.status,
-            background: record.background,
-            created_at: record.created_at,
-            updated_at: record.updated_at,
-            archive_path: record.archive_path.clone(),
-            transcript_path: record.transcript_path.clone(),
-            effective_config,
-            thread_handle: record.thread_handle.clone(),
-            archive_metadata: record.archive_metadata.clone(),
-            stored_messages: record.stored_messages.clone(),
-            recent_events: record
-                .thread_handle
-                .as_ref()
-                .map(ThreadRuntimeHandle::recent_events)
-                .unwrap_or_default(),
-        })
-    }
-
-    async fn materialize_thread_snapshot(&self, captured: &CapturedSubagentThread) -> ThreadSnapshot {
-        if let Some(handle) = captured.thread_handle.as_ref() {
-            return handle.snapshot();
-        }
-
-        let archive_listing = match captured.archive_path.as_ref() {
-            Some(path) if tokio::fs::metadata(path).await.is_ok() => load_session_listing(path).await.ok(),
-            _ => None,
-        };
-        let metadata = archive_listing
-            .as_ref()
-            .map(|listing| listing.snapshot.metadata.clone())
-            .or_else(|| captured.archive_metadata.clone())
-            .or_else(|| {
-                Some(crate::core::threads::build_thread_archive_metadata(
-                    &self.config.workspace_root,
-                    captured.effective_config.agent.default_model.as_str(),
-                    captured.effective_config.agent.provider.as_str(),
-                    captured.effective_config.agent.theme.as_str(),
-                    captured.effective_config.agent.reasoning_effort.as_str(),
-                ))
-            });
-        ThreadSnapshot {
-            thread_id: ThreadId::new(captured.session_id.clone()),
-            metadata,
-            archive_listing,
-            messages: captured.stored_messages.clone(),
-            loaded_skills: Vec::new(),
-            turn_in_flight: false,
-        }
-    }
-    /// Spawns a background subprocess for a subagent marked `background: true`.
-    pub async fn spawn_background_subprocess(
-        &self,
-        request: SpawnBackgroundSubprocessRequest,
-    ) -> Result<BackgroundSubprocessEntry> {
-        self.ensure_background_subprocess_enabled()?;
-        let launch = self.prepare_background_subprocess(request).await?;
-        let _ = self.refresh_background_processes().await?;
-        if let Some(entry) = self.reusable_background_subprocess(&launch).await? {
-            return Ok(entry);
-        }
-
-        let PreparedBackgroundSubprocess {
-            agent_name,
-            record_id,
-            prompt,
-            max_turns,
-            model_override,
-            reasoning_override,
-            parent_session_id,
-            ..
-        } = launch;
-        let launch_overrides = BackgroundLaunchOverrides {
-            prompt: Some(prompt),
-            max_turns,
-            model_override,
-            reasoning_override,
-            parent_session_id: Some(parent_session_id),
-        };
-        self.ensure_background_record_running(BackgroundRunRequest {
-            agent_name,
-            stable_id: Some(record_id),
-            restart_attempts: 0,
-            overrides: Some(launch_overrides),
-        })
-        .await
-    }
-
-    fn ensure_background_subprocess_enabled(&self) -> Result<()> {
-        if self.config.managed_background_runtime {
-            bail!("managed background subprocesses cannot launch nested background subprocesses");
-        }
-        if !self.config.vt_cfg.subagents.background.enabled {
-            bail!("Background subagents are disabled by configuration");
-        }
-        Ok(())
-    }
-
-    async fn prepare_background_subprocess(
-        &self,
-        mut request: SpawnBackgroundSubprocessRequest,
-    ) -> Result<PreparedBackgroundSubprocess> {
-        let delegation = self
-            .prepare_delegation_context(
-                request.agent_type.clone(),
-                &mut request.items,
-                &mut request.model,
-                "spawn_background_subprocess",
-            )
-            .await?;
-        let spec = self.resolve_requested_spec(delegation.requested_agent.as_deref()).await?;
-        if !spec.background {
-            bail!(
-                "spawn_background_subprocess requires an agent with `background: true`; '{}' is a normal delegated child agent. Use spawn_agent instead.",
-                spec.name
-            );
-        }
-        let prompt = self.prepare_delegation_prompt(
-            &spec,
-            &delegation,
-            &request.message,
-            &request.items,
-            "spawn_background_subprocess",
-            "launching the background subprocess",
-        )?;
-        let desired_max_turns = normalize_background_child_max_turns(request.max_turns.or(spec.max_turns), true);
-        let desired_model_override = request.model.clone().or_else(|| spec.model.clone());
-        let desired_reasoning_override = request
-            .reasoning_effort
-            .clone()
-            .or_else(|| spec.reasoning_effort.as_ref().map(|e| e.as_str().to_string()));
-        let record_id = background_record_id(spec.name.as_str());
-
-        Ok(PreparedBackgroundSubprocess {
-            agent_name: spec.name.to_string(),
-            record_id,
-            prompt,
-            desired_max_turns,
-            desired_model_override,
-            desired_reasoning_override,
-            max_turns: request.max_turns,
-            model_override: request.model,
-            reasoning_override: request.reasoning_effort,
-            parent_session_id: delegation.parent_session_id,
-        })
-    }
-
-    async fn reusable_background_subprocess(
-        &self,
-        launch: &PreparedBackgroundSubprocess,
-    ) -> Result<Option<BackgroundSubprocessEntry>> {
-        let state = self.state.read().await;
-        let Some(record) = state.background_children.get(&launch.record_id) else {
-            return Ok(None);
-        };
-        if !record.desired_enabled || !record.status.is_active() {
-            return Ok(None);
-        }
-        if current_subagent_invocation_context()
-            .is_some_and(|context| context.parent_session_id != record.parent_session_id)
-        {
-            bail!("A background subprocess with this agent name is already active");
-        }
-
-        let conflicts = Self::active_background_launch_conflicts(record, launch);
-        if !conflicts.is_empty() {
-            bail!(
-                "spawn_background_subprocess found active background subprocess '{}' with different {}. Stop or restart the existing subprocess before changing its launch settings.",
-                launch.agent_name,
-                conflicts.join(", "),
-            );
-        }
-        Ok(Some(record.build_status_entry()))
-    }
-
-    pub(super) async fn background_status_for(&self, target: &str) -> Result<BackgroundSubprocessEntry> {
-        let state = self.state.read().await;
-        let record = state
-            .background_children
-            .get(target)
-            .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?;
-        Ok(record.build_status_entry())
-    }
-
-    pub(super) async fn ensure_background_record_running(
-        &self,
-        request: BackgroundRunRequest,
-    ) -> Result<BackgroundSubprocessEntry> {
-        let plan = self.prepare_background_run(request).await?;
-        self.record_background_run_starting(&plan).await;
-        let metadata = self.spawn_background_exec_session(&plan).await?;
-        self.record_background_run_started(&plan, metadata).await?;
-        self.save_background_state().await?;
-        self.background_status_for(&plan.record_id).await
-    }
-
-    async fn resolve_background_run_identity(&self, request: &BackgroundRunRequest) -> Result<BackgroundRunIdentity> {
-        let spec = self
-            .resolve_requested_spec(Some(request.agent_name.as_str()))
-            .await
-            .with_context(|| format!("Failed to resolve background subagent '{}'", request.agent_name))?;
-        let record_id = request
-            .stable_id
-            .clone()
-            .unwrap_or_else(|| background_record_id(request.agent_name.as_str()));
-        let previous_record = {
-            let state = self.state.read().await;
-            state.background_children.get(&record_id).cloned()
-        };
-        let previous_parent_session_id = usable_background_parent_session_id(
-            previous_record.as_ref().map(|record| record.parent_session_id.clone()),
-        );
-        let current_parent_session_id = self.parent_session_id.read().await.clone();
-        let requested_parent_session_id = usable_background_parent_session_id(
-            request
-                .overrides
-                .as_ref()
-                .and_then(|overrides| overrides.parent_session_id.clone()),
-        );
-        let parent_session_id = requested_parent_session_id
-            .or(previous_parent_session_id)
-            .unwrap_or(current_parent_session_id);
-        let session_id = format!(
-            "{}-{}-{}",
-            sanitize_component(parent_session_id.as_str()),
-            sanitize_component(record_id.as_str()),
-            Utc::now().format("%Y%m%dT%H%M%S%3fZ")
-        );
-        let exec_session_id = format!("exec-{session_id}");
-        let created_at = previous_record.as_ref().map_or_else(Utc::now, |record| record.created_at);
-        Ok(BackgroundRunIdentity {
-            spec,
-            record_id,
-            parent_session_id,
-            session_id,
-            exec_session_id,
-            created_at,
-            previous_record,
-        })
-    }
-
-    async fn prepare_background_run(&self, request: BackgroundRunRequest) -> Result<BackgroundRunPlan> {
-        let identity = self.resolve_background_run_identity(&request).await?;
-        let previous_record = identity.previous_record.as_ref();
-        let previous_prompt = previous_record.map_or_else(String::new, |record| record.prompt.clone());
-        let prompt = request
-            .overrides
-            .as_ref()
-            .and_then(|overrides| overrides.prompt.clone())
-            .filter(|value| !value.trim().is_empty())
-            .or_else(|| (!previous_prompt.trim().is_empty()).then_some(previous_prompt))
-            .or_else(|| identity.spec.initial_prompt.clone())
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| {
-                format!(
-                    "You are the Diapason background subagent `{}`. Summarize readiness briefly, inspect the workspace at a high level, then remain idle until the process is terminated.",
-                    identity.spec.name
-                )
-            });
-        let max_turns = normalize_background_child_max_turns(
-            request
-                .overrides
-                .as_ref()
-                .and_then(|overrides| overrides.max_turns)
-                .or_else(|| previous_record.and_then(|record| record.max_turns))
-                .or(identity.spec.max_turns),
-            true,
-        );
-        let model_override = request
-            .overrides
-            .as_ref()
-            .and_then(|overrides| overrides.model_override.clone())
-            .or_else(|| previous_record.and_then(|record| record.model_override.clone()))
-            .or_else(|| identity.spec.model.clone());
-        let reasoning_override = request
-            .overrides
-            .as_ref()
-            .and_then(|overrides| overrides.reasoning_override.clone())
-            .or_else(|| previous_record.and_then(|record| record.reasoning_override.clone()))
-            .or_else(|| {
-                identity
-                    .spec
-                    .reasoning_effort
-                    .as_ref()
-                    .map(|effort| effort.as_str().to_string())
-            });
-
-        Ok(BackgroundRunPlan {
-            spec: identity.spec,
-            record_id: identity.record_id,
-            parent_session_id: identity.parent_session_id,
-            session_id: identity.session_id,
-            exec_session_id: identity.exec_session_id,
-            created_at: identity.created_at,
-            prompt,
-            max_turns,
-            model_override,
-            reasoning_override,
-            restart_attempts: request.restart_attempts,
-        })
-    }
-
-    async fn record_background_run_starting(&self, plan: &BackgroundRunPlan) {
-        {
-            let mut state = self.state.write().await;
-            state.background_children.insert(
-                plan.record_id.clone(),
-                BackgroundRecord {
-                    id: plan.record_id.clone(),
-                    agent_name: plan.spec.name.clone(),
-                    display_label: subagent_display_label(&plan.spec),
-                    description: plan.spec.description.clone(),
-                    source: plan.spec.source.label(),
-                    colour: plan.spec.colour.clone(),
-                    session_id: plan.session_id.clone(),
-                    parent_session_id: plan.parent_session_id.clone(),
-                    exec_session_id: plan.exec_session_id.clone(),
-                    desired_enabled: true,
-                    status: BackgroundSubprocessStatus::Starting,
-                    created_at: plan.created_at,
-                    updated_at: Utc::now(),
-                    started_at: None,
-                    ended_at: None,
-                    pid: None,
-                    prompt: plan.prompt.clone(),
-                    summary: Some("Starting background subagent".to_string()),
-                    error: None,
-                    archive_path: None,
-                    transcript_path: None,
-                    max_turns: plan.max_turns,
-                    model_override: plan.model_override.clone(),
-                    reasoning_override: plan.reasoning_override.clone(),
-                    restart_attempts: plan.restart_attempts,
-                },
-            );
-        }
-        self.publish_background_status(&plan.record_id).await;
-    }
-
-    async fn spawn_background_exec_session(
-        &self,
-        plan: &BackgroundRunPlan,
-    ) -> Result<crate::tools::types::DiapasonExecSession> {
-        let launch = build_background_launch_spec(
-            &self.config.workspace_root,
-            plan.spec.name.as_str(),
-            plan.parent_session_id.as_str(),
-            plan.session_id.as_str(),
-            plan.prompt.as_str(),
-            plan.max_turns,
-            plan.model_override.as_deref(),
-            plan.reasoning_override.as_deref(),
-        )?;
-        let metadata = if launch.use_pty {
-            self.config
-                .exec_sessions
-                .create_pty_session(
-                    plan.exec_session_id.clone().into(),
-                    launch.command,
-                    self.config.workspace_root.clone(),
-                    PtySize {
-                        rows: 24,
-                        cols: 80,
-                        pixel_width: 0,
-                        pixel_height: 0,
-                    },
-                    hashbrown::HashMap::new(),
-                    None,
-                )
-                .await
-        } else {
-            self.config
-                .exec_sessions
-                .create_pipe_session(
-                    plan.exec_session_id.clone().into(),
-                    launch.command,
-                    self.config.workspace_root.clone(),
-                    hashbrown::HashMap::new(),
-                )
-                .await
-        }
-        .with_context(|| format!("Failed to spawn background subprocess for subagent '{}'", plan.spec.name))?;
-
-        tracing::info!(
-            agent_name = plan.spec.name.as_str(),
-            record_id = plan.record_id.as_str(),
-            exec_session_id = plan.exec_session_id.as_str(),
-            pid = metadata.child_pid,
-            "Spawned background subagent subprocess"
-        );
-        Ok(metadata)
-    }
-
-    async fn record_background_run_started(
-        &self,
-        plan: &BackgroundRunPlan,
-        metadata: crate::tools::types::DiapasonExecSession,
-    ) -> Result<()> {
-        {
-            let mut state = self.state.write().await;
-            let record = state
-                .background_children
-                .get_mut(&plan.record_id)
-                .ok_or_else(|| anyhow!("Unknown background subprocess {}", plan.record_id))?;
-            record.exec_session_id = plan.exec_session_id.clone();
-            record.pid = metadata.child_pid;
-            record.started_at = metadata.started_at;
-            record.status = BackgroundSubprocessStatus::Running;
-            record.updated_at = Utc::now();
-            record.ended_at = None;
-            record.error = None;
-            record.summary = Some("Background subagent is running".to_string());
-        }
-        self.publish_background_status(&plan.record_id).await;
-        Ok(())
-    }
-
-    pub(super) async fn refresh_background_archive_metadata(&self, target: &str) -> Result<()> {
-        let session_id = {
-            let state = self.state.read().await;
-            state
-                .background_children
-                .get(target)
-                .map(|record| record.session_id.clone())
-                .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?
-        };
-
-        if let Some(listing) = find_session_by_identifier(&session_id).await? {
-            let mut state = self.state.write().await;
-            if let Some(record) = state.background_children.get_mut(target) {
-                record.archive_path = Some(listing.path.clone());
-                record.transcript_path = Some(listing.path);
-            }
-        }
-
-        Ok(())
-    }
-
-    fn active_background_launch_conflicts(
-        record: &BackgroundRecord,
-        launch: &PreparedBackgroundSubprocess,
-    ) -> Vec<&'static str> {
-        let mut conflicts = Vec::new();
-        if record.prompt != launch.prompt {
-            conflicts.push("prompt");
-        }
-        if record.max_turns != launch.desired_max_turns {
-            conflicts.push("max_turns");
-        }
-        if record.model_override.as_deref() != launch.desired_model_override.as_deref() {
-            conflicts.push("model");
-        }
-        if record.reasoning_override.as_deref() != launch.desired_reasoning_override.as_deref() {
-            conflicts.push("reasoning_effort");
-        }
-        conflicts
-    }
-}
+mod controller_background_archive;
+mod controller_background_cancel;
+mod controller_background_launch;
+mod controller_background_lifecycle;
+mod controller_background_liveness;
+mod controller_background_query;
+mod controller_background_run;
+mod controller_background_settlement;
+mod reservation;
 
 #[cfg(test)]
-mod background_owner_tests {
-    use super::usable_background_parent_session_id;
+mod adopted_stop_gate;
 
-    #[test]
-    fn empty_legacy_parent_owner_falls_back_to_the_current_session() {
-        let previous_owner = usable_background_parent_session_id(Some(String::new()));
-        let current_owner = "current-session".to_owned();
+#[cfg(test)]
+mod tests;
 
-        assert_eq!(previous_owner.unwrap_or(current_owner), "current-session");
+use super::*;
+
+pub(crate) use self::controller_background_cancel::BACKGROUND_CLOSE_FAULT_PREFIX;
+pub use self::controller_background_cancel::BackgroundStopOutcome;
+pub(in crate::subagents) use self::controller_background_cancel::rekey_pending_background_stop_close;
+use self::controller_background_cancel::{background_record_close_is_unconfirmed, background_stop_close_is_pending};
+use self::controller_background_lifecycle::{clear_background_launch_owed, mark_background_launch_owed};
+use self::controller_background_liveness::exec_session_is_missing;
+use self::controller_background_query::{read_output_tail, read_preview};
+#[cfg(all(test, unix))]
+use self::controller_background_settlement::pass_background_claim_lock_gate;
+use self::controller_background_settlement::{
+    clear_background_ledger_write_pending, mark_background_ledger_write_pending,
+    pending_background_ledger_write_generation, persisted_background_row_is_desired,
+};
+use crate::subagents::background_lock::BackgroundStateLock;
+
+pub(in crate::subagents) use self::reservation::{BackgroundRunPlan, BackgroundRunRequest, BackgroundRunReservation};
+use self::reservation::{
+    PersistedLaunchEvidence, ReservedClaimGuard, background_launch_conflicts, reuse_is_for_another_parent,
+    reuse_is_refused_by_the_invocation_context, reuse_needs_parent_rebind, usable_background_parent_session_id,
+};
+
+/// Disarms an unstarted claim's guard when the claim has a new owner.
+///
+/// The guard is only meaningful while its driver is running; every path that
+/// settles the claim itself, hands it to the launch, or gives the record a new
+/// claim disarms it here.
+fn claim_guard_disarm(guard: Option<ReservedClaimGuard>) {
+    if let Some(guard) = guard {
+        guard.disarm();
+    }
+}
+
+/// Projects a prepared plan onto the record the plan now owns.
+fn starting_background_record(plan: &BackgroundRunPlan) -> BackgroundRecord {
+    BackgroundRecord {
+        owner_session_id: plan.owner_session_id.clone(),
+        id: plan.record_id.clone(),
+        agent_name: plan.spec.name.clone(),
+        display_label: subagent_display_label(&plan.spec),
+        description: plan.spec.description.clone(),
+        source: plan.spec.source.label(),
+        colour: plan.spec.colour.clone(),
+        session_id: plan.session_id.clone(),
+        parent_session_id: plan.parent_session_id.clone(),
+        exec_session_id: plan.exec_session_id.clone(),
+        desired_enabled: true,
+        status: BackgroundSubprocessStatus::Starting,
+        created_at: plan.created_at,
+        updated_at: Utc::now(),
+        started_at: None,
+        ended_at: None,
+        pid: None,
+        prompt: plan.prompt.clone(),
+        summary: Some("Starting background subagent".to_string()),
+        error: None,
+        close_fault: None,
+        archive_path: None,
+        transcript_path: None,
+        max_turns: plan.max_turns,
+        model_override: plan.model_override.clone(),
+        reasoning_override: plan.reasoning_override.clone(),
+        restart_attempts: plan.restart_attempts,
+    }
+}
+
+/// How an explicit start's admission checks answered.
+///
+/// The variants are ranked, and the ranking is the rule: an unconfirmed close
+/// is decided before the exemption for this controller's own row, because a
+/// close this process still owes names a process that may be live whoever holds
+/// the row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExplicitStartAdmission {
+    /// Neither the ledger nor this controller's obligations block the start.
+    Admitted,
+    /// A persisted row's launch is not confirmed closed, so a process may be live.
+    CloseUnconfirmed,
+    /// A desired ledger row names a launch this controller does not hold.
+    CompetingClaim,
+    /// This controller's own stop has not finished closing its process.
+    StopClosePending,
+}
+
+/// Decides whether an explicit start may claim the record it addresses.
+///
+/// The checks run in the reservation, under the ledger's file lock and the
+/// state write lock, so the row read here is the row another start would have to
+/// overwrite. Kept as a predicate over that state so the precedence can be
+/// exercised without writing the ledger or publishing a record.
+fn explicit_start_admission(
+    state_handle: &Arc<RwLock<ControllerState>>,
+    state: &ControllerState,
+    persisted: Option<&PersistedBackgroundRecord>,
+    record_id: &str,
+    exec_session_id: &str,
+) -> ExplicitStartAdmission {
+    if let Some(row) = persisted {
+        // A failure whose process close is unconfirmed names a process that may
+        // still be live, so its row is not a finished launch whoever holds it.
+        // This check comes before the own-record exemption below: a controller's
+        // own settled row with a close still owed is exactly the case that must
+        // not be replaced.
+        if background_record_close_is_unconfirmed(&BackgroundRecord::from_persisted(row.clone())) {
+            return ExplicitStartAdmission::CloseUnconfirmed;
+        }
+        // A desired row naming a launch this controller does not hold is another
+        // process's claim. The explicit-start pre-check reads the same row, but
+        // only before this lock is taken; two starts that both saw an empty
+        // ledger could otherwise reserve and spawn, leaving one launch in the
+        // ledger and two processes running. A stopped row is not a claim - an
+        // explicit start is how a stopped task is started again - and a row
+        // naming this controller's own record, or the launch this start
+        // proposes, is this launch's own copy.
+        let own_exec_session_id = state
+            .background_children
+            .get(record_id)
+            .map(|record| record.exec_session_id.as_str());
+        if Some(row.exec_session_id.as_str()) != own_exec_session_id
+            && row.exec_session_id != exec_session_id
+            && persisted_background_row_is_desired(row)
+        {
+            return ExplicitStartAdmission::CompetingClaim;
+        }
+    }
+    // A stop is not finished until its process is closed. Replacing the record
+    // now would publish a new launch over a process no record names, and clear
+    // the obligation that a later reconcile still needs to discharge.
+    if state
+        .background_children
+        .get(record_id)
+        .is_some_and(|record| background_stop_close_is_pending(state_handle, record_id, &record.exec_session_id))
+    {
+        return ExplicitStartAdmission::StopClosePending;
+    }
+    ExplicitStartAdmission::Admitted
+}
+
+impl SubagentController {
+    /// Claims the record for `plan`, deciding and writing under one lock.
+    ///
+    /// `reusable_background_subprocess` answers the same question without the
+    /// state lock, and the launch then wrote its record unconditionally, so
+    /// two launches that both passed could both spawn and the second silently
+    /// replaced the first — possibly a running one. Deciding and writing here
+    /// makes the record's owner a single fact. A plan bound to an observed
+    /// exec session may replace only that launch. An unbound plan reuses an
+    /// active record that matches its settings, refuses one that does not, and
+    /// replaces only an absent or terminal record.
+    ///
+    /// A bound plan is always an automatic replacement, so it also yields to a
+    /// stop another controller has persisted for the launch it observed. The
+    /// stop is read and the claim written while the ledger's file lock is held,
+    /// because the two must be one transition: reading outside it leaves a
+    /// window in which a stop lands after the read, and the replacement then
+    /// launches a task its owner had already cancelled. An explicit start is
+    /// unbound, so it can still launch after a stop.
+    ///
+    /// A fresh claim is written to the ledger before the lock is released.
+    /// Committing it only in memory would let another process read the record
+    /// as unchanged and reserve its own replacement, so the claim is the one
+    /// fact both processes must agree on. A bound replacement then confirms the
+    /// ledger actually names the claimed exec session: the save merges rather
+    /// than replaces, and a claim that lost that merge would let another process
+    /// start a replacement beside this launch.
+    ///
+    /// An explicit start is checked against the same ledger under the same lock.
+    /// The pre-check before the reservation reads the ledger too, but only
+    /// before this lock is taken, so two starts that both saw an empty ledger
+    /// could otherwise reserve and spawn; deciding here leaves only one of them
+    /// able to spawn. A ledger that cannot be locked fails the start outright:
+    /// a memory-only claim would reserve the task without ever reading the row
+    /// another process may hold. The claim is then guarded until the launch path
+    /// takes it over, so a caller dropped inside the reservation settles the
+    /// claim it wrote instead of leaving it `Starting` forever.
+    async fn reserve_background_run(&self, plan: &BackgroundRunPlan) -> Result<BackgroundRunReservation> {
+        // A record whose ledger write is still owed must not be answered from
+        // memory. Reuse would report a `Running` record that a restart or
+        // another process may never see. Retrying here makes the reservation
+        // either wait for that write or fail visibly; it can never return
+        // `Reused` while the write is outstanding.
+        if pending_background_ledger_write_generation(&self.state).is_some() {
+            self.retry_owed_background_ledger_write().await?;
+        }
+        // The file lock is taken before the state lock and released before
+        // anything publishes, matching `save_background_state`'s order. It is
+        // held for the state decision and for the claim's own write, so two
+        // processes cannot both reserve the same record.
+        //
+        // Both kinds of claim are one durable transition with the row they
+        // reconcile, so a contended or unreadable ledger fails them. An explicit
+        // start used to fall back to a memory-only claim, which reserved the
+        // task without ever reading the row another process may hold: the start
+        // then spawned beside a launch the ledger already named. Propagating the
+        // fault leaves the ledger untouched and the caller free to retry, which
+        // is what lets a retry inspect the winning claim.
+        let mut ledger_guard = if self.config.managed_background_runtime {
+            // A nested scope owns no ledger, so it has nothing to read or write.
+            None
+        } else {
+            Some(lock_background_state(&self.config.workspace_root).await?)
+        };
+        // A test parks here to commit `Running` after the check above but before
+        // the repeated one, which is the window in which the ledger can trail
+        // the record it is supposed to describe.
+        #[cfg(all(test, unix))]
+        {
+            if ledger_guard.is_some() {
+                pass_background_claim_lock_gate(&self.state).await;
+            }
+        }
+        // A launch can commit `Running` in memory while this reservation waits
+        // for the ledger lock, and the save that makes the record durable needs
+        // that same lock: without this second check, reuse could answer from
+        // memory for a row the ledger still records as `Starting`.
+        if ledger_guard.is_some() && pending_background_ledger_write_generation(&self.state).is_some() {
+            // Release the lock first: the retried save takes it. `take` both
+            // clears the slot and drops the guard here, so the release is what
+            // the statement does and not a side effect of an unused assignment.
+            drop(ledger_guard.take());
+            self.retry_owed_background_ledger_write().await?;
+            ledger_guard = Some(lock_background_state(&self.config.workspace_root).await?);
+            if pending_background_ledger_write_generation(&self.state).is_some() {
+                // A newer write became owed while the retry ran. Answering now
+                // would again report a record the ledger may never hold.
+                bail!(
+                    "Background subprocess '{}' still owes its ledger write; retry once it has been persisted",
+                    plan.spec.name
+                );
+            }
+        }
+        // The ledger is read under the lock that writes the claim. A bound plan
+        // compares its observation with the row another process may have
+        // written; an unbound plan observed no launch of its own, so the row is
+        // the only way a claim another start wrote can be seen.
+        let evidence = if ledger_guard.is_some() {
+            self.persisted_record_for(&plan.record_id, plan.observed_exec_session_id())
+                .await?
+        } else {
+            PersistedLaunchEvidence::default()
+        };
+        // A migrated row is evidence about the launch a plan observed. An unbound
+        // plan observed none, so a row that merely moved cannot decline a start
+        // that replaces nothing.
+        let launch_moved = evidence.observed_launch_moved && plan.expected_exec_session_id.is_some();
+        let launch_superseded = evidence.observed_launch_superseded;
+        let persisted = evidence.record;
+        let (reservation, adopted_exec_session_id, claim_is_durable, reuse_rebind_exec_session_id, claim_guard) = {
+            let mut state = self.state.write().await;
+            // An explicit start is unbound, so nothing ties it to the row the
+            // ledger holds: its admission is one decision over that row and this
+            // controller's obligations. A bound plan replaces the launch it
+            // observed and compares the row directly instead.
+            let admission = if plan.expected_exec_session_id.is_some() {
+                ExplicitStartAdmission::Admitted
+            } else {
+                explicit_start_admission(
+                    &self.state,
+                    &state,
+                    persisted.as_ref(),
+                    plan.record_id.as_str(),
+                    plan.exec_session_id.as_str(),
+                )
+            };
+            if let Some(expected_exec_session_id) = plan.expected_exec_session_id.as_deref() {
+                // The launch this plan replaces is reconciled by this
+                // reservation: it no longer owes the launch a previous pass
+                // recorded for it. A settled failure re-records that obligation;
+                // a fresh claim records its own under the new session. This is
+                // also where an inline retry's obligation is transferred: it was
+                // recorded against the failed session so a refresh would leave
+                // the record alone while the replacement was prepared.
+                clear_background_launch_owed(&self.state, plan.record_id.as_str(), expected_exec_session_id);
+                let still_owns_launch = state
+                    .background_children
+                    .get(&plan.record_id)
+                    .is_some_and(|record| record.exec_session_id == expected_exec_session_id && record.desired_enabled);
+                // A persisted row under this id that still wants a different
+                // launch is another process's claim, not a stale copy of the
+                // launch this plan observed. Its storage is disambiguated only
+                // by the exec session, so replacing it would put a second
+                // process beside a claim this controller cannot see.
+                let competing_claim = persisted.as_ref().is_some_and(|row| {
+                    row.exec_session_id != expected_exec_session_id && persisted_background_row_is_desired(row)
+                });
+                // The launch this plan observed is no longer here under this
+                // id, or it was migrated to its owner and is now persisted
+                // elsewhere. Either way it is not this controller's to
+                // replace: spawning now would put a second process beside the
+                // migrated record. A migration whose owner has since replaced
+                // the launch leaves no row naming the observed session, so the
+                // retained migration evidence is what refuses the stale restart.
+                if !still_owns_launch || launch_moved || launch_superseded || competing_claim {
+                    (BackgroundRunReservation::Declined, None, false, None, None)
+                } else {
+                    // `adopt_cancellation_into` is the one place that decides
+                    // whether a persisted copy is a stop of this launch.
+                    let adopted = match (state.background_children.get_mut(&plan.record_id), persisted.as_ref()) {
+                        (Some(record), Some(stop)) => {
+                            if stop.adopt_cancellation_into(record) {
+                                Some(record.exec_session_id.clone())
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    };
+                    if let Some(exec_session_id) = adopted {
+                        // Capture the adopted launch's session here, while the
+                        // record still names it. A concurrent start can replace
+                        // the record before the close below, and closing
+                        // whatever the record names then would close the
+                        // replacement instead.
+                        (BackgroundRunReservation::Declined, Some(exec_session_id), false, None, None)
+                    } else {
+                        state
+                            .background_children
+                            .insert(plan.record_id.clone(), starting_background_record(plan));
+                        mark_background_launch_owed(
+                            &self.state,
+                            plan.record_id.as_str(),
+                            plan.spec.name.as_str(),
+                            plan.restart_attempts,
+                            plan.exec_session_id.as_str(),
+                            false,
+                        );
+                        // Armed at the claim write, before the reservation's
+                        // first await, so a caller dropped while the claim is
+                        // written or published still settles it.
+                        let guard = ReservedClaimGuard::arm(
+                            &self.state,
+                            plan.record_id.as_str(),
+                            plan.exec_session_id.as_str(),
+                        );
+                        (BackgroundRunReservation::Reserved, None, ledger_guard.is_some(), None, Some(guard))
+                    }
+                }
+            } else if admission == ExplicitStartAdmission::CloseUnconfirmed {
+                bail!(
+                    "Background subprocess '{}' still owes the close of its previous launch; refresh the background tasks before starting it",
+                    plan.spec.name
+                );
+            } else if admission == ExplicitStartAdmission::CompetingClaim {
+                bail!(
+                    "Background subprocess '{}' already has a launch claimed by another controller; refresh the background tasks before starting it",
+                    plan.spec.name
+                );
+            } else if admission == ExplicitStartAdmission::StopClosePending {
+                (BackgroundRunReservation::Declined, None, false, None, None)
+            } else {
+                let active = state.background_children.get(&plan.record_id).and_then(|record| {
+                    (record.desired_enabled && record.status.is_active()).then(|| {
+                        let conflicts = background_launch_conflicts(
+                            record,
+                            plan.prompt.as_str(),
+                            plan.max_turns,
+                            plan.model_override.as_deref(),
+                            plan.reasoning_override.as_deref(),
+                        );
+                        (conflicts, record.build_status_entry(), record.parent_session_id.clone())
+                    })
+                });
+                let (reservation, claim_is_durable, reuse_rebind, guard) = match active {
+                    Some((conflicts, entry, parent_session_id)) => {
+                        // Reuse answers with the existing launch and drops the
+                        // parent this request resolved, so a record another
+                        // parent drives would keep routing its progress there
+                        // while the caller is told its own request succeeded.
+                        // The same rule applies here, where the decision is
+                        // really made, and it compares the resolved parent as
+                        // well as the ambient invocation context: a caller with
+                        // no context must not reuse a foreign launch either. A
+                        // parentless record has no owner to conflict with, so
+                        // both comparisons exempt it; the rebind below is what
+                        // takes it onto the requesting session.
+                        if reuse_is_for_another_parent(&parent_session_id, &plan.parent_session_id)
+                            || reuse_is_refused_by_the_invocation_context(&parent_session_id)
+                        {
+                            bail!("A background subprocess with this agent name is already active");
+                        }
+                        if conflicts.is_empty() {
+                            // A launch can also commit its record in memory
+                            // between the repeated check above and this lock,
+                            // and its save needs the ledger lock held here. A
+                            // reuse answered from memory would then describe a
+                            // row the ledger still holds as `Starting`, so this
+                            // caller is told to retry once the write lands.
+                            if pending_background_ledger_write_generation(&self.state).is_some() {
+                                bail!(
+                                    "Background subprocess '{}' still owes its ledger write; retry once it has been persisted",
+                                    plan.spec.name
+                                );
+                            }
+                            // A record that names no parent routes no progress
+                            // to the caller, so reuse takes the launch onto the
+                            // requesting session. The write lock is held here,
+                            // and the rebind is written to the ledger below,
+                            // before the caller is told the reuse succeeded: a
+                            // crash in between would otherwise leave the durable
+                            // row parentless while a later session routes nothing
+                            // to the caller that was promised the launch.
+                            let rebind = reuse_needs_parent_rebind(&parent_session_id, &plan.parent_session_id)
+                                .then(|| {
+                                    state.background_children.get_mut(&plan.record_id).map(|record| {
+                                        record.parent_session_id = plan.parent_session_id.clone();
+                                        record.updated_at = Utc::now();
+                                        record.exec_session_id.clone()
+                                    })
+                                })
+                                .flatten()
+                                .map(|exec_session_id| {
+                                    // The record is now reusable in memory, so the
+                                    // owed marker is raised under the same lock
+                                    // that made it so, exactly as a commit does.
+                                    // It is discharged below once the rebind
+                                    // reaches the ledger.
+                                    (exec_session_id, mark_background_ledger_write_pending(&self.state))
+                                });
+                            (BackgroundRunReservation::Reused(Box::new(entry)), false, rebind, None)
+                        } else {
+                            bail!(
+                                "spawn_background_subprocess found active background subprocess '{}' with different {}. Stop or restart the existing subprocess before changing its launch settings.",
+                                plan.spec.name,
+                                conflicts.join(", "),
+                            )
+                        }
+                    }
+                    None => {
+                        state
+                            .background_children
+                            .insert(plan.record_id.clone(), starting_background_record(plan));
+                        mark_background_launch_owed(
+                            &self.state,
+                            plan.record_id.as_str(),
+                            plan.spec.name.as_str(),
+                            plan.restart_attempts,
+                            plan.exec_session_id.as_str(),
+                            false,
+                        );
+                        // Armed at the claim write, before the reservation's
+                        // first await, so a caller dropped while the claim is
+                        // written or published still settles it.
+                        let guard = ReservedClaimGuard::arm(
+                            &self.state,
+                            plan.record_id.as_str(),
+                            plan.exec_session_id.as_str(),
+                        );
+                        (BackgroundRunReservation::Reserved, ledger_guard.is_some(), None, Some(guard))
+                    }
+                };
+                (reservation, None, claim_is_durable, reuse_rebind, guard)
+            }
+        };
+        // The claim is persisted while the ledger lock is still held, so another
+        // process cannot read the previous row and reserve its own replacement
+        // in the window between this decision and its write. The ordinary save
+        // would re-lock the ledger, so the row is written directly here.
+        //
+        // The transition displaces the launch the locked decision examined: a
+        // bound plan replaces the launch it observed, and an explicit start
+        // replaces whatever row it was admitted over. Without that, a
+        // predecessor which recorded its start would outrank the claim in the
+        // merge, and the readback below would fail a restart that never tried
+        // to spawn.
+        let replaced_exec_session_id = plan
+            .expected_exec_session_id
+            .clone()
+            .or_else(|| persisted.as_ref().map(|row| row.exec_session_id.clone()));
+        let claim_write_error = if claim_is_durable {
+            // The write runs in an owned task that also owns the ledger lock;
+            // see `persist_claim_owning_ledger_lock` for why the guard must not
+            // stay with this future.
+            let (written, returned_guard) = self
+                .persist_claim_owning_ledger_lock(
+                    ledger_guard.take(),
+                    &plan.record_id,
+                    &plan.exec_session_id,
+                    replaced_exec_session_id.as_deref(),
+                )
+                .await;
+            ledger_guard = returned_guard;
+            match written {
+                // `Reserved` is reported only once the ledger holds the claim,
+                // for both the bound and the unbound paths. A claim can lose a
+                // write that kept another row - a persisted launch that
+                // recorded its start outranks a claim that has not begun - and
+                // `Ok(())` alone cannot tell that from a claim that landed.
+                // Anyone reading the ledger would then see a launch this
+                // controller is about to start beside.
+                Ok(()) => match self.persisted_claim_names(&plan.exec_session_id).await {
+                    Ok(true) => None,
+                    Ok(false) => Some(anyhow!(
+                        "The background ledger did not keep the claim for '{}'; another launch is persisted under it",
+                        plan.spec.name
+                    )),
+                    Err(error) => Some(error),
+                },
+                Err(error) => Some(error),
+            }
+        } else {
+            None
+        };
+        if let Some(error) = claim_write_error {
+            // No ledger-backed start may spawn a process the ledger cannot name:
+            // another controller would read the previous row and start its own,
+            // and a later save cannot undo either process. The claim is
+            // withdrawn so the caller reports the fault instead of publishing a
+            // launch no durable row records. A nested scope owns no ledger, so
+            // it never reaches this: its claim is memory-only by construction.
+            //
+            // The settlement saves the record, so the ledger lock must be
+            // released first: the save takes the same lock. The guard stays
+            // armed across the settlement, so a caller dropped while that
+            // settlement waits for the state lock leaves the claim to the drop
+            // handler, which settles it exactly as the settlement would have.
+            drop(ledger_guard);
+            self.settle_failed_background_restart(&plan.record_id, &plan.exec_session_id, &error)
+                .await;
+            // The settlement has taken responsibility for the claim.
+            claim_guard_disarm(claim_guard);
+            return Err(error);
+        }
+        // A reuse that rebound a parentless record writes the rebind before it
+        // answers, under the same lock that took the decision, so the caller is
+        // never told the launch is its own while the ledger still routes it
+        // nowhere. A failed write leaves the owed marker raised above for the
+        // next save to retry, and fails the reuse instead of reporting success.
+        if let Some((rebind_exec_session_id, generation)) = reuse_rebind_exec_session_id {
+            if ledger_guard.is_some() {
+                let (written, returned_guard) = self
+                    .persist_claim_owning_ledger_lock(
+                        ledger_guard.take(),
+                        &plan.record_id,
+                        &rebind_exec_session_id,
+                        None,
+                    )
+                    .await;
+                ledger_guard = returned_guard;
+                match written {
+                    Ok(()) => clear_background_ledger_write_pending(&self.state, generation),
+                    Err(error) => {
+                        // The rebind exists only in memory and its owed marker
+                        // stays raised, so a later save retries it; the reuse
+                        // must not report success in the meantime.
+                        drop(ledger_guard);
+                        return Err(error);
+                    }
+                }
+            } else {
+                // A nested scope owns no ledger, so its rebind has no durable
+                // form to write and the marker it raised has nothing to carry.
+                clear_background_ledger_write_pending(&self.state, generation);
+            }
+        }
+        // The ledger lock is released before publishing: observers run user
+        // code, which must not hold a lock every save in the workspace needs.
+        drop(ledger_guard);
+        let adopted_stop = adopted_exec_session_id.is_some();
+        if let Some(adopted_exec_session_id) = adopted_exec_session_id {
+            // Adoption only clears the intent; the record stays active until
+            // its close succeeds. Close the launch whose stop was adopted, not
+            // whatever the record names by now: another start can take the
+            // record while the ledger lock is released.
+            #[cfg(test)]
+            adopted_stop_gate::pass(&self.state).await;
+            self.attempt_background_stop_close(&plan.record_id, &adopted_exec_session_id)
+                .await;
+        }
+        if adopted_stop || matches!(reservation, BackgroundRunReservation::Reserved) {
+            // An adopted stop changes the record's outcome, so observers need
+            // it as much as a fresh claim.
+            self.publish_background_status(&plan.record_id).await;
+        }
+        // A stop can land while the claim's write or its publication is in
+        // flight: both awaits run without the state lock, and
+        // `begin_background_cancellation` clears `desired_enabled` under it
+        // while the claim still reports an active status. Answering `Reserved`
+        // then lets the caller spawn the very process the stop exists to
+        // prevent, so the intent is read again before the claim is handed over.
+        // The claim guard is still armed here, so a caller dropped in this
+        // window leaves a claim whose obligation is already discharged.
+        let reservation = if matches!(reservation, BackgroundRunReservation::Reserved)
+            && self.background_claim_stop_was_requested(plan).await
+        {
+            self.settle_stopped_background_claim(plan).await;
+            BackgroundRunReservation::Declined
+        } else {
+            reservation
+        };
+        // The reservation has answered. From here the claim belongs to the
+        // caller's launch, which arms its own guard with no await in between.
+        claim_guard_disarm(claim_guard);
+        Ok(reservation)
+    }
+
+    /// Writes one record to the ledger in a task that also owns the ledger lock.
+    ///
+    /// The atomic write's final rename continues on the blocking pool even when
+    /// the waiting future is dropped, so a ledger guard released by that drop
+    /// would let another process claim the record while the late rename ran and
+    /// then be overwritten by it. Moving the guard into the writing task keeps
+    /// the inter-process lock until the write has really finished, whether or
+    /// not the caller is still waiting.
+    async fn persist_claim_owning_ledger_lock(
+        &self,
+        ledger_guard: Option<BackgroundStateLock>,
+        record_id: &str,
+        exec_session_id: &str,
+        replaced_exec_session_id: Option<&str>,
+    ) -> (Result<()>, Option<BackgroundStateLock>) {
+        let controller = self.clone();
+        let record_id = record_id.to_owned();
+        let exec_session_id = exec_session_id.to_owned();
+        let replaced_exec_session_id = replaced_exec_session_id.map(str::to_owned);
+        match tokio::spawn(async move {
+            let result = controller
+                .persist_reserved_background_claim(&record_id, &exec_session_id, replaced_exec_session_id.as_deref())
+                .await;
+            (result, ledger_guard)
+        })
+        .await
+        {
+            Ok(answer) => answer,
+            Err(error) => (Err(anyhow::anyhow!("The background claim write task failed: {error}")), None),
+        }
+    }
+
+    /// Reports whether the claim this reservation wrote was stopped since.
+    ///
+    /// The read takes the state lock, which is the lock the cancellation takes
+    /// to clear the intent, so the answer is the intent as of one instant
+    /// rather than a sample of two fields that can change independently.
+    async fn background_claim_stop_was_requested(&self, plan: &BackgroundRunPlan) -> bool {
+        let state = self.state.read().await;
+        state
+            .background_children
+            .get(&plan.record_id)
+            .is_some_and(|record| record.exec_session_id == plan.exec_session_id && !record.desired_enabled)
+    }
+
+    /// Settles a claim whose stop landed before its launch could spawn.
+    ///
+    /// The claim's exec session was never registered, so the stop has no
+    /// process to close: settling the record `Stopped` here finishes the stop.
+    /// A record the stop already settled keeps the outcome it reached, and the
+    /// launch obligation is cleared so no refresh treats the claim as still
+    /// coming.
+    async fn settle_stopped_background_claim(&self, plan: &BackgroundRunPlan) {
+        clear_background_launch_owed(&self.state, &plan.record_id, &plan.exec_session_id);
+        self.settle_background_stop_closed(&plan.record_id, &plan.exec_session_id, None)
+            .await;
+        // The claim was already published as `Starting`, so the outcome that
+        // replaced it must reach the same observers.
+        self.publish_background_status(&plan.record_id).await;
     }
 }

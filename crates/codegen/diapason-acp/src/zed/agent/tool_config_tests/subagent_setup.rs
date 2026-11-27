@@ -1,5 +1,6 @@
 //! Tests attachment and availability of optional ACP subagent support.
 use super::super::optional_setup::{AcpSubagentControllerSetup, OptionalSetupOutcome, attach_acp_subagent_controller};
+use super::super::tool_config::{SessionToolDefinitionRequest, subagent_tool_is_advertised};
 use super::support::{build_agent, build_agent_with_config, core_agent_config, definition_names};
 use assert_fs::TempDir;
 use diapason_config::WorkspaceLifecycleHooks;
@@ -80,11 +81,14 @@ async fn optional_setup_reports_subagents_disabled_by_provider_concurrency_polic
     .expect("valid custom provider configuration");
 
     let outcome = attach_acp_subagent_controller(AcpSubagentControllerSetup {
+        owner_session_id: None,
         registry: &registry,
         agent_config: &core_config,
         custom_providers: &[provider],
         vt_config: Some(&vt_cfg),
         workspace_gated: false,
+        defer_background_restore: false,
+        owner_migration_failed: false,
     })
     .await;
 
@@ -106,17 +110,77 @@ async fn optional_setup_reports_subagent_initialization_failure() {
     let core_config = core_agent_config(temp.path());
 
     let outcome = attach_acp_subagent_controller(AcpSubagentControllerSetup {
+        owner_session_id: None,
         registry: &registry,
         agent_config: &core_config,
         custom_providers: &[],
         vt_config: Some(&vt_cfg),
         workspace_gated: false,
+        defer_background_restore: false,
+        owner_migration_failed: false,
     })
     .await;
 
     assert!(matches!(outcome, OptionalSetupOutcome::Failed(_)));
     assert!(!registry.has_subagent_controller());
 }
+
+/// A session without a workspace runtime advertises and executes subagents.
+///
+/// The advertisement and the executor must resolve the same controller. Such a
+/// session resolves the launch scope, so a call the model is offered must reach
+/// core with that controller attached instead of with the scoped registry's
+/// controller removed.
+#[tokio::test]
+async fn runtime_less_session_advertises_and_executes_with_the_launch_controller() {
+    let temp = TempDir::new().unwrap();
+    let mut vt_cfg = DiapasonConfig::default();
+    vt_cfg.subagents.enabled = true;
+    vt_cfg.subagents.background.auto_restore = false;
+    let agent = build_agent_with_config(temp.path(), ToolsConfig::default(), Some(&vt_cfg)).await;
+    let session_id = agent.register_session().expect("register a session without a runtime");
+    let session = agent
+        .session_handle(&session_id)
+        .expect("look up the runtime-less session")
+        .expect("registered runtime-less session");
+    assert!(
+        session
+            .workspace_runtime()
+            .expect("read the session workspace runtime")
+            .is_none(),
+        "the fixture must model a session without a workspace runtime"
+    );
+
+    let advertised = definition_names(
+        agent
+            .session_tool_definitions(SessionToolDefinitionRequest {
+                session: &session,
+                provider_supports_tools: true,
+                enabled_tools: &[],
+                primary_agent: "build",
+            })
+            .expect("advertised tool definitions")
+            .expect("the launch catalogue offers tools"),
+    );
+    assert!(
+        advertised.iter().any(|name| name == tools::AGENT),
+        "a runtime-less session with a launch controller must advertise the subagent tools it can execute"
+    );
+
+    let execution_controller = agent
+        .execution_subagent_controller(&session)
+        .expect("the executor must resolve a controller");
+    assert!(
+        execution_controller.is_some(),
+        "a subagent tool offered to the session must have a controller when its call executes"
+    );
+    let scoped = agent.local_tool_registry.with_subagent_controller(execution_controller);
+    assert!(
+        scoped.has_subagent_controller(),
+        "the registry handed to core must keep the controller the advertisement promised"
+    );
+}
+
 #[tokio::test]
 async fn unavailable_subagent_controller_keeps_agent_tool_hidden() {
     let temp = TempDir::new().unwrap();
@@ -125,4 +189,32 @@ async fn unavailable_subagent_controller_keeps_agent_tool_hidden() {
     assert!(!agent.local_tool_registry.has_subagent_controller());
     let names = definition_names(agent.tool_definitions(true, &[], "build").expect("build agent tools"));
     assert!(!names.iter().any(|name| name == tools::AGENT));
+}
+
+/// A session without its own controller must not offer the tools that
+/// controller admits.
+///
+/// The workspace catalogue can still hold every subagent tool, because the
+/// launch workspace has a controller of its own. Advertising from that
+/// catalogue is the fallback this filter exists to prevent, so the session
+/// flag alone decides, whatever the catalogue contains.
+#[test]
+fn session_without_a_controller_hides_every_subagent_tool() {
+    for tool in [
+        tools::AGENT,
+        tools::SPAWN_AGENT,
+        tools::SPAWN_BACKGROUND_SUBPROCESS,
+        tools::SEND_INPUT,
+        tools::WAIT_AGENT,
+        tools::RESUME_AGENT,
+        tools::CLOSE_AGENT,
+    ] {
+        assert!(
+            !subagent_tool_is_advertised(false, tool),
+            "{tool} names a session-owned controller the session does not have"
+        );
+        assert!(subagent_tool_is_advertised(true, tool), "{tool} stays available once the controller attaches");
+    }
+    assert!(subagent_tool_is_advertised(false, tools::LIST_FILES));
+    assert!(subagent_tool_is_advertised(false, tools::TASK_TRACKER));
 }

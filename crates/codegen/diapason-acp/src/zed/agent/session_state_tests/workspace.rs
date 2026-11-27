@@ -2,7 +2,9 @@
 use super::*;
 use crate::workspace::{WorkspaceTrustSyncOutcome, WorkspaceTrustSynchronizer};
 use crate::zed::agent::optional_setup::{OptionalSetupOutcome, OptionalWorkspaceSetupOutcomes};
-use crate::zed::agent::session_workspace::{WorkspaceRuntimeLifecycle, WorkspaceRuntimeLifecycleState};
+use crate::zed::agent::session_workspace::{
+    PendingWorkspaceRestore, WorkspaceRuntimeLifecycle, WorkspaceRuntimeLifecycleState,
+};
 use assert_fs::TempDir;
 use diapason_core::config::WorkspaceTrustLevel;
 use std::sync::Arc;
@@ -83,6 +85,7 @@ async fn isolated_runtime(managed: bool, workspace: &Path, agent: &ZedAgent) -> 
             active_sessions: 0,
         }),
         lifecycle_changed: tokio::sync::Notify::new(),
+        pending_background_restore: Mutex::new(PendingWorkspaceRestore::NotOwed),
     })
 }
 
@@ -332,7 +335,7 @@ async fn workspace_lease_accounting_matches_the_reference_model() {
     // distinct from the agent manufacturing a replacement runtime for the same
     // workspace.
     let lease = agent
-        .workspace_runtime_for(&approved_workspace)
+        .workspace_runtime_for(&approved_workspace, None)
         .await
         .expect("the agent must create a workspace runtime");
     let runtime = Arc::clone(lease.runtime());
@@ -355,7 +358,7 @@ async fn workspace_lease_accounting_matches_the_reference_model() {
     );
 
     let replacement = agent
-        .workspace_runtime_for(&approved_workspace)
+        .workspace_runtime_for(&approved_workspace, None)
         .await
         .expect("the agent must replace a terminal runtime");
     assert!(
@@ -621,7 +624,7 @@ async fn workspace_runtime_reservation_survives_close_before_session_registratio
     let first_session = agent.session_handle(&first.session_id).unwrap().unwrap();
     let runtime = first_session.workspace_runtime().unwrap().unwrap();
     let selected_workspace = AcpSessionWorkspace::from_client_cwd(session_workspace.path()).await.unwrap();
-    let reservation = agent.workspace_runtime_for(&selected_workspace).await.unwrap();
+    let reservation = agent.workspace_runtime_for(&selected_workspace, None).await.unwrap();
     assert!(Arc::ptr_eq(&runtime, reservation.runtime()));
 
     let _close_response = agent.close_session(&first.session_id).await.unwrap();
@@ -744,4 +747,66 @@ async fn resume_archive_is_disabled_when_history_persistence_is_disabled() {
         .await;
 
     assert!(result.is_err());
+}
+
+/// A cancelled workspace release must still start the runtime shutdown.
+///
+/// `SessionHandle::release_workspace_lease` takes the lease out of the session
+/// before it awaits, and a cancelled cleanup would otherwise drop that taken
+/// lease. The lease's own `Drop` can only publish a pending shutdown because it
+/// cannot await, so the runtime would never start the shutdown its final lease
+/// asks for.
+#[tokio::test]
+async fn cancelled_workspace_release_still_starts_runtime_shutdown() {
+    let launch_workspace = TempDir::new().expect("launch workspace");
+    let session_workspace = TempDir::new().expect("session workspace");
+    let agent = Arc::new(build_agent(launch_workspace.path()).await);
+
+    let runtime = isolated_runtime(true, session_workspace.path(), &agent).await;
+    let lease = SessionWorkspaceLease::acquire(Arc::clone(&runtime))
+        .await
+        .expect("acquiring a managed lease must not fail")
+        .expect("an open runtime must grant a lease");
+    let identifier = "cancelled-lease-release";
+    let thread = agent
+        .thread_manager
+        .start_thread_with_identifier(identifier, ThreadBootstrap::new(None));
+    let session = agent.build_session_handle(
+        thread,
+        SessionHandleBootstrap {
+            subagent_controller: None,
+            session_id: acp::SessionId::new(identifier),
+            archive: None,
+            trigger: SessionStartTrigger::NewSession,
+            workspace_runtime: Some(Arc::clone(&runtime)),
+            workspace_lease: Some(lease),
+        },
+    );
+
+    // Poll the release once and then cancel it by dropping the boxed future.
+    // The lease has already left the session, so only the detached cleanup task
+    // can start the runtime shutdown the final lease requests.
+    let mut release = Box::pin(session.release_workspace_lease());
+    let first_poll = std::future::poll_fn(|cx| std::task::Poll::Ready(release.as_mut().poll(cx))).await;
+    assert!(first_poll.is_pending(), "the release must park on its detached cleanup task");
+    // The first poll only hands the cleanup to its own task: on a current-thread
+    // runtime that task cannot have run yet, so the lease must still be counted.
+    // An inline cleanup would already have dropped the lease here, leaving a
+    // cancelled caller with no way to start the shutdown it asks for.
+    assert_eq!(active_sessions(&runtime), 1, "the release must hand its cleanup to a detached task");
+    drop(release);
+
+    tokio::time::timeout(LEASE_DEADLINE, async {
+        while !runtime.is_shutdown() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("a cancelled workspace release must still start the runtime shutdown");
+    assert_eq!(active_sessions(&runtime), 0, "the cancelled release must leave the count at zero");
+    assert_eq!(
+        lifecycle_state(&runtime),
+        WorkspaceRuntimeLifecycleState::Closed,
+        "the runtime must reach a terminal state after a cancelled release"
+    );
 }

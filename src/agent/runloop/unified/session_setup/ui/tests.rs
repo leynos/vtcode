@@ -1,3 +1,4 @@
+//! Tests for the session-setup UI status summaries and their memory hints.
 use super::*;
 use diapason_core::persistent_memory::MemoryCleanupStatus;
 use std::path::PathBuf;
@@ -151,6 +152,7 @@ fn apply_persistent_memory_header_guide_sets_badge_and_highlight() {
 fn background_local_agent_visibility_hides_stopped_entries() {
     let entry = diapason_core::subagents::BackgroundSubprocessEntry {
         id: "background-default".to_string(),
+        owner_session_id: None,
         session_id: "session-456".to_string(),
         exec_session_id: String::new(),
         agent_name: "default".to_string(),
@@ -171,7 +173,10 @@ fn background_local_agent_visibility_hides_stopped_entries() {
         transcript_path: None,
     };
 
-    assert!(visible_background_local_agents(vec![entry]).is_empty());
+    assert!(
+        background_local_agent_row(entry, None).is_none(),
+        "a stopped entry the user did not enable must not be projected as a local agent row"
+    );
 }
 
 #[test]
@@ -260,6 +265,7 @@ fn delegated_local_agent_preview_uses_failure_message() {
 fn background_local_agent_preview_uses_status_placeholder() {
     let entry = diapason_core::subagents::BackgroundSubprocessEntry {
         id: "background-default".to_string(),
+        owner_session_id: None,
         session_id: "session-456".to_string(),
         exec_session_id: String::new(),
         agent_name: "default".to_string(),

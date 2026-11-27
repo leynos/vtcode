@@ -31,7 +31,10 @@ where
             async move |req: NewSessionRequest,
                         request_cx: Responder<NewSessionResponse>,
                         _cx: ConnectionTo<Client>| {
-                handle_new_session(Arc::clone(&new_session_agent), req, request_cx).await
+                // The session-open future is large enough to trip
+                // `clippy::large_futures` inside this request handler, so it is
+                // boxed rather than inlined into the connection state machine.
+                Box::pin(handle_new_session(Arc::clone(&new_session_agent), req, request_cx)).await
             },
             on_receive_request!(),
         )
@@ -92,7 +95,10 @@ async fn handle_new_session(
     req: NewSessionRequest,
     request_cx: Responder<NewSessionResponse>,
 ) -> Result<(), SdkError> {
-    let response = agent.new_session(req).await?;
+    // The session-open future carries the whole attach path, which is large
+    // enough to trip `clippy::large_futures` in the connection state machine;
+    // boxing it here keeps this handler small.
+    let response = Box::pin(agent.new_session(req)).await?;
     request_cx.respond(response)
 }
 

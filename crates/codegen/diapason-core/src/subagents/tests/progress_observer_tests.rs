@@ -1,8 +1,6 @@
 //! Checks that subagent and background-process progress notifications stay scoped to their parent session.
 use super::*;
 
-use super::*;
-
 #[derive(Default)]
 struct RecordingObserver {
     children: Mutex<Vec<SubagentStatusEntry>>,
@@ -56,9 +54,15 @@ async fn seed_child_records(controller: &SubagentController) {
     );
 }
 
-fn background_record(id: &str, parent_session_id: &str, timestamp: chrono::DateTime<Utc>) -> BackgroundRecord {
+fn background_record(
+    id: &str,
+    owner_session_id: &str,
+    parent_session_id: &str,
+    timestamp: chrono::DateTime<Utc>,
+) -> BackgroundRecord {
     BackgroundRecord {
         id: id.to_string(),
+        owner_session_id: Some(owner_session_id.to_string()),
         agent_name: "watcher".to_string(),
         display_label: "Watcher".to_string(),
         description: "Watch the workspace".to_string(),
@@ -77,6 +81,7 @@ fn background_record(id: &str, parent_session_id: &str, timestamp: chrono::DateT
         prompt: "Watch the workspace".to_string(),
         summary: Some("running".to_string()),
         error: None,
+        close_fault: None,
         archive_path: None,
         transcript_path: None,
         max_turns: None,
@@ -113,12 +118,18 @@ async fn background_status_progress_is_scoped_to_parent_session() {
     let timestamp = Utc::now();
     {
         let mut state = controller.state.write().await;
-        state
-            .background_children
-            .insert("background-1".to_string(), background_record("background-1", "parent-session", timestamp));
-        state
-            .background_children
-            .insert("background-2".to_string(), background_record("background-2", "other-session", timestamp));
+        // The owner is deliberately distinct from the routing session: an
+        // implementation that keyed observation on the owner instead of the
+        // parent session would reach no registered observer and this test
+        // would fail instead of silently routing.
+        state.background_children.insert(
+            "background-1".to_string(),
+            background_record("background-1", "owner-a", "parent-session", timestamp),
+        );
+        state.background_children.insert(
+            "background-2".to_string(),
+            background_record("background-2", "owner-b", "other-session", timestamp),
+        );
     }
 
     controller.publish_background_status("background-1").await;
@@ -133,3 +144,5 @@ async fn background_status_progress_is_scoped_to_parent_session() {
     assert_eq!(parent_ids, ["background-1"]);
     assert_eq!(other_ids, ["background-2"]);
 }
+
+mod revision_ordering;

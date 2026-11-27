@@ -1,3 +1,7 @@
+//! Workspace-scoped slash commands.
+//!
+//! Hosts `/init` and the guided agent-generation wizard, including the optional
+//! grounding subagent they run before writing workspace files.
 use anyhow::{Context, Result};
 use diapason_config::{SubagentSource, SubagentSpec, builtin_subagents};
 use diapason_core::commands::init::{
@@ -6,7 +10,7 @@ use diapason_core::commands::init::{
 };
 use diapason_core::llm::provider::{AssistantPhase, MessageRole};
 use diapason_core::subagents::SpawnAgentRequest;
-use diapason_core::subagents::SubagentStatusEntry;
+use diapason_core::subagents::{SubagentStatusEntry, TaskOwner};
 use diapason_core::utils::ansi::MessageStyle;
 use diapason_core::{llm::provider::Message, persistent_memory::scaffold_persistent_memory};
 use diapason_ui::tui::app::{InlineListItem, InlineListSelection, WizardModalMode, WizardStep};
@@ -164,7 +168,7 @@ async fn maybe_ground_project_context(ctx: &mut SlashCommandContext<'_>) -> Resu
     };
 
     let grounding = wait_for_init_grounding(ctx, &controller, &spawned).await;
-    let _ = controller.close(&spawned.id).await;
+    let _ = controller.close(TaskOwner::Workspace, &spawned.id).await;
     let grounding = grounding.with_context(|| format!("grounding subagent {}", spawned.id))?;
     Ok(grounding)
 }
@@ -175,7 +179,7 @@ async fn wait_for_init_grounding(
     spawned: &SubagentStatusEntry,
 ) -> Result<Option<GuidedInitGrounding>> {
     let Some(status) = controller
-        .wait(std::slice::from_ref(&spawned.id), Some(INIT_GROUNDING_TIMEOUT_MS))
+        .wait(TaskOwner::Workspace, std::slice::from_ref(&spawned.id), Some(INIT_GROUNDING_TIMEOUT_MS))
         .await?
     else {
         ctx.renderer.line(
@@ -236,7 +240,7 @@ async fn parse_grounding_from_snapshot(
     controller: &std::sync::Arc<diapason_core::subagents::SubagentController>,
     target: &str,
 ) -> Option<GuidedInitGrounding> {
-    let snapshot = controller.snapshot_for_thread(target).await.ok()?;
+    let snapshot = controller.snapshot_for_thread(TaskOwner::Workspace, target).await.ok()?;
     extract_grounding_from_messages(&snapshot.snapshot.messages)
 }
 

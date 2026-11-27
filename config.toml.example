@@ -27,6 +27,7 @@ reasoning_effort = "low"
 # model = "deepseek-ai/deepseek-v4-flash"
 # context_window = 256000   # provider capability in tokens
 # api_format = "auto"       # hint: auto|openai-chat|openai-responses|anthropic-messages
+# supports_stream_usage = true # opt in only when the endpoint emits terminal stream usage
 # Optional provider-level conservative defaults (applied when model metadata is missing):
 # supports_tools = true
 # supports_vision = false
