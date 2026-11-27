@@ -12,6 +12,10 @@ Admission is both per provider and per Diapason process:
 
 - Requests for every model routed through one configured provider share that
   provider's `max_in_flight_requests` limit.
+- ACP parent requests always retain access to the full limit. Subagent
+  requests use a provider-shared child budget capped at `limit - 1`, so one
+  parent request remains admissible even when other ACP sessions are running
+  children against the same provider.
 - A request that reaches the limit waits for a permit for at most
   `queue_timeout_seconds`. If no permit becomes available, the request fails.
 - Each configured provider has its own in-process limit. Separate Diapason

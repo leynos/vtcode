@@ -265,6 +265,7 @@ async fn handle_test_provider(_cli: &Cli, provider: &str) -> Result<()> {
             anthropic: None,
             model_behaviour: None,
             workspace_root: None,
+            request_admission_class: diapason_llm::provider_config_types::RequestAdmissionClass::Parent,
         },
     )?;
 

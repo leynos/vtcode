@@ -51,6 +51,7 @@ pub async fn handle_ask_command(
             anthropic: None,
             model_behaviour: config.model_behaviour.clone(),
             workspace_root: Some(config.workspace.clone()),
+            request_admission_class: diapason_llm::provider_config_types::RequestAdmissionClass::Parent,
         },
     )?;
     let backend_kind = provider.name().to_string();

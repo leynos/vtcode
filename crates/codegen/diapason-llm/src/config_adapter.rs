@@ -8,6 +8,7 @@ use std::borrow::Cow;
 
 use std::path::PathBuf;
 
+use crate::provider_config_types::RequestAdmissionClass;
 use anyhow::Error;
 use diapason_commons::cgp::HasComponent;
 use diapason_commons::{ErrorFormatter, ErrorReporter, PathScope, TelemetrySink, WorkspacePaths};
@@ -25,6 +26,11 @@ use diapason_config::core::{ModelConfig, PromptCachingConfig};
 pub trait ProviderConfig {
     /// API key or bearer token used to authenticate with the provider.
     fn api_key(&self) -> Option<Cow<'_, str>>;
+
+    /// Admission class passed through to provider-specific queue policies.
+    fn request_admission_class(&self) -> RequestAdmissionClass {
+        RequestAdmissionClass::Parent
+    }
 
     /// Optional override for the provider's base URL.
     fn base_url(&self) -> Option<Cow<'_, str>> {
@@ -252,6 +258,7 @@ fn project_provider_config(source: &dyn ProviderConfig) -> crate::factory_types:
         anthropic: source.anthropic().map(Cow::into_owned),
         model_behaviour: source.model_behaviour().map(Cow::into_owned),
         workspace_root: None,
+        request_admission_class: source.request_admission_class(),
     }
 }
 
@@ -498,6 +505,7 @@ mod tests {
             anthropic: Some(AnthropicConfig::default()),
             model_behaviour: Some(ModelConfig::default()),
             workspace_root: None,
+            request_admission_class: RequestAdmissionClass::Parent,
         };
 
         assert!(matches!(
@@ -555,6 +563,7 @@ mod tests {
             }),
             model_behaviour: Some(ModelConfig::default()),
             workspace_root: None,
+            request_admission_class: RequestAdmissionClass::Parent,
         };
 
         let adapted = as_factory_config(&source);
@@ -591,6 +600,10 @@ mod tests {
 impl ProviderConfig for crate::factory_types::ProviderConfig {
     fn api_key(&self) -> Option<Cow<'_, str>> {
         borrowed_optional_str(&self.api_key)
+    }
+
+    fn request_admission_class(&self) -> RequestAdmissionClass {
+        self.request_admission_class
     }
 
     fn base_url(&self) -> Option<Cow<'_, str>> {
@@ -634,6 +647,7 @@ pub struct OwnedProviderConfig {
     openai: Option<OpenAIConfig>,
     anthropic: Option<AnthropicConfig>,
     model_behaviour: Option<ModelConfig>,
+    request_admission_class: RequestAdmissionClass,
 }
 
 impl OwnedProviderConfig {
@@ -653,6 +667,11 @@ impl OwnedProviderConfig {
 
     pub fn with_model(mut self, value: impl Into<String>) -> Self {
         self.model = Some(value.into());
+        self
+    }
+
+    pub fn with_request_admission_class(mut self, value: RequestAdmissionClass) -> Self {
+        self.request_admission_class = value;
         self
     }
 
@@ -685,6 +704,10 @@ impl OwnedProviderConfig {
 impl ProviderConfig for OwnedProviderConfig {
     fn api_key(&self) -> Option<Cow<'_, str>> {
         borrowed_optional_str(&self.api_key)
+    }
+
+    fn request_admission_class(&self) -> RequestAdmissionClass {
+        self.request_admission_class
     }
 
     fn base_url(&self) -> Option<Cow<'_, str>> {

@@ -1078,6 +1078,7 @@ async fn sync_openai_runtime_if_active(ctx: &mut SlashCommandContext<'_>) -> Res
             anthropic: None,
             model_behaviour: ctx.config.model_behaviour.clone(),
             workspace_root: Some(ctx.config.workspace.clone()),
+            request_admission_class: diapason_core::llm::factory::RequestAdmissionClass::Parent,
         },
     )?;
     *ctx.provider_client = provider;
@@ -1124,6 +1125,7 @@ async fn sync_copilot_runtime_if_active(ctx: &mut SlashCommandContext<'_>) -> Re
             anthropic: None,
             model_behaviour: ctx.config.model_behaviour.clone(),
             workspace_root: Some(ctx.config.workspace.clone()),
+            request_admission_class: diapason_core::llm::factory::RequestAdmissionClass::Parent,
         },
     )?;
     *ctx.provider_client = provider;

@@ -6,6 +6,16 @@ use diapason_config::auth::OpenAIChatGptAuthHandle;
 use diapason_config::core::{AnthropicConfig, ModelConfig, OpenAIConfig, PromptCachingConfig};
 use std::path::PathBuf;
 
+/// Classifies a request for provider-specific admission policies.
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+pub enum RequestAdmissionClass {
+    /// A regular request that may use the provider's full configured capacity.
+    #[default]
+    Parent,
+    /// A child request that shares the provider's reserved child capacity.
+    Child,
+}
+
 #[derive(Debug, Clone)]
 pub struct ProviderConfig {
     pub api_key: Option<String>,
@@ -19,4 +29,5 @@ pub struct ProviderConfig {
     pub anthropic: Option<AnthropicConfig>,
     pub model_behaviour: Option<ModelConfig>,
     pub workspace_root: Option<PathBuf>,
+    pub request_admission_class: RequestAdmissionClass,
 }

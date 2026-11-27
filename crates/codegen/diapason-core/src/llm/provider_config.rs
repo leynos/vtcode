@@ -347,6 +347,7 @@ pub fn create_provider_unified(
             anthropic: None,
             model_behaviour: None,
             workspace_root: None,
+            request_admission_class: diapason_llm::provider_config_types::RequestAdmissionClass::Parent,
         },
     )
 }
@@ -422,6 +423,7 @@ mod tests {
                 anthropic: None,
                 model_behaviour: None,
                 workspace_root: None,
+                request_admission_class: diapason_llm::provider_config_types::RequestAdmissionClass::Parent,
             },
         )
         .expect("factory provider should build");

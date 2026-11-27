@@ -337,24 +337,24 @@ impl SubagentController {
                     bootstrap_messages: &bootstrap_messages,
                 })
                 .await?;
-            let mut runner = Box::pin(
-                AgentRunner::new_with_bootstrap(
-                    agent_type_for_spec(&spec),
-                    runtime.resolved_model,
-                    self.config.api_key.clone(),
-                    runtime.effective_workspace.clone(),
-                    session_id.clone(),
-                    RunnerSettings {
-                        reasoning_effort: Some(runtime.child_reasoning_effort),
-                        verbosity: None,
-                    },
-                    None,
-                    archive.bootstrap,
-                    Some(runtime.child_cfg.clone()),
-                    self.config.openai_chatgpt_auth.clone(),
-                )
-                .await?,
-            );
+            let runner = AgentRunner::new_with_bootstrap_and_request_admission_class(
+                agent_type_for_spec(&spec),
+                runtime.resolved_model,
+                self.config.api_key.clone(),
+                runtime.effective_workspace.clone(),
+                session_id.clone(),
+                RunnerSettings {
+                    reasoning_effort: Some(runtime.child_reasoning_effort),
+                    verbosity: None,
+                },
+                None,
+                archive.bootstrap,
+                Some(runtime.child_cfg.clone()),
+                self.config.openai_chatgpt_auth.clone(),
+                diapason_llm::provider_config_types::RequestAdmissionClass::Child,
+            )
+            .await?;
+            let mut runner = Box::pin(runner);
             runner.set_quiet(true);
             runner.set_subagent_mode(true);
             Ok(PreparedChildExecution {
@@ -589,5 +589,70 @@ impl SubagentController {
                 transcript_path,
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod admission_class_tests {
+    use super::*;
+    use crate::tools::exec_session::ExecSessionManager;
+    use crate::tools::registry::PtySessionManager;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn prepared_child_runner_uses_child_request_admission_class() {
+        let workspace = TempDir::new().expect("workspace");
+        let vt_cfg = DiapasonConfig::default();
+        let pty_sessions = PtySessionManager::new(workspace.path().to_path_buf(), vt_cfg.pty.clone());
+        let exec_sessions = ExecSessionManager::new(workspace.path().to_path_buf(), pty_sessions.clone());
+        let controller = SubagentController::new(SubagentControllerConfig {
+            workspace_root: workspace.path().to_path_buf(),
+            parent_session_id: "admission-parent".to_string(),
+            parent_model: crate::config::constants::models::openai::GPT_5_6_SOL.to_string(),
+            parent_provider: "openai".to_string(),
+            parent_reasoning_effort: ReasoningEffortLevel::Medium,
+            api_key: "test-key".to_string(),
+            vt_cfg,
+            openai_chatgpt_auth: None,
+            depth: 0,
+            workspace_gated: false,
+            exec_sessions,
+            pty_manager: pty_sessions.manager().clone(),
+            managed_background_runtime: false,
+        })
+        .await
+        .expect("controller");
+        let spec = diapason_config::builtin_subagents()
+            .into_iter()
+            .find(|spec| spec.name == "default")
+            .expect("default child spec");
+        let context = ChildExecutionContext {
+            display_label: subagent_display_label(&spec),
+            spec,
+            session_id: "admission-child".to_string(),
+            parent_thread_id: "admission-parent".to_string(),
+            bootstrap_messages: Vec::new(),
+            background: false,
+            worktree_path: None,
+            existing_child_controller: None,
+        };
+
+        let prepared = controller
+            .prepare_child_execution(
+                context,
+                ChildRunRequest {
+                    prompt: "inspect the repository".to_string(),
+                    max_turns: Some(1),
+                    model_override: None,
+                    reasoning_override: None,
+                },
+            )
+            .await
+            .expect("prepare child runner");
+
+        assert_eq!(
+            prepared.runner.request_admission_class(),
+            diapason_llm::provider_config_types::RequestAdmissionClass::Child,
+        );
     }
 }

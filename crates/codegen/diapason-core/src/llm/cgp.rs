@@ -451,6 +451,7 @@ mod tests {
             anthropic: None,
             model_behaviour: None,
             workspace_root: None,
+            request_admission_class: diapason_llm::provider_config_types::RequestAdmissionClass::Parent,
         });
 
         assert_eq!(provider.name(), "gemini");
@@ -470,6 +471,7 @@ mod tests {
             anthropic: Some(AnthropicConfig::default()),
             model_behaviour: None,
             workspace_root: None,
+            request_admission_class: diapason_llm::provider_config_types::RequestAdmissionClass::Parent,
         });
 
         assert_eq!(provider.name(), "openai");
@@ -492,6 +494,7 @@ mod tests {
             }),
             model_behaviour: None,
             workspace_root: None,
+            request_admission_class: diapason_llm::provider_config_types::RequestAdmissionClass::Parent,
         });
 
         assert_eq!(provider.name(), "anthropic");

@@ -11,6 +11,7 @@ use crate::provider::{
     LLMError, LLMNormalizedStream, LLMProvider, LLMRequest, LLMResponse, LLMStream, Message,
     ResponsesCompactionOptions, SamplingOverrides,
 };
+use crate::provider_config_types::RequestAdmissionClass;
 use crate::providers::anthropic::{self, AnthropicProvider};
 use crate::providers::common::{resolve_model, validate_request_common};
 use crate::providers::openai::{CustomProviderAuthHandle, OpenAIProvider};
@@ -52,8 +53,40 @@ impl CustomProviderBackendRouter {
         model_behaviour: Option<ModelConfig>,
         custom_provider_auth: Option<CustomProviderAuthHandle>,
     ) -> Self {
+        Self::from_config_with_request_admission_class(
+            custom_config,
+            api_key,
+            model,
+            base_url,
+            prompt_cache,
+            timeouts,
+            openai,
+            anthropic,
+            model_behaviour,
+            custom_provider_auth,
+            RequestAdmissionClass::Parent,
+        )
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The routing inputs are preserved for compatibility with the provider factory."
+    )]
+    pub fn from_config_with_request_admission_class(
+        custom_config: CustomProviderConfig,
+        api_key: Option<String>,
+        model: Option<String>,
+        base_url: String,
+        prompt_cache: Option<PromptCachingConfig>,
+        timeouts: Option<TimeoutsConfig>,
+        openai: Option<OpenAIConfig>,
+        anthropic: Option<AnthropicConfig>,
+        model_behaviour: Option<ModelConfig>,
+        custom_provider_auth: Option<CustomProviderAuthHandle>,
+        request_admission_class: RequestAdmissionClass,
+    ) -> Self {
         let provider_key = custom_config.name.clone();
-        let request_admission = CustomProviderAdmission::new(&custom_config, &base_url);
+        let request_admission = CustomProviderAdmission::new(&custom_config, &base_url, request_admission_class);
         let display_name = custom_config.display_name.clone();
         let supported_models = custom_config.effective_models();
         let configured_default = resolve_model(model, &custom_config.model);

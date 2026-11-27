@@ -11,7 +11,7 @@ use hashbrown::HashMap;
 
 // ProviderConfig is the canonical factory config imported from diapason-llm.
 // The struct was consolidated here to eliminate the duplicate definition.
-pub use diapason_llm::provider_config_types::ProviderConfig;
+pub use diapason_llm::provider_config_types::{ProviderConfig, RequestAdmissionClass};
 
 type ProviderFactory = Box<dyn Fn(ProviderConfig) -> Box<dyn LLMProvider> + Send + Sync>;
 
@@ -218,6 +218,7 @@ pub fn create_provider_for_model(
             anthropic: None,
             model_behaviour,
             workspace_root: None,
+            request_admission_class: RequestAdmissionClass::Parent,
         },
         &[],
     )
@@ -280,6 +281,7 @@ pub fn register_custom_providers(custom_providers: &[diapason_config::core::Cust
                 anthropic,
                 model_behaviour,
                 workspace_root,
+                request_admission_class,
                 ..
             } = config;
 
@@ -295,7 +297,7 @@ pub fn register_custom_providers(custom_providers: &[diapason_config::core::Cust
                 .filter(|_| api_key.is_none())
                 .map(|auth| CustomProviderAuthHandle::new(auth, workspace_root.clone()));
 
-            Box::new(CustomProviderBackendRouter::from_config(
+            Box::new(CustomProviderBackendRouter::from_config_with_request_admission_class(
                 custom_config.clone(),
                 api_key,
                 Some(model),
@@ -306,6 +308,7 @@ pub fn register_custom_providers(custom_providers: &[diapason_config::core::Cust
                 anthropic,
                 model_behaviour,
                 custom_provider_auth,
+                request_admission_class,
             ))
         });
 
@@ -389,6 +392,7 @@ mod tests {
                     anthropic: None,
                     model_behaviour: None,
                     workspace_root: None,
+                    request_admission_class: RequestAdmissionClass::Parent,
                 },
                 &[],
             )
@@ -415,6 +419,7 @@ mod tests {
                     anthropic: Some(AnthropicConfig::default()),
                     model_behaviour: None,
                     workspace_root: None,
+                    request_admission_class: RequestAdmissionClass::Parent,
                 },
                 &[],
             )
@@ -444,6 +449,7 @@ mod tests {
                     }),
                     model_behaviour: None,
                     workspace_root: None,
+                    request_admission_class: RequestAdmissionClass::Parent,
                 },
                 &[],
             )
@@ -482,6 +488,7 @@ mod tests {
                     anthropic: None,
                     model_behaviour: None,
                     workspace_root: None,
+                    request_admission_class: RequestAdmissionClass::Parent,
                 },
                 &[],
             )
@@ -501,6 +508,7 @@ mod tests {
                     anthropic: None,
                     model_behaviour: None,
                     workspace_root: None,
+                    request_admission_class: RequestAdmissionClass::Parent,
                 },
                 &[],
             )
@@ -557,6 +565,7 @@ mod tests {
                 anthropic: None,
                 model_behaviour: None,
                 workspace_root: None,
+                request_admission_class: RequestAdmissionClass::Parent,
             },
         )
         .expect("custom provider should register");
@@ -614,6 +623,7 @@ mod tests {
                 anthropic: None,
                 model_behaviour: None,
                 workspace_root: None,
+                request_admission_class: RequestAdmissionClass::Parent,
             },
         )
         .expect("custom provider should register");
@@ -711,6 +721,7 @@ mod tests {
                 anthropic: Some(AnthropicConfig::default()),
                 model_behaviour: None,
                 workspace_root: None,
+                request_admission_class: RequestAdmissionClass::Parent,
             },
         )
         .expect("mixed provider should build");
@@ -740,6 +751,7 @@ mod tests {
                 anthropic: Some(AnthropicConfig::default()),
                 model_behaviour: None,
                 workspace_root: None,
+                request_admission_class: RequestAdmissionClass::Parent,
             },
         )
         .expect("mixed provider should build");
@@ -771,6 +783,7 @@ mod tests {
                 anthropic: Some(AnthropicConfig::default()),
                 model_behaviour: None,
                 workspace_root: None,
+                request_admission_class: RequestAdmissionClass::Parent,
             },
         )
         .expect("mixed provider should build");
@@ -883,6 +896,7 @@ mod tests {
                 anthropic: None,
                 model_behaviour: None,
                 workspace_root: None,
+                request_admission_class: RequestAdmissionClass::Parent,
             },
         )
         .expect("atlas cloud should resolve as an OpenAI-compatible custom provider");
@@ -1006,6 +1020,7 @@ mod tests {
                 anthropic: None,
                 model_behaviour: None,
                 workspace_root: None,
+                request_admission_class: RequestAdmissionClass::Parent,
             },
         )
         .expect("Merge Gateway should be registered in the factory");
@@ -1048,6 +1063,7 @@ mod tests {
                 anthropic: None,
                 model_behaviour: None,
                 workspace_root: None,
+                request_admission_class: RequestAdmissionClass::Parent,
             },
             &[],
         ) {
@@ -1079,6 +1095,7 @@ mod tests {
                     anthropic: None,
                     model_behaviour: None,
                     workspace_root: None,
+                    request_admission_class: RequestAdmissionClass::Parent,
                 },
                 &[],
             )
